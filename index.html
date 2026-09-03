@@ -3854,7 +3854,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.11';
+const APP_VERSION = 'v11.3.13';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7407,6 +7407,29 @@ function studentId(student){
   return buildStudentKey(student.noms, student.prenoms);
 }
 
+// V035-V11.3.12 — Crée une classe si absente (structure standard), active son
+// niveau et étend nSubPerLevel pour la rendre visible. Utilisé par l'import de
+// base : l'import FAIT FOI pour peupler (on importe toute la base — les
+// regroupements type « Devoirs faits » peuvent piocher partout) → aucune classe
+// rencontrée n'est perdue. Parseur d'index robuste aux multi-chiffres (6e12).
+function _ensureClasse(cls){
+  if(!cls) return null;
+  if(S.cl[cls]) return S.cl[cls];
+  const m=String(cls).match(/^(\d+e)(\d+)$/i);
+  const lv=m?m[1].toLowerCase():String(cls).slice(0,-1);
+  const idx=m?(parseInt(m[2],10)||1):1;
+  S.cl[cls]={
+    students:[], seatsClassic:Array(N_SEATS).fill(null), seatsIlot:Array(N_SEATS).fill(null),
+    floatTarget:[...FLOAT_DEFAULT], statuts:{},
+    activeLayoutId:'classic', layoutLabels:{}, layouts:{}
+  };
+  if(!S.en) S.en={};
+  if(S.en[lv]!==true) S.en[lv]=true;
+  if(!S.nSubPerLevel) S.nSubPerLevel={};
+  if((S.nSubPerLevel[lv]||0) < idx) S.nSubPerLevel[lv]=idx;
+  return S.cl[cls];
+}
+
 function importXlsx(input){
   const file=input.files[0]; if(!file) return;
   const stEl=document.getElementById('import-status');
@@ -7547,10 +7570,9 @@ function importXlsx(input){
           return;
         }
         if(!S.cl[cls]){
-          unknownClasses.add(cls);
-          bilan.identite.ko++;
-          addSample(bilan.identite.koSamples, 'Ligne '+(rowIdx+2)+' : classe '+cls+' non configurée dans l\'app');
-          return;
+          // V035-V11.3.12 — l'import fait foi : on CRÉE la classe rencontrée (au
+          // lieu de l'écarter), en activant son niveau, pour ne perdre aucun élève.
+          _ensureClasse(cls);
         }
         // V033-v181.13.0 : extraire et stocker le nom complet de classe
         // (source prioritaire = base élèves). Écrase toute valeur ICS
@@ -14019,6 +14041,7 @@ function _homeListActiveClasses(){
   Object.keys(S.cl).forEach(cls=>{
     const lv=cls.replace(/[0-9]+$/,'');
     if(S.en && S.en[lv]===false) return;
+    if(!isMaClasse(cls)) return; // V035-V11.3.13 — restreint à mes classes (EDT/réglage)
     out.push(cls);
   });
   return out;
@@ -17456,6 +17479,59 @@ function renderParamsClasses(){
     row.appendChild(nLbl);
     pane.appendChild(row);
   });
+
+  // V035-V11.3.13 — Réglage explicite « Mes classes » (affichage uniquement).
+  // Défaut = classes détectées dans l'EDT ; ajustable à la main. Écrit
+  // S.reglages.mesClasses. N'affecte PAS les données (groupes/DF piochent partout).
+  (function _renderMesClassesSection(){
+    const edtSet=_edtClassesSet();
+    const mes=getMesClasses(); // Set ou null
+    const ttl=document.createElement('div');
+    ttl.style.cssText='margin-top:1.4rem;font-size:13px;font-weight:700;color:var(--acc)';
+    ttl.textContent='Mes classes (affichage)';
+    pane.appendChild(ttl);
+    const help=document.createElement('div');
+    help.style.cssText='font-size:12px;color:var(--tx2);margin:4px 0 8px;line-height:1.5';
+    help.textContent=edtSet.size
+      ? 'Détectées d\u2019après votre emploi du temps. Décochez celles que vous ne prenez pas : les classes non cochées sont masquées de l\u2019affichage (leurs élèves restent en base, pour les regroupements type Devoirs faits).'
+      : 'Aucun emploi du temps importé : par défaut, toutes les classes ayant des élèves sont affichées. Importez votre EDT, ou cochez ici vos classes.';
+    pane.appendChild(help);
+    const wrap=document.createElement('div');
+    wrap.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+    LEVELS.forEach(lv=>{
+      if(S.en && S.en[lv]===false) return;
+      const n=(S.nSubPerLevel&&S.nSubPerLevel[lv])||N_SUB;
+      for(let i=1;i<=n;i++){
+        const k=lv+i; if(!S.cl[k]) continue;
+        const isOn = mes ? mes.has(k) : ((S.cl[k].students||[]).length>0);
+        const inEdt=edtSet.has(k);
+        const lab=document.createElement('label');
+        lab.style.cssText='display:flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur);font-size:12px;cursor:pointer';
+        const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=isOn; cb.dataset.cls=k;
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode(k.toUpperCase()+(inEdt?' · EDT':'')));
+        wrap.appendChild(lab);
+      }
+    });
+    pane.appendChild(wrap);
+    const btnRow=document.createElement('div'); btnRow.style.cssText='margin-top:8px;display:flex;gap:8px;flex-wrap:wrap';
+    const save=document.createElement('button'); save.textContent='Enregistrer mes classes';
+    save.style.cssText='padding:6px 12px;border:1px solid var(--acc);border-radius:var(--r1);background:var(--acc);color:#fff;font-size:12px;cursor:pointer';
+    save.onclick=()=>{
+      const sel=[...wrap.querySelectorAll('input[type=checkbox]')].filter(c=>c.checked).map(c=>c.dataset.cls);
+      if(!S.reglages) S.reglages={};
+      S.reglages.mesClasses=sel;
+      saveS(); renderMenu(); renderParamsClasses();
+    };
+    const reset=document.createElement('button'); reset.textContent='Réinitialiser sur l\u2019EDT';
+    reset.style.cssText='padding:6px 12px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur);color:var(--tx);font-size:12px;cursor:pointer';
+    reset.onclick=()=>{
+      if(S.reglages) delete S.reglages.mesClasses;
+      saveS(); renderMenu(); renderParamsClasses();
+    };
+    btnRow.appendChild(save); btnRow.appendChild(reset);
+    pane.appendChild(btnRow);
+  })();
 }
 
 
@@ -27869,6 +27945,35 @@ function openGroupePopup(k, btnEl, evtTarget){
   },10);
 }
 
+/* V035-V11.3.13 — « Mes classes » = les classes que j'enseigne.
+   Source de vérité : l'EDT (codes extraits des events via extractClassCode).
+   Réglage explicite S.reglages.mesClasses = [codes] prioritaire s'il est non vide.
+   getMesClasses() renvoie un Set, ou null = AUCUNE restriction (repli : comportement
+   historique). isMaClasse() est donc un no-op tant qu'aucun EDT ni réglage n'existe
+   → filtrage sûr, activable en le saupoudrant dans les énumérations d'affichage.
+   NB : ne filtre QUE l'affichage — la base reste entière (groupes/DF piochent partout). */
+function _edtClassesSet(){
+  const set=new Set();
+  const per=(S.edt&&S.edt.periodes)||[];
+  per.forEach(p=>{
+    (p.eventsA||[]).concat(p.eventsB||[]).forEach(ev=>{
+      const code=(ev&&ev.summary&&typeof extractClassCode==='function')?extractClassCode(ev.summary):null;
+      if(code) set.add(code);
+    });
+  });
+  return set;
+}
+function getMesClasses(){
+  const ov=S.reglages&&S.reglages.mesClasses;
+  if(Array.isArray(ov)&&ov.length) return new Set(ov);   // réglage explicite (non vide)
+  const edt=_edtClassesSet();
+  return edt.size ? edt : null;                           // EDT si présent, sinon aucune restriction
+}
+function isMaClasse(cls){
+  const m=getMesClasses();
+  return !m || m.has(cls);
+}
+
 function renderTabs(){
   const t=document.getElementById('tabs'); t.innerHTML='';
   // V035-v181.15.11 — Le bouton « 👥 Autres » vit dans #autres-slot (HORS
@@ -27906,9 +28011,14 @@ function renderTabs(){
   if(!activeLv && !curGrpInter) return;
   // V035-v181.15.40 (v5d-2g) — verrou « mode cours » (cf. bouton Autres ci-dessus).
   const _coursLock=!!curSlotKey;
+  const _mesCls=getMesClasses();
   for(let i=1;i<=N_SUB;i++){
     const k=activeLv+i;
-    if(!S.cl[k]||(S.cl[k].students||[]).length===0) continue;
+    if(!S.cl[k]) continue;
+    // V035-V11.3.13 — restreint à MES classes (EDT/réglage) ; sinon repli
+    // historique : on masque les classes vides.
+    if(_mesCls){ if(!_mesCls.has(k)) continue; }
+    else if((S.cl[k].students||[]).length===0) continue;
     const hasGroupes=getGroupesForCls(k).length>0;
     const isActiveCls=(k===curCls && !curGrpInter);
     const btn=document.createElement('button');
@@ -29580,7 +29690,7 @@ function _ebepGetEligibleClasses(){
     const n = nSub[lv] || N_SUB;
     for(let i=1; i<=n; i++){
       const cls = lv+i;
-      if(S.cl && S.cl[cls]) classes.push(cls);
+      if(S.cl && S.cl[cls] && isMaClasse(cls)) classes.push(cls);
     }
   });
   classes.sort();
@@ -55842,7 +55952,7 @@ function _aggregateStudentComp(records, studentId, compId){
 function _getAnalyseClasses(){
   if(typeof analyseSelCls!=='undefined' && analyseSelCls) return [analyseSelCls];
   const lvs=(typeof analyseLv!=='undefined' && analyseLv) ? [analyseLv] : LEVELS.filter(l=>S.en[l]);
-  return Object.keys(S.cl).filter(k=>lvs.includes(k.slice(0,-1)) && S.cl[k] && (S.cl[k].students||[]).length);
+  return Object.keys(S.cl).filter(k=>lvs.includes(k.slice(0,-1)) && S.cl[k] && (S.cl[k].students||[]).length && isMaClasse(k));
 }
 
 /* Helper : couleurs niveaux (cohérence avec PdC) */
