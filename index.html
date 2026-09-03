@@ -3854,7 +3854,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.9';
+const APP_VERSION = 'v11.3.10';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -5198,12 +5198,6 @@ function loadS(){
       if(!parsed.tachesLibres) parsed.tachesLibres=[];
       if(!parsed.suiviProg) parsed.suiviProg={};
       if(!parsed.statutsCours) parsed.statutsCours={};
-      // V035-V11.3.9 — synchro des statuts builtin manquants dans un customStatuts
-      // existant (sinon « Appel responsables légaux » / « Sursis » n'apparaîtraient
-      // ni dans la popup ni sur la tuile tant que Paramètres → Statuts n'est pas ouvert).
-      if(Array.isArray(parsed.customStatuts)){
-        STATUTS.forEach(def=>{ if(!parsed.customStatuts.find(s=>s.key===def.key)) parsed.customStatuts.push({...def, enabled:true}); });
-      }
       // Migration v2 : normaliser edtProgMapping → {seances:[{seqId,seanId}], freeItems:[]}
       // Supprime tous les champs de continuation (désormais calculés à la volée)
       Object.keys(parsed.edtProgMapping).forEach(k=>{
@@ -20065,7 +20059,18 @@ function renderParamsProgression(){
 }
 
 /* ---- Custom statuts/bell accessors ---- */
-function getStatuts(){ return ((S&&S.customStatuts)?S.customStatuts:STATUTS).filter(s=>s.enabled!==false); }
+function getStatuts(){
+  // V035-V11.3.9 — un customStatuts plus ancien peut ne pas contenir les statuts
+  // builtin récents (appelrl, sursis…). On les complète à la LECTURE (runtime, donc
+  // après l'initialisation de const STATUTS — pas de zone morte), sans muter la
+  // source ni écrire dans le stockage.
+  const base=(S&&Array.isArray(S.customStatuts))?S.customStatuts:STATUTS;
+  if(base!==STATUTS){
+    const miss=STATUTS.filter(def=>!base.some(s=>s.key===def.key));
+    if(miss.length) return base.concat(miss.map(def=>({enabled:true, ...def}))).filter(s=>s.enabled!==false);
+  }
+  return base.filter(s=>s.enabled!==false);
+}
 function getBellSchedule(){ return (S&&S.customBell)?S.customBell:BELL_SCHEDULE; }
 
 /* ---- Params: EDT, Base, Noms (wrappers) ---- */
