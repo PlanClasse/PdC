@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════
-   PlanClasse — Service Worker (V035-V11.3.10)
+   PlanClasse — Service Worker (V035-V11.3.11)
    ──────────────────────────────────────────────────────────────────
    Rôle : permettre le fonctionnement hors-ligne après la première
    visite. Cache index.html, manifest.json et sw.js lui-même au moment
@@ -20,7 +20,7 @@
    incrémente CACHE_NAME.
    ════════════════════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'planclasse-v11-3-10';
+const CACHE_NAME = 'planclasse-v11-3-11';
 
 const PRECACHE_URLS = [
   './',                // = index.html dans le scope

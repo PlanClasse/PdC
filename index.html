@@ -3854,7 +3854,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.10';
+const APP_VERSION = 'v11.3.11';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -3948,13 +3948,37 @@ const VACANCES_DEFAULT=[
   {id:'f10',label:'Fête Nationale',       debut:'2026-07-14', fin:'2026-07-14'},
 ];
 
+// V035-V11.3.11 — Dates par défaut d'une période : 1er septembre → 10 juillet
+// de l'année suivante, avec startLundi calé sur le lundi (≤) du 1er septembre
+// (référence d'alternance A/B correcte). Fonctions runtime (pas de zone morte).
+function _edtPeriodeDefaultDates(startYear){
+  const y=parseInt(startYear,10);
+  if(!y || isNaN(y)) return { debut:null, fin:null, startLundi:null };
+  const debut=y+'-09-01';
+  const fin=(y+1)+'-07-10';
+  const d=new Date(debut+'T12:00:00');
+  const dow=d.getDay();               // 0=dim … 6=sam
+  const back=(dow===0)?6:(dow-1);     // recule jusqu'au lundi (ou le jour même)
+  d.setDate(d.getDate()-back);
+  const startLundi=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return { debut, fin, startLundi };
+}
+// Année scolaire en cours d'après la date du jour (rentrée = septembre ; août
+// bascule déjà sur la nouvelle année pour préparer en avance).
+function _edtCurrentSchoolYear(){
+  const now=new Date();
+  return now.getMonth()>=7 ? now.getFullYear() : now.getFullYear()-1;
+}
+
 function defaultEdtConfig(){
+  const y=_edtCurrentSchoolYear();
+  const dd=_edtPeriodeDefaultDates(y);
   return {
     periodes: [
       {
-        id:'p1', label:'2025-2026',
-        debut:'2025-09-02', fin:'2026-07-04',
-        startLundi:'2025-09-01', startSem:'A',
+        id:'p1', label:y+'-'+(y+1),
+        debut:dd.debut, fin:dd.fin,
+        startLundi:dd.startLundi, startSem:'A',
         icsA:null, icsB:null,
         eventsA:[], eventsB:[]
       }
@@ -10049,14 +10073,15 @@ function _ytpExecuteTransition(){
     Snext.suiviProg           = {};   // Q4 cadrage : effacer le suivi prog (lié aux classes)
     Snext.absences            = [];   // Année écoulée
 
-    // EDT : remis à zéro avec une période vierge libellée nouvelle année.
-    // L'utilisateur ré-importera son ICS et son calendrier de vacances après.
+    // EDT : remis à zéro avec une période DATÉE (1er sept → 10 juillet suivant),
+    // libellée nouvelle année. L'utilisateur ré-importera son ICS et ses vacances.
+    const _ydd = _edtPeriodeDefaultDates((anneeNew||'').slice(0,4));
     Snext.edt = {
       periodes: [{
         id: 'p1',
         label: anneeNew,
-        debut: null, fin: null,
-        startLundi: null, startSem: 'A',
+        debut: _ydd.debut, fin: _ydd.fin,
+        startLundi: _ydd.startLundi, startSem: 'A',
         icsA: null, icsB: null,
         eventsA: [], eventsB: []
       }],
