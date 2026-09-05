@@ -3327,6 +3327,7 @@ window._simHandleDisable = _simHandleDisable;
                 <div class="pm-zone-hdr"><span class="pm-zone-hdr-ic">📡</span>Données</div>
                 <button class="pmcard" onclick="exportPlanDeClasse();closePlusMenu()"><span class="pmcard-ic">📤</span>Exporter plans</button>
                 <button class="pmcard" onclick="importPlanDeClasse();closePlusMenu()"><span class="pmcard-ic">📥</span>Importer plan</button>
+                <button class="pmcard" onclick="printPlanPdf();closePlusMenu()"><span class="pmcard-ic">🖨️</span>Imprimer / PDF</button>
                 <button class="pmcard" onclick="syncNowSmart();closePlusMenu()"><span class="pmcard-ic">🔄</span>Synchroniser</button>
               </div>
 
@@ -3854,7 +3855,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.13';
+const APP_VERSION = 'v11.3.17';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -3929,23 +3930,24 @@ function defaultClsData(lv,sub){
   };
 }
 
-// Zone C (Versailles) official 2025-2026 vacances
+// Zone C (Versailles) official 2026-2027 vacances (BO / arrêté du 22/10/2025).
+// Convention : debut = 1er samedi de congés, fin = lundi de reprise.
 const VACANCES_DEFAULT=[
-  {id:'v1', label:'Toussaint',      debut:'2025-10-18', fin:'2025-11-03'},
-  {id:'v2', label:'Noël',           debut:'2025-12-20', fin:'2026-01-05'},
-  {id:'v3', label:'Hiver',          debut:'2026-02-14', fin:'2026-03-02'},
-  {id:'v4', label:'Printemps',      debut:'2026-04-11', fin:'2026-04-27'},
-  {id:'v5', label:'Été',            debut:'2026-07-04', fin:'2027-08-31'},
-  {id:'f1', label:'Toussaint (férié)',     debut:'2025-11-01', fin:'2025-11-01'},
-  {id:'f2', label:'Armistice',            debut:'2025-11-11', fin:'2025-11-11'},
-  {id:'f3', label:'Noël (férié)',         debut:'2025-12-25', fin:'2025-12-25'},
-  {id:'f4', label:'Jour de l\'an',        debut:'2026-01-01', fin:'2026-01-01'},
-  {id:'f5', label:'Lundi de Pâques',      debut:'2026-04-06', fin:'2026-04-06'},
-  {id:'f6', label:'Fête du Travail',      debut:'2026-05-01', fin:'2026-05-01'},
-  {id:'f7', label:'Victoire 1945',        debut:'2026-05-08', fin:'2026-05-08'},
-  {id:'f8', label:'Ascension',            debut:'2026-05-14', fin:'2026-05-14'},
-  {id:'f9', label:'Lundi Pentecôte',      debut:'2026-05-25', fin:'2026-05-25'},
-  {id:'f10',label:'Fête Nationale',       debut:'2026-07-14', fin:'2026-07-14'},
+  {id:'v1', label:'Toussaint',      debut:'2026-10-17', fin:'2026-11-02'},
+  {id:'v2', label:'Noël',           debut:'2026-12-19', fin:'2027-01-04'},
+  {id:'v3', label:'Hiver',          debut:'2027-02-06', fin:'2027-02-22'},
+  {id:'v4', label:'Printemps',      debut:'2027-04-03', fin:'2027-04-19'},
+  {id:'v5', label:'Été',            debut:'2027-07-03', fin:'2028-08-31'},
+  {id:'f1', label:'Toussaint (férié)',     debut:'2026-11-01', fin:'2026-11-01'},
+  {id:'f2', label:'Armistice',            debut:'2026-11-11', fin:'2026-11-11'},
+  {id:'f3', label:'Noël (férié)',         debut:'2026-12-25', fin:'2026-12-25'},
+  {id:'f4', label:'Jour de l\'an',        debut:'2027-01-01', fin:'2027-01-01'},
+  {id:'f5', label:'Lundi de Pâques',      debut:'2027-03-29', fin:'2027-03-29'},
+  {id:'f6', label:'Fête du Travail',      debut:'2027-05-01', fin:'2027-05-01'},
+  {id:'f7', label:'Victoire 1945',        debut:'2027-05-08', fin:'2027-05-08'},
+  {id:'f8', label:'Ascension',            debut:'2027-05-06', fin:'2027-05-06'},
+  {id:'f9', label:'Lundi Pentecôte',      debut:'2027-05-17', fin:'2027-05-17'},
+  {id:'f10',label:'Fête Nationale',       debut:'2027-07-14', fin:'2027-07-14'},
 ];
 
 // V035-V11.3.11 — Dates par défaut d'une période : 1er septembre → 10 juillet
@@ -3962,6 +3964,19 @@ function _edtPeriodeDefaultDates(startYear){
   d.setDate(d.getDate()-back);
   const startLundi=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   return { debut, fin, startLundi };
+}
+// V035-V11.3.15 — Lundi (≤) d'une date donnée, au format ISO. Sert à recaler la
+// référence d'alternance A/B (startLundi) quand on édite « Début » à la main.
+// Même règle que _edtPeriodeDefaultDates (lundi on-or-before). Runtime : aucune
+// zone morte. Renvoie la valeur telle quelle si vide/invalide (robuste).
+function _lundiOnOrBefore(dateStr){
+  if(!dateStr) return dateStr;
+  const d=new Date(dateStr+'T12:00:00');
+  if(isNaN(d.getTime())) return dateStr;
+  const dow=d.getDay();               // 0=dim … 6=sam
+  const back=(dow===0)?6:(dow-1);     // recule jusqu'au lundi (ou le jour même)
+  d.setDate(d.getDate()-back);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 // Année scolaire en cours d'après la date du jour (rentrée = septembre ; août
 // bascule déjà sur la nouvelle année pour préparer en avance).
@@ -7430,44 +7445,39 @@ function _ensureClasse(cls){
   return S.cl[cls];
 }
 
-function importXlsx(input){
-  const file=input.files[0]; if(!file) return;
+// V035-V11.3.16 — Helpers d'import RELEVÉS au niveau module (partagés fichier xlsx
+// + texte collé). Aucune exécution au chargement (déclenchés par action utilisateur).
+function _importShowError(err){
   const stEl=document.getElementById('import-status');
-  if(stEl) stEl.textContent='Lecture en cours…';
-  // V035-V11.3.0 — affichage d'erreur partagé : catch externe (synchrone) ET
-  // catch de _proceedImport (reprise asynchrone après le popup de classes).
-  const _importShowError=err=>{
-    if(stEl) stEl.textContent='Erreur : '+err.message;
-    document.getElementById("mt").textContent="❌ Erreur d'import";
-    document.getElementById('mb').textContent='';
-    document.getElementById('modal-extra').innerHTML=
-      '<div style="padding:.5rem;font-size:12px;color:#DC2626;background:#FEE2E2;border-radius:var(--r1)">'+
-      err.message+'</div>';
-    document.getElementById('mok').style.display='';
-    document.getElementById('mok').textContent='Fermer';
-    const mcancel=document.querySelector('#mbg .bs');
-    if(mcancel) mcancel.style.display='none';
-  };
-
-  // Show progress modal
+  if(stEl) stEl.textContent='Erreur : '+err.message;
+  document.getElementById("mt").textContent="❌ Erreur d'import";
+  document.getElementById('mb').textContent='';
+  document.getElementById('modal-extra').innerHTML=
+    '<div style="padding:.5rem;font-size:12px;color:#DC2626;background:#FEE2E2;border-radius:var(--r1)">'+
+    err.message+'</div>';
+  document.getElementById('mok').style.display='';
+  document.getElementById('mok').textContent='Fermer';
+  const mcancel=document.querySelector('#mbg .bs');
+  if(mcancel) mcancel.style.display='none';
+}
+function _importShowProgress(subtitle, progressMsg){
+  const stEl=document.getElementById('import-status'); if(stEl) stEl.textContent='Lecture en cours…';
   document.getElementById('mt').textContent='📥 Import en cours…';
-  document.getElementById('mb').textContent='Lecture du fichier : '+file.name;
+  document.getElementById('mb').textContent=subtitle;
   document.getElementById('mok').style.display='none';
   { const _c=document.querySelector('#mbg .bs'); if(_c) _c.style.display='none'; }
   document.getElementById('modal-extra').innerHTML=
     '<div style="text-align:center;padding:1rem 0">'+
     '<div style="font-size:24px;margin-bottom:.5rem">⏳</div>'+
-    '<div style="font-size:12px;color:var(--tx2)" id="import-progress-msg">Analyse du fichier Excel…</div>'+
+    '<div style="font-size:12px;color:var(--tx2)" id="import-progress-msg">'+progressMsg+'</div>'+
     '</div>';
   document.getElementById('mbg').classList.add('open');
-
-  const reader=new FileReader();
-  reader.onload=e=>{
-    try{
-      const wb=XLSX.read(e.target.result,{type:'array'});
-      const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
-
+}
+// Cœur d'import PARTAGÉ. Reçoit un tableau de lignes { intituléColonne: valeur }
+// (tel que produit par XLSX.utils.sheet_to_json OU par _pasteToRows). TOUT le
+// pipeline (détection colonnes, parseClasse, popup classes inconnues, _ensureClasse,
+// bilan récap) vit ici → le collage se comporte à l'identique de l'import fichier.
+function _importRows(rows){
       // Détection tolérante des colonnes (insensible casse/accents)
       const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
       const findKey=(row, aliases)=>{
@@ -7800,8 +7810,51 @@ function importXlsx(input){
       }catch(err){ _importShowError(err); } }; // V035-V11.3.0 — reprise asynchrone après popup
       if(labelsInconnus.length) _clsImportMappingPopup(labelsInconnus, _proceedImport); // V035-V11.3.0
       else _proceedImport();
-    } catch(err){ _importShowError(err); } // V035-V11.3.0
-    input.value=''
+}
+// V035-V11.3.16 — Copier-coller Pronote (« Copier la liste ») = texte TABULÉ.
+// On le convertit en lignes { intituléColonne: valeur }, même forme que
+// sheet_to_json. Séparateur auto-détecté : tabulation (Pronote) prioritaire,
+// sinon « ; » puis « , ». La 1re ligne = en-tête (comme l'import fichier, qui
+// exige déjà les colonnes Nom/Prénom/Classe). Pas de gestion des guillemets CSV
+// (inutile pour un copier tabulé). Plusieurs collages successifs = cumul possible
+// (import classe par classe).
+function _pasteToRows(text){
+  const raw=String(text||'').replace(/\r\n?/g,'\n');
+  const lines=raw.split('\n').filter(l=>l.trim().length>0);
+  if(!lines.length) throw new Error('Rien à importer : collez d\'abord la liste copiée depuis Pronote (bouton « Copier la liste » en haut à droite de la liste).');
+  const head=lines[0];
+  const cnt=ch=>head.split(ch).length-1;
+  const tabs=cnt('\t'), semis=cnt(';'), commas=cnt(',');
+  const FS = tabs>0 ? '\t' : (semis>=commas && semis>0 ? ';' : (commas>0 ? ',' : '\t'));
+  const cells=line=>line.split(FS).map(c=>String(c).trim());
+  const header=cells(lines[0]);
+  const out=[];
+  for(let i=1;i<lines.length;i++){
+    const c=cells(lines[i]);
+    const obj={};
+    header.forEach((h,idx)=>{ obj[h]=c[idx]!==undefined?c[idx]:''; });
+    out.push(obj);
+  }
+  return out;
+}
+// Entrée « coller » : même modal de progression + même cœur + même affichage d'erreur.
+function importPasted(text){
+  _importShowProgress('Données collées depuis Pronote', 'Analyse du texte collé…');
+  try{ _importRows(_pasteToRows(text)); }
+  catch(err){ _importShowError(err); }
+}
+function importXlsx(input){
+  const file=input.files[0]; if(!file) return;
+  _importShowProgress('Lecture du fichier : '+file.name, 'Analyse du fichier Excel…');
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+      _importRows(rows);
+    } catch(err){ _importShowError(err); }
+    input.value='';
   };
   reader.readAsArrayBuffer(file);
 }
@@ -20357,6 +20410,31 @@ function renderParamsBase(){
   hint.style.cssText='font-size:11px;color:var(--tx3);line-height:1.6';
   hint.innerHTML='Format attendu : colonnes <b>NOM</b>, <b>PRENOM</b>, <b>CLASSE</b>.<br>Colonnes optionnelles détectées : <b>Sexe/Civilité</b>, <b>Projet d\'accompagnement</b> (PPS, PAP, PAI, PPRE…), <b>Formation</b> (détection ULIS).<br>Les données existantes sont conservées ; les catégories besoins sont fusionnées.';
   wrap.appendChild(hint);
+  // V035-V11.3.16 — Saisie directe : coller le « Copier la liste » de Pronote
+  // (client) sans passer par un tableur. Même cœur d'import que le fichier xlsx
+  // (mêmes colonnes, même popup classes inconnues, même bilan). createElement pur.
+  const pasteWrap=document.createElement('div');
+  pasteWrap.style.cssText='display:flex;flex-direction:column;gap:6px;margin-top:8px;padding-top:12px;border-top:1px solid var(--brd)';
+  const pasteTitle=document.createElement('div');
+  pasteTitle.style.cssText='font-size:13px;font-weight:600;color:var(--tx)';
+  pasteTitle.textContent='📋 Ou coller depuis Pronote';
+  pasteWrap.appendChild(pasteTitle);
+  const pasteHint=document.createElement('div');
+  pasteHint.style.cssText='font-size:11px;color:var(--tx3);line-height:1.6';
+  pasteHint.innerHTML='Dans Pronote, cliquez sur <b>« Copier la liste »</b> (en haut à droite de la liste des élèves), puis collez ici. La <b>1re ligne doit être l\'en-tête</b> (mêmes colonnes que le fichier). Le client Pronote permet de copier toute la base d\'un coup ; sinon, collez <b>plusieurs classes à la suite</b> (une classe après l\'autre) et relancez à chaque fois — les données déjà importées sont conservées.';
+  pasteWrap.appendChild(pasteHint);
+  const pasteTa=document.createElement('textarea');
+  pasteTa.id='import-paste-area';
+  pasteTa.placeholder='Collez ici la liste copiée depuis Pronote…';
+  pasteTa.style.cssText='width:100%;min-height:120px;font-size:12px;font-family:monospace;padding:8px;border:1px solid var(--brd);border-radius:var(--r1);resize:vertical;box-sizing:border-box';
+  pasteWrap.appendChild(pasteTa);
+  const pasteBtn=document.createElement('button');
+  pasteBtn.className='bp';
+  pasteBtn.style.cssText='align-self:flex-start;font-size:13px;padding:8px 20px;cursor:pointer';
+  pasteBtn.textContent='📋 Importer le texte collé';
+  pasteBtn.onclick=()=>{ importPasted(pasteTa.value); };
+  pasteWrap.appendChild(pasteBtn);
+  wrap.appendChild(pasteWrap);
   pane.appendChild(wrap);
 }
 
@@ -21027,7 +21105,7 @@ function renderEdtPeriodes(){
     row1.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';
     row1.innerHTML=`
       <label style="color:var(--tx2);white-space:nowrap">Début</label>
-      <input type="date" class="edt-date-inp" value="${p.debut}" onchange="S.edt.periodes[${i}].debut=this.value;saveS()">
+      <input type="date" class="edt-date-inp" value="${p.debut}" onchange="S.edt.periodes[${i}].debut=this.value;S.edt.periodes[${i}].startLundi=_lundiOnOrBefore(this.value);saveS()">
       <label style="color:var(--tx2);white-space:nowrap;margin-left:.6rem">Fin</label>
       <input type="date" class="edt-date-inp" value="${p.fin}" onchange="S.edt.periodes[${i}].fin=this.value;saveS()">
     `;
@@ -35161,6 +35239,189 @@ const W=180, H=H_BASE, RGAP=10;
 const CGAP = (typeof window!=='undefined' && window.IS_TOUCH) ? 60 : 120;
 const CX=[0, W, W*2+CGAP, W*2+CGAP+W+CGAP, W*2+CGAP+W+CGAP+W];
 const CLS_W=CX[4]+W;
+
+/* ============================================================
+   IMPRESSION PDF DU PLAN REMPLI (V035-V11.3.17)
+   Techno uniquement (layouts figés classique / îlots). N&B, A4 paysage,
+   une classe par page. Case : prénom (grand) + nom (petit, tronqué) +
+   n° d'ordre alphabétique (garçon en haut/normal, fille en bas/gras) +
+   mentions PPS/PAP/PPRE/ULIS (tout petit, en bas à droite).
+   Impression via vue dédiée + @page A4 landscape + window.print().
+   ============================================================ */
+const PDF_CATS=['PPS','PAP','PPRE','ULIS'];
+
+function _pdfAlphaNums(cls){
+  const sd=S.studentData||{};
+  const ids=(cls.students||[]).filter(id=>sd[id]);
+  ids.sort((a,b)=>{
+    const A=sd[a],B=sd[b];
+    const na=(A.noms||[]).join(' '),nb=(B.noms||[]).join(' ');
+    const c=na.localeCompare(nb,'fr',{sensitivity:'base'});
+    if(c) return c;
+    return ((A.prenoms||[])[0]||'').localeCompare((B.prenoms||[])[0]||'','fr',{sensitivity:'base'});
+  });
+  const map={}; ids.forEach((id,i)=>{ map[id]=i+1; }); return map;
+}
+
+function _pdfStudent(uid, clsCode){
+  const sd=(S.studentData||{})[uid]; if(!sd) return null;
+  const prenom=capitalise((sd.prenoms||[''])[0]||'');
+  const nom=(sd.noms||[]).join(' ').toUpperCase();
+  const fille=sd.sexe==='F';
+  let flags=[];
+  const fiche=S.besoinsEleves&&S.besoinsEleves[clsCode]&&S.besoinsEleves[clsCode][uid];
+  if(fiche){ const cats=getFicheCategories(fiche); flags=PDF_CATS.filter(c=>cats.indexOf(c)>=0); }
+  return {prenom,nom,fille,flags};
+}
+
+function _pdfSeatCell(uid, clsCode, nums){
+  const d=document.createElement('div');
+  const info=uid?_pdfStudent(uid, clsCode):null;
+  if(!info){ d.className='pdfp-seat empty'; d.innerHTML='<span class="pdfp-dash">—</span>'; return d; }
+  d.className='pdfp-seat';
+  const no=nums[uid]||'';
+  const noEl='<span class="pdfp-no'+(info.fille?' f':'')+'">'+no+'</span>';
+  const flagsEl=info.flags.length?'<span class="pdfp-flags">'+info.flags.join(' ')+'</span>':'<span></span>';
+  d.innerHTML=
+    '<div class="pdfp-top">'+(info.fille?'':noEl)+'</div>'+
+    '<div class="pdfp-mid"><span class="pdfp-pre">'+escapeHtml(info.prenom)+'</span>'+
+      '<span class="pdfp-nom">'+escapeHtml(info.nom)+'</span></div>'+
+    '<div class="pdfp-bot">'+(info.fille?noEl:'<span></span>')+flagsEl+'</div>';
+  return d;
+}
+
+function _pdfHeader(clsCode, sub){
+  const h=document.createElement('div'); h.className='pdfp-hd';
+  const y=_edtCurrentSchoolYear();
+  const annee=(y&&!isNaN(y))?(y+'-'+(y+1)):'';
+  const dateStr=new Date().toLocaleDateString('fr-FR');
+  h.innerHTML='<div class="pdfp-hd-l"><span class="pdfp-cls">'+escapeHtml(String(clsCode).toUpperCase())+'</span>'+
+    '<span class="pdfp-hd-sub">Plan de classe'+(sub||'')+'</span></div>'+
+    '<div class="pdfp-hd-r">'+(annee?'<span>'+annee+'</span>':'')+'<span>'+dateStr+'</span></div>';
+  return h;
+}
+function _pdfBoard(){ const b=document.createElement('div'); b.className='pdfp-board'; b.textContent='Tableau · Enseignant'; return b; }
+
+function _pdfBuildClassic(cls, clsCode, nums){
+  const seats=cls.seatsClassic||[];
+  const page=document.createElement('div'); page.className='pdfp-page';
+  page.appendChild(_pdfHeader(clsCode,''));
+  const body=document.createElement('div'); body.className='pdfp-body';
+  const railL=document.createElement('div'); railL.className='pdfp-rail';
+  ['EQ4','EQ6','EQ7'].forEach(t=>{ const s=document.createElement('span'); s.className='pdfp-eq'; s.textContent=t; railL.appendChild(s); });
+  const grid=document.createElement('div'); grid.className='pdfp-grid-classic';
+  const colMap=[1,2,4,6,7];
+  for(let r=0;r<6;r++)for(let c=0;c<5;c++){
+    const cell=_pdfSeatCell(seats[r*5+c], clsCode, nums);
+    cell.style.gridColumn=colMap[c]; cell.style.gridRow=(r+1); grid.appendChild(cell);
+  }
+  const railR=document.createElement('div'); railR.className='pdfp-rail';
+  ['EQ3','EQ2','EQ1'].forEach(t=>{ const s=document.createElement('span'); s.className='pdfp-eq'; s.textContent=t; railR.appendChild(s); });
+  body.appendChild(railL); body.appendChild(grid); body.appendChild(railR);
+  page.appendChild(body); page.appendChild(_pdfBoard());
+  return page;
+}
+
+function _pdfBuildIlots(cls, clsCode, nums){
+  const seats=cls.seatsIlot||[];
+  const nSt=(cls.students||[]).length;
+  const ft=cls.floatTarget||FLOAT_DEFAULT;
+  const showFloat=nSt>28||FLOAT_IDX.some(idx=>seats[idx]);
+  const page=document.createElement('div'); page.className='pdfp-page';
+  page.appendChild(_pdfHeader(clsCode,' · îlots'));
+  const body=document.createElement('div'); body.className='pdfp-body pdfp-ilots'+(showFloat?' with-vol':' no-vol');
+  const colL=document.createElement('div'); colL.className='pdfp-icol';
+  const colR=document.createElement('div'); colR.className='pdfp-icol';
+  const mkIlot=(eq)=>{
+    const box=document.createElement('div'); box.className='pdfp-ilot';
+    const lab=document.createElement('span'); lab.className='pdfp-eq pdfp-ilot-lab'; lab.textContent=eq; box.appendChild(lab);
+    const g=document.createElement('div'); g.className='pdfp-ilot-grid';
+    (ILOT_MAP[eq]||[]).forEach(idx=>g.appendChild(_pdfSeatCell(seats[idx], clsCode, nums)));
+    box.appendChild(g); return box;
+  };
+  G_ORDER.forEach(eq=>colL.appendChild(mkIlot(eq)));
+  D_ORDER.forEach(eq=>colR.appendChild(mkIlot(eq)));
+  body.appendChild(colL);
+  if(showFloat){
+    const corr=document.createElement('div'); corr.className='pdfp-corr';
+    ft.forEach((target,fi)=>{
+      const gi=G_ORDER.indexOf(target), di=D_ORDER.indexOf(target);
+      let topPct, side;
+      if(gi>=0){ topPct=(gi+0.5)/G_ORDER.length*100; side='left:0'; }
+      else if(di>=0){ topPct=(di+0.5)/D_ORDER.length*100; side='right:0'; }
+      else { topPct=fi===0?35:65; side='left:0;right:0'; }
+      const w=document.createElement('div'); w.className='pdfp-vol';
+      w.style.cssText='position:absolute;'+side+';top:'+topPct.toFixed(1)+'%;transform:translateY(-50%)';
+      const cell=_pdfSeatCell(seats[FLOAT_IDX[fi]], clsCode, nums);
+      const lab=document.createElement('span'); lab.className='pdfp-vol-lab'; lab.textContent='volante'+(target?' · '+target:'');
+      w.appendChild(cell); w.appendChild(lab); corr.appendChild(w);
+    });
+    body.appendChild(corr);
+  }
+  body.appendChild(colR);
+  page.appendChild(body); page.appendChild(_pdfBoard());
+  return page;
+}
+
+function _pdfEnsureStyle(){
+  if(document.getElementById('pdf-print-style')) return;
+  const st=document.createElement('style'); st.id='pdf-print-style';
+  st.textContent=`#pdf-print-root{display:none}
+@media print{
+  @page{size:A4 landscape;margin:8mm}
+  html,body{background:#fff!important}
+  body.pdf-printing>*:not(#pdf-print-root){display:none!important}
+  #pdf-print-root{display:block!important}
+  .pdfp-page{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;color:#000;font-family:Arial,Helvetica,sans-serif}
+  .pdfp-hd{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid #000;padding-bottom:3px;margin-bottom:4px}
+  .pdfp-cls{font-size:16pt;font-weight:bold}
+  .pdfp-hd-sub{font-size:10pt;margin-left:8px}
+  .pdfp-hd-r{font-size:9pt;display:flex;gap:12px;color:#333}
+  .pdfp-body{flex:1;display:flex;gap:4px;min-height:0}
+  .pdfp-rail{width:12px;display:flex;flex-direction:column;justify-content:space-around;align-items:center}
+  .pdfp-eq{font-size:8pt;color:#555;writing-mode:vertical-rl;transform:rotate(180deg)}
+  .pdfp-grid-classic{flex:1;display:grid;grid-template-columns:1fr 1fr 10px 1fr 10px 1fr 1fr;grid-template-rows:repeat(6,1fr);column-gap:4px;row-gap:4px;min-height:0}
+  .pdfp-seat{border:0.7px solid #000;border-radius:5px;display:flex;flex-direction:column;padding:1px 3px;min-width:0;overflow:hidden}
+  .pdfp-seat.empty{border-style:dashed;border-color:#999;align-items:center;justify-content:center}
+  .pdfp-dash{color:#999;font-size:10pt}
+  .pdfp-top{height:11pt;display:flex;align-items:center}
+  .pdfp-mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;overflow:hidden}
+  .pdfp-bot{height:11pt;display:flex;align-items:center;justify-content:space-between}
+  .pdfp-pre{font-size:13pt;line-height:1.02;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pdfp-nom{font-size:8pt;line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pdfp-no{font-size:8pt;color:#444}
+  .pdfp-no.f{font-weight:bold;color:#000}
+  .pdfp-flags{font-size:6.5pt;color:#555;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+  .pdfp-board{margin-top:4px;height:16pt;border:1px solid #000;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9pt;letter-spacing:.05em}
+  .pdfp-ilots{gap:6px}
+  .pdfp-icol{flex:1;display:flex;flex-direction:column;gap:6px;min-height:0}
+  .pdfp-corr{flex:0 0 14%;position:relative;min-height:0}
+  .pdfp-ilot{position:relative;border:0.7px dashed #666;border-radius:6px;padding:2px 2px 2px 14px;display:flex;flex:1;min-height:0}
+  .pdfp-ilot-lab{position:absolute;left:1px;top:50%;transform:translateY(-50%) rotate(180deg)}
+  .pdfp-ilot-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3px;min-height:0}
+  .pdfp-ilots .pdfp-pre{font-size:11pt}
+  .pdfp-vol{display:flex;flex-direction:column;gap:1px}
+  .pdfp-vol .pdfp-seat{min-height:32pt}
+  .pdfp-vol-lab{font-size:6.5pt;color:#666;text-align:center}
+}`;
+  document.head.appendChild(st);
+}
+
+function printPlanPdf(){
+  const cls=(typeof getCls==='function')?getCls():null;
+  if(!curCls||!cls){ alert("Aucune classe sélectionnée."); return; }
+  if(layout!=='classic'&&layout!=='ilots'){ alert("L'impression PDF est pour l'instant disponible sur les plans techno (classique ou îlots)."); return; }
+  const nums=_pdfAlphaNums(cls);
+  _pdfEnsureStyle();
+  let root=document.getElementById('pdf-print-root');
+  if(!root){ root=document.createElement('div'); root.id='pdf-print-root'; document.body.appendChild(root); }
+  root.innerHTML='';
+  root.appendChild(layout==='ilots'?_pdfBuildIlots(cls,curCls,nums):_pdfBuildClassic(cls,curCls,nums));
+  document.body.classList.add('pdf-printing');
+  const cleanup=()=>{ document.body.classList.remove('pdf-printing'); root.innerHTML=''; window.removeEventListener('afterprint',cleanup); };
+  window.addEventListener('afterprint',cleanup);
+  window.print();
+}
 
 function renderClassic(area){
   const cls=getCls();
