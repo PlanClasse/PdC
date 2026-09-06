@@ -1057,6 +1057,14 @@ body.pdc-univ-on .pmcard[onclick*="syncLayouts"]{display:none}
 .lay-ed-starter-name{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--tx)}
 .lay-ed-starter-desc{font-size:10px;color:var(--tx2);font-style:italic;text-align:center;line-height:1.2}
 .lay-ed-starter-count{font-size:10px;color:#276749;font-weight:600}
+/* V035-V11.3.20 — PdC Universel : bibliothèque personnelle de layouts (§_buildLibraryGallery).
+   Même structure visuelle que .lay-ed-starters, teinte bleue pour distinguer
+   "mes layouts" (perso, réutilisés) des starters génériques fournis par l'appli. */
+.lay-ed-mylayouts{display:flex;flex-direction:column;gap:8px;padding:10px 12px;background:#EAF3FF;border:1px solid #BFD9F7;border-radius:var(--r2)}
+.lay-ed-mylayouts-hdr{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;font-weight:700;color:#1A4FAA;text-transform:uppercase;letter-spacing:.04em}
+.lay-ed-lib-wrap{position:relative}
+.lay-ed-lib-del{position:absolute;top:2px;right:2px;width:18px;height:18px;line-height:16px;padding:0;border:1px solid var(--brd);border-radius:50%;background:var(--sur);color:var(--tx3);font-size:11px;cursor:pointer;font-family:inherit}
+.lay-ed-lib-del:hover{background:#FEE2E2;border-color:#DC2626;color:#DC2626}
 /* V020-v181.8.5 — PdC Universel : visibilité des items menu+ Renommer/Nouveau/Modifier.
    Masqués par défaut, visibles si flag ON ; Modifier en plus uniquement si layout actif = custom. */
 .pmcard-lay{display:none !important}
@@ -3855,7 +3863,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.18';
+const APP_VERSION = 'v11.3.20';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -4011,6 +4019,13 @@ function defaultState(){
     // Les deux formats cohabitent. Accès via readSeancesBucket(cls,grp),
     // readAllSeancesForClass(cls), writeSeanceForSlot(cls,slot,seance).
     groupes:{}, edtMapping:{},
+    // V035-V11.3.20 — PdC Universel : bibliothèque personnelle de layouts custom,
+    // indépendante des classes. { id: {label,icon,rows,cols,seats,boardPosition,
+    // rowGaps,savedAt} }. Alimentée automatiquement à chaque enregistrement d'un
+    // layout non-vide (cf. _layoutEditorSave), proposée à la création d'un nouveau
+    // layout sur une AUTRE classe (cf. _buildLibraryGallery) — évite de reconstruire
+    // à la main un plan de salle déjà conçu ailleurs (même salle, plusieurs classes).
+    layoutLibrary: {},
     referentiels: {}, // V035-V11.1.0 — référentiels importés (gaté pdcUniversel) : { refId: {id,label,matiere,annee?,comps:[{id,label,domaine,niveaux,themes?}],conns:[{id,label,domaine,niveaux}]} }
     groupesComps: {}, // { id: { id, label, niveau, compIds:[] } }
     seanceCompsAffect: {}, // { slotKey: groupeCompsId }
@@ -5421,6 +5436,8 @@ function loadS(){
       if(!parsed.exportPrefs) parsed.exportPrefs={};
       if(!parsed.syncPrefs) parsed.syncPrefs={};
       if(!parsed.syncMeta) parsed.syncMeta={};
+      // V035-V11.3.20 — PdC Universel : bibliothèque personnelle de layouts (migration douce).
+      if(!parsed.layoutLibrary || typeof parsed.layoutLibrary!=='object' || Array.isArray(parsed.layoutLibrary)) parsed.layoutLibrary={};
       if(typeof parsed.syncMeta.updatedAt!=='number') parsed.syncMeta.updatedAt=0;
       Object.values(parsed.seances||{}).forEach(arr=>{ (arr||[]).forEach(se=>{ const tafs=Array.isArray(se.tafs)?se.tafs.map(x=>String(x||'').trim()).filter(Boolean):(se.taf&&String(se.taf).trim()?[String(se.taf).trim()]:[]); se.tafs=[...new Set(tafs)]; se.taf=se.tafs[0]||''; }); });
       return parsed;
@@ -35242,10 +35259,11 @@ const CLS_W=CX[4]+W;
 
 /* ============================================================
    IMPRESSION PDF DU PLAN REMPLI (V035-V11.3.17)
-   Techno uniquement (layouts figés classique / îlots). N&B, A4 paysage,
-   une classe par page. Case : prénom (grand) + nom (petit, tronqué) +
-   n° d'ordre alphabétique (garçon en haut/normal, fille en bas/gras) +
-   mentions PPS/PAP/PPRE/ULIS (tout petit, en bas à droite).
+   Techno (layouts figés classique / îlots) + layouts personnalisés du
+   mode universel depuis V11.3.19 (cf. _pdfBuildCustom plus bas). N&B,
+   A4 paysage, une classe par page. Case : prénom (grand) + nom (petit,
+   tronqué) + n° d'ordre alphabétique (garçon en haut/normal, fille en
+   bas/gras) + mentions PPS/PAP/PPRE/ULIS (tout petit, en bas à droite).
    Impression via vue dédiée + @page A4 landscape + window.print().
    ============================================================ */
 const PDF_CATS=['PPS','PAP','PPRE','ULIS'];
@@ -35378,6 +35396,81 @@ function _pdfBuildIlots(cls, clsCode, nums){
   return page;
 }
 
+/* ============================================================
+   V035-V11.3.19 — Généralisation de l'impression PDF aux layouts
+   personnalisés (mode universel). Réutilise le même modèle de grille
+   générique que renderCustomLayout (rows/cols/seats/boardPosition/
+   rowGaps) : couloirs = rangées/colonnes sans siège rétrécies, tables
+   adjacentes « collées » (bord + arrondi partagés) via la même
+   détection de 4-adjacence que l'écran. L'occupation suit le proxy
+   getCls().seats (cls.seats), donc un demi-groupe imprime bien SA
+   propre occupation sur la géométrie partagée de la classe.
+   ============================================================ */
+function _pdfBuildCustom(cls, clsCode, nums, ld){
+  const seatsArr=(ld&&ld.seats)||[];
+  const R=(ld&&ld.rows)||0, C=(ld&&ld.cols)||0;
+  const bp=_getBoardPosition(ld);
+  const occArr=cls.seats||[];
+
+  const occ=Array.from({length:R},()=>Array(C).fill(false));
+  const colHasSeat=new Array(C).fill(false);
+  const rowHasSeat=new Array(R).fill(false);
+  for(const p of seatsArr){
+    if(p && p.row>=0 && p.row<R && p.col>=0 && p.col<C){
+      occ[p.row][p.col]=true; colHasSeat[p.col]=true; rowHasSeat[p.row]=true;
+    }
+  }
+  const rowGapsRaw=_getRowGaps(ld);
+  const gapSet=new Set(rowGapsRaw.filter(r=>r>=0 && r<R-1 && rowHasSeat[r] && rowHasSeat[r+1]));
+
+  const lbl=(cls.layoutLabels && cls.layoutLabels[layout]) || '';
+  const page=document.createElement('div'); page.className='pdfp-page';
+  const hd=_pdfHeader(clsCode, ' · '+(lbl||'personnalisé'));
+  const body=document.createElement('div'); body.className='pdfp-body';
+  const grid=document.createElement('div'); grid.className='pdfp-grid-custom';
+
+  // Colonnes : siège = 1fr (réparti également), couloir = bande étroite fixe.
+  grid.style.gridTemplateColumns=colHasSeat.map(h=>h?'1fr':'7mm').join(' ');
+
+  // Rangées : idem, + une rangée « couloir » après chaque rowGap actif.
+  const rowTpls=[]; const rowToGrid=new Array(R);
+  let g=1;
+  for(let r=0;r<R;r++){
+    rowToGrid[r]=g; g++;
+    rowTpls.push(rowHasSeat[r] ? '1fr' : '7mm');
+    if(gapSet.has(r)){ rowTpls.push('7mm'); g++; }
+  }
+  grid.style.gridTemplateRows=rowTpls.join(' ');
+
+  for(let i=0;i<seatsArr.length;i++){
+    const pos=seatsArr[i];
+    if(!pos) continue;
+    if(pos.row>=R||pos.col>=C||pos.row<0||pos.col<0) continue;
+    const cell=_pdfSeatCell(occArr[i], clsCode, nums);
+    cell.style.gridRow=String(rowToGrid[pos.row]);
+    cell.style.gridColumn=String(pos.col+1);
+    // Collage générique : toute paire de sièges 4-adjacents (sans couloir entre
+    // les deux) partage son bord — même règle que renderCustomLayout à l'écran.
+    const hasUp    = pos.row>0   && !gapSet.has(pos.row-1) && occ[pos.row-1][pos.col];
+    const hasDown  = pos.row<R-1 && !gapSet.has(pos.row)   && occ[pos.row+1][pos.col];
+    const hasLeft  = pos.col>0   && occ[pos.row][pos.col-1];
+    const hasRight = pos.col<C-1 && occ[pos.row][pos.col+1];
+    cell.style.borderTopLeftRadius     = (hasUp   || hasLeft)  ? '0' : '5px';
+    cell.style.borderTopRightRadius    = (hasUp   || hasRight) ? '0' : '5px';
+    cell.style.borderBottomLeftRadius  = (hasDown || hasLeft)  ? '0' : '5px';
+    cell.style.borderBottomRightRadius = (hasDown || hasRight) ? '0' : '5px';
+    if(hasUp)   cell.style.borderTop='none';
+    if(hasLeft) cell.style.borderLeft='none';
+    grid.appendChild(cell);
+  }
+
+  body.appendChild(grid);
+  const board=_pdfBoard();
+  if(bp==='top'){ page.appendChild(hd); page.appendChild(board); page.appendChild(body); }
+  else{ page.appendChild(hd); page.appendChild(body); page.appendChild(board); }
+  return page;
+}
+
 function _pdfEnsureStyle(){
   if(document.getElementById('pdf-print-style')) return;
   const st=document.createElement('style'); st.id='pdf-print-style';
@@ -35418,6 +35511,7 @@ function _pdfEnsureStyle(){
   .pdfp-vol{width:100%}
   .pdfp-vol .pdfp-seat{height:100%}
   .pdfp-vol-lab{font-size:6.5pt;color:#666;text-align:center}
+  .pdfp-grid-custom{flex:1;display:grid;gap:0;min-width:0;min-height:0}
 }`;
   document.head.appendChild(st);
 }
@@ -35425,13 +35519,21 @@ function _pdfEnsureStyle(){
 function printPlanPdf(){
   const cls=(typeof getCls==='function')?getCls():null;
   if(!curCls||!cls){ alert("Aucune classe sélectionnée."); return; }
-  if(layout!=='classic'&&layout!=='ilots'){ alert("L'impression PDF est pour l'instant disponible sur les plans techno (classique ou îlots)."); return; }
+  // V035-V11.3.19 — Généralisation mode universel : un layout personnalisé
+  // (customN) est imprimable s'il est enregistré comme géométrie de la classe,
+  // flag pdcUniversel actif. Sinon on retombe sur le périmètre techno d'origine.
+  const _pdcCustomOk=!!(S.reglages&&S.reglages.pdcUniversel&&cls&&cls.layouts&&cls.layouts[layout]);
+  if(layout!=='classic'&&layout!=='ilots'&&!_pdcCustomOk){ alert("L'impression PDF nécessite un plan actif : classique, îlots, ou un layout personnalisé enregistré."); return; }
   const nums=_pdfAlphaNums(cls);
   _pdfEnsureStyle();
   let root=document.getElementById('pdf-print-root');
   if(!root){ root=document.createElement('div'); root.id='pdf-print-root'; document.body.appendChild(root); }
   root.innerHTML='';
-  root.appendChild(layout==='ilots'?_pdfBuildIlots(cls,curCls,nums):_pdfBuildClassic(cls,curCls,nums));
+  let page;
+  if(layout==='ilots') page=_pdfBuildIlots(cls,curCls,nums);
+  else if(layout==='classic') page=_pdfBuildClassic(cls,curCls,nums);
+  else page=_pdfBuildCustom(cls,curCls,nums,cls.layouts[layout]);
+  root.appendChild(page);
   document.body.classList.add('pdf-printing');
   const cleanup=()=>{ document.body.classList.remove('pdf-printing'); root.innerHTML=''; window.removeEventListener('afterprint',cleanup); };
   window.addEventListener('afterprint',cleanup);
@@ -37857,6 +37959,114 @@ const LAYOUT_STARTERS = [
 ];
 
 // ============================================================================
+// V035-V11.3.20 — PdC Universel : bibliothèque personnelle de layouts custom.
+// Chaque layout personnalisé enregistré avec au moins 1 siège (cf.
+// _layoutEditorSave) est tracé ici, INDÉPENDAMMENT de la classe qui l'a créé
+// (S.layoutLibrary, pas S.cl[...].layouts). Proposé en plus des 4 starters
+// génériques (LAYOUT_STARTERS) à la création d'un nouveau layout — évite de
+// reconstruire à la main un plan de salle déjà conçu sur une autre classe
+// (cas fréquent : plusieurs classes dans la même salle, mode universel).
+// Dédoublonnage par signature géométrique (_layoutSig) : ré-enregistrer un
+// layout géométriquement identique met juste à jour son libellé/sa date au
+// lieu de dupliquer l'entrée. Purement additif : ne modifie ni les layouts
+// déjà enregistrés sur les classes, ni les starters existants.
+// ============================================================================
+const LAYOUT_LIB_MAX = 24; // garde-fou taille : ne conserve que les N plus récents.
+
+function _layoutSig(ld){
+  const seats=(ld&&ld.seats||[]).map(s=>s.row+','+s.col).sort().join(';');
+  const gaps=(ld&&Array.isArray(ld.rowGaps)?ld.rowGaps.slice():[]).sort((a,b)=>a-b).join(',');
+  return [(ld&&ld.rows)|0, (ld&&ld.cols)|0, seats, (ld&&ld.boardPosition==='top')?'top':'bottom', gaps].join('|');
+}
+
+function _layoutLibraryUpsert(ld, label){
+  if(!S.layoutLibrary) S.layoutLibrary={};
+  const sig=_layoutSig(ld);
+  // Même géométrie déjà tracée ? On met à jour (libellé + date) plutôt que dupliquer.
+  let id=Object.keys(S.layoutLibrary).find(k=>_layoutSig(S.layoutLibrary[k])===sig);
+  if(!id) id='lib'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  S.layoutLibrary[id]={
+    label: (label||'').trim() || 'Layout personnalisé',
+    icon: '🧱',
+    rows: ld.rows, cols: ld.cols,
+    seats: (ld.seats||[]).map(s=>({row:s.row,col:s.col})),
+    boardPosition: (ld.boardPosition==='top')?'top':'bottom',
+    rowGaps: Array.isArray(ld.rowGaps) ? ld.rowGaps.slice() : [],
+    savedAt: Date.now()
+  };
+  // Garde-fou taille : ne garder que les LAYOUT_LIB_MAX entrées les plus récentes.
+  const ids=Object.keys(S.layoutLibrary).sort((a,b)=>(S.layoutLibrary[b].savedAt||0)-(S.layoutLibrary[a].savedAt||0));
+  ids.slice(LAYOUT_LIB_MAX).forEach(k=>delete S.layoutLibrary[k]);
+  return id;
+}
+
+function _layoutLibraryList(){
+  if(!S.layoutLibrary) return [];
+  return Object.keys(S.layoutLibrary)
+    .map(id=>Object.assign({id}, S.layoutLibrary[id]))
+    .sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
+}
+
+function _layoutLibraryDelete(id){
+  if(S.layoutLibrary) delete S.layoutLibrary[id];
+  saveS();
+}
+
+function _buildLibraryGallery(ed){
+  const items=_layoutLibraryList();
+  if(!items.length) return null;
+  const cont=document.createElement('div');
+  cont.className='lay-ed-mylayouts';
+  const hdr=document.createElement('div');
+  hdr.className='lay-ed-mylayouts-hdr';
+  const title=document.createElement('span'); title.textContent='📁 Mes layouts enregistrés';
+  const hint=document.createElement('span'); hint.className='lay-ed-starters-hint';
+  hint.textContent='— déjà construits sur une autre classe';
+  hdr.appendChild(title); hdr.appendChild(hint);
+  cont.appendChild(hdr);
+  const list=document.createElement('div');
+  list.className='lay-ed-starters-list';
+  items.forEach(item=>{
+    const wrap=document.createElement('div');
+    wrap.className='lay-ed-lib-wrap';
+    const card=document.createElement('button');
+    card.className='lay-ed-starter-card';
+    card.type='button';
+    card.title='Charger : '+item.label+'\n'+item.rows+'×'+item.cols+', '+item.seats.length+' sièges';
+    card.appendChild(_renderStarterPreview(item));
+    const nameRow=document.createElement('span');
+    nameRow.className='lay-ed-starter-name';
+    nameRow.textContent=item.icon+' '+item.label;
+    card.appendChild(nameRow);
+    const desc=document.createElement('span');
+    desc.className='lay-ed-starter-desc';
+    desc.textContent=item.rows+'×'+item.cols;
+    card.appendChild(desc);
+    const count=document.createElement('span');
+    count.className='lay-ed-starter-count';
+    count.textContent=item.seats.length+' sièges';
+    card.appendChild(count);
+    card.onclick=()=>_loadStarterIntoEditor(item);
+    wrap.appendChild(card);
+    const del=document.createElement('button');
+    del.type='button';
+    del.className='lay-ed-lib-del';
+    del.textContent='✕';
+    del.title='Retirer de mes layouts enregistrés (n\'affecte pas les classes qui l\'utilisent déjà)';
+    del.onclick=(e)=>{
+      e.stopPropagation();
+      if(!confirm('Retirer « '+item.label+' » de vos layouts enregistrés ?\nLes classes qui l\'utilisent déjà ne sont pas affectées.')) return;
+      _layoutLibraryDelete(item.id);
+      _layoutEditorBuildModal();
+    };
+    wrap.appendChild(del);
+    list.appendChild(wrap);
+  });
+  cont.appendChild(list);
+  return cont;
+}
+
+// ============================================================================
 // V029-v181.9.0 — Helper boardPosition (defensive default).
 // Les customs créés avant V029 n'ont pas ce champ → on retourne 'bottom'.
 // L'UI menu+ pour basculer top/bottom arrive en Vague 2.
@@ -38069,7 +38279,14 @@ function _layoutEditorBuildModal(){
   tb.appendChild(tbName); tb.appendChild(tbRows); tb.appendChild(tbCols); tb.appendChild(tbCount);
   wrap.appendChild(tb);
 
-  if(ed.isNew){ wrap.appendChild(_buildStartersGallery(ed)); }
+  if(ed.isNew){
+    // V035-V11.3.20 — « Mes layouts enregistrés » avant les starters génériques :
+    // le raccourci le plus utile pour un collègue qui a déjà construit ce plan
+    // de salle sur une autre classe. Absente si la bibliothèque est vide.
+    const libGal=_buildLibraryGallery(ed);
+    if(libGal) wrap.appendChild(libGal);
+    wrap.appendChild(_buildStartersGallery(ed));
+  }
 
   const gridWrap=document.createElement('div');
   gridWrap.className='lay-ed-grid-wrap';
@@ -38237,6 +38454,15 @@ function _loadStarterIntoEditor(starter){
   ed.cols = starter.cols;
   ed.seats = starter.seats.map(p=>({row:p.row, col:p.col}));
   ed.students = Array(starter.seats.length).fill(null);
+  // V035-V11.3.20 — Reprendre aussi position du tableau + couloirs du modèle chargé.
+  // Jusqu'ici seuls seats/rows/cols étaient copiés : sans effet visible pour les 4
+  // starters génériques (tous en boardPosition='bottom' + rowGaps par défaut), mais
+  // ça aurait silencieusement perdu ces réglages pour un layout de la bibliothèque
+  // personnelle (§_buildLibraryGallery), qui lui peut légitimement différer.
+  ed.boardPosition = (starter.boardPosition==='top') ? 'top' : 'bottom';
+  ed.rowGaps = Array.isArray(starter.rowGaps) ? starter.rowGaps.slice() : (function(){
+    const out=[]; for(let i=0;i<starter.rows-1;i++) out.push(i); return out;
+  })();
   if(!ed.label || !ed.label.trim()){ ed.label = starter.label; }
   _layoutEditorBuildModal();
 }
@@ -38377,6 +38603,9 @@ function _layoutEditorSave(){
   if(!cls.layoutLabels) cls.layoutLabels={};
   if(ed.label.trim()) cls.layoutLabels[ed.layoutId]=ed.label.trim();
   else delete cls.layoutLabels[ed.layoutId];
+  // V035-V11.3.20 — Tracer ce layout dans la bibliothèque personnelle (réutilisable
+  // sur d'autres classes), sauf s'il est vide (aucun intérêt à le proposer ensuite).
+  if(ld.seats.length>0){ _layoutLibraryUpsert(ld, ld.label); }
   if(ed.isNew){
     cls.activeLayoutId=ed.layoutId;
     layout=ed.layoutId;
@@ -38454,6 +38683,8 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Impression PDF du plan de classe rempli (menu Plus → 🖨️ Imprimer / PDF) : une classe par page, prête à afficher en salle — prénom, initiale du nom, n° d’ordre alphabétique et mentions PPS/PAP/PPRE/ULIS. Disponible sur les plans classique et îlots, et désormais aussi sur tout layout personnalisé du mode universel.',
+    'Layouts personnalisés réutilisables entre classes : chaque disposition que vous créez est désormais gardée en mémoire (« 📁 Mes layouts enregistrés ») et proposée directement au moment d’en créer une nouvelle sur une autre classe — plus besoin de reconstruire à la main le même plan de salle pour chaque classe qui l’occupe.',
     'Synchronisation multi-cloud : en plus de Dropbox, vous pouvez désormais synchroniser avec Google Drive. Chaque collègue connecte son propre compte ; un seul cloud actif à la fois (mode universel).',
     'Placement aléatoire « Mixité Filles/Garçons » en îlots : chaque bureau mélange désormais un garçon et une fille (les îlots à deux élèves restent alignés côté mur).'
   ]));
