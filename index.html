@@ -1586,6 +1586,8 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .stp-cstr-btn.has-cstr{background:#EFF6FF;border-color:#BFDBFE;color:#2563EB}
 .stp-cstr-btn.has-cstr:hover{background:#DBEAFE}
 .stp-cstr-btn.active{background:#DBEAFE;border-color:#60A5FA;color:#1D4ED8;box-shadow:0 0 0 2px rgba(96,165,250,.25)}
+.stp-cstr-btn.pinned{background:#FEF3C7;border-color:#FCD34D;color:#B45309}
+.stp-cstr-btn.pinned:hover{background:#FDE68A}
 .stp-cstr-badge{font-size:10px;font-weight:700;line-height:1;vertical-align:super}
 #stp-cstr-popup{position:fixed;z-index:501;background:var(--sur);border:1px solid var(--brd);border-radius:var(--r3);box-shadow:var(--sh2);padding:10px;width:230px;display:none}
 #stp-cstr-popup.open{display:block}
@@ -3757,6 +3759,10 @@ window._simHandleDisable = _simHandleDisable;
     onclick="event.stopPropagation(); closeStatusPopup();">✕</button>
   <div class="stp-name" id="stp-name">
     <span class="stp-name-txt" id="stp-name-txt"></span>
+    <button class="stp-cstr-btn" id="stp-pin-btn" type="button" title="Épingler à cette place (plan aléatoire)"
+      onclick="event.stopPropagation();toggleStPin();" style="display:none">
+      <span>📌</span>
+    </button>
     <button class="stp-cstr-btn" id="stp-cstr-btn" type="button" title="Contraintes de placement"
       onclick="event.stopPropagation();toggleStCstrPopup();" style="display:none">
       <span>🔗</span><span class="stp-cstr-badge" id="stp-cstr-badge" style="display:none"></span>
@@ -3863,7 +3869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.20';
+const APP_VERSION = 'v11.3.21';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -4037,6 +4043,7 @@ function defaultState(){
     evalEcrit: {}, // { clsCode: { compId: true } } — évaluées à l'écrit
     slotEvalCompPlans: {}, // { 'slotKey|clsCode': {compIds:[]} } — compétences évaluables prévues pour le cours
     contraintes: {}, // { clsCode: {separer:[], associer:[], devant:[], vueLimitee:[], isoler:[]} }
+    pinned: {}, // V035-V11.3.21 — { clsCode: [uid, ...] } — élèves épinglés à leur siège actuel pour le placement aléatoire
     besoinsEleves: {}, // { clsCode: { studentId: {categorie,...} } }
     planChangeDates: {}, // { clsCode: 'YYYY-MM-DD' }
     progression: {}, // { niveau: [ {id, titre, ordre, seances:[{id,titre,contenu,taf,tafs:[],ordre,compIds:[],connIds:[]}]} ] }
@@ -5438,6 +5445,8 @@ function loadS(){
       if(!parsed.syncMeta) parsed.syncMeta={};
       // V035-V11.3.20 — PdC Universel : bibliothèque personnelle de layouts (migration douce).
       if(!parsed.layoutLibrary || typeof parsed.layoutLibrary!=='object' || Array.isArray(parsed.layoutLibrary)) parsed.layoutLibrary={};
+      // V035-V11.3.21 — Épingle de placement (migration douce).
+      if(!parsed.pinned || typeof parsed.pinned!=='object' || Array.isArray(parsed.pinned)) parsed.pinned={};
       if(typeof parsed.syncMeta.updatedAt!=='number') parsed.syncMeta.updatedAt=0;
       Object.values(parsed.seances||{}).forEach(arr=>{ (arr||[]).forEach(se=>{ const tafs=Array.isArray(se.tafs)?se.tafs.map(x=>String(x||'').trim()).filter(Boolean):(se.taf&&String(se.taf).trim()?[String(se.taf).trim()]:[]); se.tafs=[...new Set(tafs)]; se.taf=se.tafs[0]||''; }); });
       return parsed;
@@ -28726,6 +28735,8 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
   // V035-v181.15.12 — icône besoins (visible dans tout contexte : propriété élève)
   closeStBesoinPopup();
   _refreshStBesoinIcon();
+  // V035-V11.3.21 — icône épingle (visible si l'élève occupe un siège dans le plan actif)
+  _refreshStPinIcon();
   const activeKeys=getStatutKeys(name);
 
   // — Statuts négatifs : 2 colonnes —
@@ -29105,6 +29116,53 @@ function _toggleStCstrFromPopup(type){
   if(typeof renderClassroom==='function') renderClassroom();
 }
 /* ── Fin V018-v146 ────────────────────────────────────────────── */
+
+/* ══════════════════════════════════════════════════════════════════
+   V035-V11.3.21 — Épingle de placement (depuis popup statut)
+   Un élève épinglé conserve son siège actuel lors du prochain
+   placement aléatoire (classique, îlots, ou layout personnalisé).
+   Portée identique aux contraintes (_scopeBucketKey), indépendante du
+   layout affiché : seul le siège COURANT (cls.seats) compte au
+   moment où « Plan aléatoire » est lancé.
+══════════════════════════════════════════════════════════════════ */
+function _isStudentPinned(uid){
+  const _sc=_scopeBucketKey();
+  if(!uid||!_sc||!S.pinned||!S.pinned[_sc]) return false;
+  return S.pinned[_sc].includes(uid);
+}
+
+function _refreshStPinIcon(){
+  const btn=document.getElementById('stp-pin-btn');
+  if(!btn) return;
+  // Visible seulement si l'élève occupe effectivement un siège dans le plan actif
+  // (épingler n'a de sens que par rapport à une place courante).
+  const cls=(typeof getCls==='function')?getCls():null;
+  const seated=!!(popupCurrentName && cls && cls.seats && cls.seats.includes(popupCurrentName));
+  if(!seated){ btn.style.display='none'; return; }
+  btn.style.display='inline-flex';
+  if(_isStudentPinned(popupCurrentName)) btn.classList.add('pinned');
+  else btn.classList.remove('pinned');
+}
+
+function toggleStPin(){
+  const _sc=_scopeBucketKey();
+  if(!popupCurrentName||!_sc) return;
+  if(!S.pinned) S.pinned={};
+  if(!S.pinned[_sc]) S.pinned[_sc]=[];
+  const idx=S.pinned[_sc].indexOf(popupCurrentName);
+  if(idx>=0){
+    S.pinned[_sc].splice(idx,1);
+    saveS();
+    if(typeof showDropToast==='function') showDropToast('📌 Épingle retirée');
+  } else {
+    S.pinned[_sc].push(popupCurrentName);
+    saveS();
+    if(typeof showDropToast==='function') showDropToast('📌 Élève épinglé à sa place');
+  }
+  _refreshStPinIcon();
+  if(typeof renderClassroom==='function') renderClassroom();
+}
+/* ── Fin V035-V11.3.21 ───────────────────────────────────────────── */
 
 /* ══════════════════════════════════════════════════════════════════
    V035-v181.15.12 (§5.4 lot C) — Sous-popup BESOINS PARTICULIERS
@@ -37233,6 +37291,17 @@ function _doRandomPlaceCustom(cls, ld, con, separerSpacing, mixOptions){
     return arr;
   };
 
+  // V035-V11.3.21 — Épingle : on fige la place courante des élèves épinglés
+  // AVANT que la boucle ne remette cls.seats à zéro dans chaque tentative.
+  const pinnedIds = new Set((S.pinned && S.pinned[_scopeBucketKey()]) || []);
+  const priorSeats = (cls.seats || []).slice();
+  const pinnedPlacements = [];
+  pinnedIds.forEach(uid => {
+    if(!unplaced.includes(uid)) return;
+    const slot = priorSeats.indexOf(uid);
+    if(slot >= 0 && avail.includes(slot)) pinnedPlacements.push({uid, slot});
+  });
+
   let bestSeats = Array(N).fill(null);
   let bestViolations = null;
   let satisfied = false;
@@ -37242,10 +37311,13 @@ function _doRandomPlaceCustom(cls, ld, con, separerSpacing, mixOptions){
     const seats = Array(N).fill(null);
     const assignedSlots = new Set();
 
+    // 0. Épingle — priorité absolue, avant toute autre contrainte, sans randomisation.
+    pinnedPlacements.forEach(({uid, slot}) => { seats[slot]=uid; assignedSlots.add(slot); });
+
     // 1. Isoler — sièges sans voisin 4-adjacent (couloir/rowGap autour)
     const isolerCands = shuffle(isolatedSeats.slice());
     for(const id of isolerIds){
-      if(!unplaced.includes(id)) continue;
+      if(!unplaced.includes(id) || seats.includes(id)) continue; // V035-V11.3.21 : déjà placé (épingle)
       const slot = isolerCands.find(s => !seats[s] && !assignedSlots.has(s));
       if(slot !== undefined){ seats[slot]=id; assignedSlots.add(slot); }
     }
@@ -37253,7 +37325,7 @@ function _doRandomPlaceCustom(cls, ld, con, separerSpacing, mixOptions){
     // 2. Associer — 2 sièges 4-adjacents physiquement
     for(const [a,b] of (con.associer||[])){
       if(!a||!b) continue;
-      if(seats.includes(a) && seats.includes(b)) continue;
+      if(seats.includes(a) || seats.includes(b)) continue; // V035-V11.3.21 : l'un des deux déjà placé (épingle)
       if(!unplaced.includes(a) || !unplaced.includes(b)) continue;
       const freePairs = shuffle(adjacentPairs.filter(([p,q]) =>
         !seats[p] && !seats[q] && !assignedSlots.has(p) && !assignedSlots.has(q)));
@@ -37470,6 +37542,17 @@ function _doRandomPlace(cls, con, separerSpacing, mixOptions){
   const MAX_TRIES=300;
   const shuffle=arr=>{ for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];} return arr; };
 
+  // V035-V11.3.21 — Épingle : on fige la place courante des élèves épinglés
+  // AVANT que la boucle ne remette « seats » à zéro dans chaque tentative.
+  const pinnedIds=new Set((S.pinned && S.pinned[_scopeBucketKey()]) || []);
+  const priorSeats=(cls.seats || []).slice();
+  const pinnedPlacements=[];
+  pinnedIds.forEach(uid=>{
+    if(!unplaced.includes(uid)) return;
+    const slot=priorSeats.indexOf(uid);
+    if(slot>=0 && avail.includes(slot)) pinnedPlacements.push({uid, slot});
+  });
+
   let bestSeats=Array(N_SEATS).fill(null);
   let bestViolations=null; // number
   let satisfied=false;
@@ -37479,12 +37562,15 @@ function _doRandomPlace(cls, con, separerSpacing, mixOptions){
     const seats=Array(N_SEATS).fill(null);
     const assignedSlots=new Set();
 
+    // 0. Épingle — priorité absolue, avant toute autre contrainte, sans randomisation.
+    pinnedPlacements.forEach(({uid,slot})=>{ seats[slot]=uid; assignedSlots.add(slot); });
+
     // 1. Isoler (classique) : mélange aléatoire simple entre col 0, 2 et 4 (pas de priorité).
     //    Le partenaire de table (col 2 = null, donc auto-isolé) est interdit pour le remplissage final.
     if(layout==='classic'){
       const isolerCandidates=shuffle(avail.filter(i=>{const c=_rpGetCol(i); return c===0||c===2||c===4;}));
       for(const id of isolerIds){
-        if(!unplaced.includes(id)) continue;
+        if(!unplaced.includes(id) || seats.includes(id)) continue; // V035-V11.3.21 : déjà placé (épingle)
         const slot=isolerCandidates.find(s=>!seats[s]&&!assignedSlots.has(s));
         if(slot!==undefined){ seats[slot]=id; assignedSlots.add(slot); }
       }
