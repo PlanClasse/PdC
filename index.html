@@ -3869,7 +3869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.21';
+const APP_VERSION = 'v11.3.23';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7837,13 +7837,43 @@ function _importRows(rows){
       if(labelsInconnus.length) _clsImportMappingPopup(labelsInconnus, _proceedImport); // V035-V11.3.0
       else _proceedImport();
 }
+// V035-V11.3.22 — Découpage d'une ligne « CSV-aware » : Pronote entoure de
+// guillemets certains champs (nom/prénom composés, listes à virgules…) MÊME
+// quand le séparateur réel est la tabulation — ex. AKROUR-DERKI mais
+// "ARTEAGA MAHAMOUDOU" ; Lahna mais "Zina Sirine". Sans dé-guillemetage, le
+// guillemet colle au champ affiché ET décale capitalise() (qui ne majuscule que
+// charAt(0)) sur le guillemet plutôt que sur la vraie 1re lettre → « "zina »
+// au lieu de « Zina ». Gère aussi l'échappement standard "" → " et neutralise
+// le séparateur s'il apparaît DANS un champ entre guillemets (protection utile
+// si le séparateur auto-détecté est la virgule, ex. « "ANGLAIS LV1, ESPAGNOL
+// LV2" »).
+function _splitDelimLine(line, delim){
+  const out=[];
+  let field='', inQuotes=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(inQuotes){
+      if(ch==='"'){
+        if(line[i+1]==='"'){ field+='"'; i++; }
+        else { inQuotes=false; }
+      } else {
+        field+=ch;
+      }
+    } else {
+      if(ch==='"' && field===''){ inQuotes=true; }
+      else if(ch===delim){ out.push(field); field=''; }
+      else { field+=ch; }
+    }
+  }
+  out.push(field);
+  return out.map(c=>String(c).trim());
+}
 // V035-V11.3.16 — Copier-coller Pronote (« Copier la liste ») = texte TABULÉ.
 // On le convertit en lignes { intituléColonne: valeur }, même forme que
 // sheet_to_json. Séparateur auto-détecté : tabulation (Pronote) prioritaire,
 // sinon « ; » puis « , ». La 1re ligne = en-tête (comme l'import fichier, qui
-// exige déjà les colonnes Nom/Prénom/Classe). Pas de gestion des guillemets CSV
-// (inutile pour un copier tabulé). Plusieurs collages successifs = cumul possible
-// (import classe par classe).
+// exige déjà les colonnes Nom/Prénom/Classe). Plusieurs collages successifs =
+// cumul possible (import classe par classe).
 function _pasteToRows(text){
   const raw=String(text||'').replace(/\r\n?/g,'\n');
   const lines=raw.split('\n').filter(l=>l.trim().length>0);
@@ -7852,7 +7882,8 @@ function _pasteToRows(text){
   const cnt=ch=>head.split(ch).length-1;
   const tabs=cnt('\t'), semis=cnt(';'), commas=cnt(',');
   const FS = tabs>0 ? '\t' : (semis>=commas && semis>0 ? ';' : (commas>0 ? ',' : '\t'));
-  const cells=line=>line.split(FS).map(c=>String(c).trim());
+  // V035-V11.3.22 — dé-guillemetage CSV-aware (cf. _splitDelimLine ci-dessus).
+  const cells=line=>_splitDelimLine(line, FS);
   const header=cells(lines[0]);
   const out=[];
   for(let i=1;i<lines.length;i++){
@@ -14293,6 +14324,7 @@ function _ebepPhotocopiesForLv(lv){
   Object.keys(S.cl).forEach(cls=>{
     if(cls.slice(0,-1) !== lv) return;
     if(!S.cl[cls] || !(S.cl[cls].students||[]).length) return;
+    if(!isMaClasse(cls)) return; // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
     const n = _ebepWithPhotocopiesForCls(cls).length;
     if(n > 0){ out.total += n; out.byCls[cls] = n; }
   });
@@ -45010,7 +45042,8 @@ function renderDemandesCls(){
   btnAll.onclick=()=>{ demandesCls='all'; renderDemandesCls(); };
   cont.appendChild(btnAll);
   const classes=[];
-  LEVELS.forEach(lv=>{ if(!S.en[lv]) return; for(let i=1;i<=N_SUB;i++){ const k=lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length) classes.push(k); } });
+  // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
+  LEVELS.forEach(lv=>{ if(!S.en[lv]) return; for(let i=1;i<=N_SUB;i++){ const k=lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k)) classes.push(k); } });
   classes.forEach(k=>{
     const btn=document.createElement('button');
     btn.className='fp-tab'+(k===demandesCls?' act':'');
@@ -45041,8 +45074,9 @@ function renderDemandesList(){
   const domaines=ACCES_DOMAINES.filter(d=>!d.noReinit);
   const entries=[]; // {cls, uid, dom, lastDate, count}
 
+  // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
   const classes=demandesCls==='all'
-    ? Object.keys(S.cl).filter(k=>S.cl[k]&&(S.cl[k].students||[]).length)
+    ? Object.keys(S.cl).filter(k=>S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k))
     : [demandesCls];
 
   classes.forEach(cls=>{
@@ -46044,8 +46078,9 @@ function _pixRenderViewer(){
 function _pixRenderContent(content, lv){
   const T = _pixTheme();
   content.innerHTML = '';
+  // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
   const classes = Object.keys(S.cl)
-    .filter(k => k.startsWith(lv) && (S.cl[k].students||[]).length)
+    .filter(k => k.startsWith(lv) && (S.cl[k].students||[]).length && isMaClasse(k))
     .sort();
 
   if(!classes.length){
@@ -46595,10 +46630,12 @@ function renderSuiviTabs(){
     const maxN=Math.max(1, parseInt(maxByLevel[lv]||N_SUB,10)||N_SUB);
     if(idx<=maxN && S.seances[k] && S.seances[k].length) clsSet.add(kCls);
   });
-  if(suiviCls && !clsSet.has(suiviCls)){
-    suiviCls=[...clsSet].sort()[0]||null;
+  // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
+  const visibleCls=[...clsSet].filter(isMaClasse).sort();
+  if(suiviCls && !visibleCls.includes(suiviCls)){
+    suiviCls=visibleCls[0]||null;
   }
-  [...clsSet].sort().forEach(k=>{
+  visibleCls.forEach(k=>{
     // Phase 2d v32 : comptage agrégé (legacy + composites cls|grp_*).
     const n=readAllSeancesForClass(k).length;
     const btn=document.createElement('button');
@@ -47154,7 +47191,8 @@ function renderAgenda(){
     bar.appendChild(mkSep());
     const clsLbl=document.createElement('span'); clsLbl.style.cssText='font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em'; clsLbl.textContent='Classe'; bar.appendChild(clsLbl);
     const clsForFilter=[];
-    for(let i=1;i<=N_SUB;i++){ const k=agState.lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length) clsForFilter.push(k); }
+    // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
+    for(let i=1;i<=N_SUB;i++){ const k=agState.lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k)) clsForFilter.push(k); }
     const btnAllCls=document.createElement('button'); btnAllCls.className='fp-tab'+(agState.cls===null?' act':'');
     btnAllCls.style.cssText='font-size:11px;padding:2px 8px'; btnAllCls.textContent='Tout';
     btnAllCls.onclick=()=>{ agState.cls=null; renderAgenda(); }; bar.appendChild(btnAllCls);
@@ -47168,11 +47206,12 @@ function renderAgenda(){
   pane.appendChild(bar);
 
   // Classes à afficher
+  // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
   const allClasses=[];
   if(agState.allLevels){
-    activeLevels.forEach(lvItem=>{ for(let i=1;i<=N_SUB;i++){ const k=lvItem+i; if(S.cl[k]&&(S.cl[k].students||[]).length) allClasses.push(k); } });
+    activeLevels.forEach(lvItem=>{ for(let i=1;i<=N_SUB;i++){ const k=lvItem+i; if(S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k)) allClasses.push(k); } });
   } else {
-    for(let i=1;i<=N_SUB;i++){ const k=agState.lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length) allClasses.push(k); }
+    for(let i=1;i<=N_SUB;i++){ const k=agState.lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k)) allClasses.push(k); }
   }
   const visClasses=(!agState.allLevels&&agState.cls)?[agState.cls]:allClasses;
 
@@ -47630,11 +47669,12 @@ function renderVueAnnuelle(){
 
   // Classe
   const lv=vaState.allLevels?activeLevels[0]:vaState.lv;
+  // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
   const allClasses=[];
   if(vaState.allLevels){
-    activeLevels.forEach(lvItem=>{ for(let i=1;i<=N_SUB;i++){ const cc=lvItem+i; if(S.cl[cc]&&(S.cl[cc].students||[]).length) allClasses.push(cc); } });
+    activeLevels.forEach(lvItem=>{ for(let i=1;i<=N_SUB;i++){ const cc=lvItem+i; if(S.cl[cc]&&(S.cl[cc].students||[]).length&&isMaClasse(cc)) allClasses.push(cc); } });
   } else {
-    for(let i=1;i<=N_SUB;i++){ const cc=lv+i; if(S.cl[cc]&&(S.cl[cc].students||[]).length) allClasses.push(cc); }
+    for(let i=1;i<=N_SUB;i++){ const cc=lv+i; if(S.cl[cc]&&(S.cl[cc].students||[]).length&&isMaClasse(cc)) allClasses.push(cc); }
   }
   if(!vaState.cls||!allClasses.includes(vaState.cls)) vaState.cls=null;
 
@@ -56441,7 +56481,8 @@ function renderAnalyseBandeau(){
   levels.forEach(lv=>{
     for(let i=1;i<=N_SUB;i++){
       const k=lv+i;
-      if(!S.cl[k]||(S.cl[k].students||[]).length===0) continue;
+      // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
+      if(!S.cl[k]||(S.cl[k].students||[]).length===0||!isMaClasse(k)) continue;
       const btn=document.createElement('button');
       btn.className='tab'+(analyseSelCls===k?' act':'');
       btn.textContent=k.toUpperCase();
@@ -57567,7 +57608,8 @@ function renderAnalyseFilters(){
         if(!students.find(s=>s.id===id)) students.push({id,label:getSortKey(id)+'|'+getFullName(id)});
       });
     } else {
-      const classes=analyseSelCls?[analyseSelCls]:Object.keys(S.cl).filter(k=>S.en[k.slice(0,-1)]);
+      // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
+      const classes=analyseSelCls?[analyseSelCls]:Object.keys(S.cl).filter(k=>S.en[k.slice(0,-1)] && isMaClasse(k));
       classes.forEach(cls=>{
         const cl=S.cl[cls]; if(!cl) return;
         (cl.students||[]).forEach(id=>{
@@ -58832,7 +58874,8 @@ function renderAnalyse(){
         if(!S.en[lv]) continue;
         for(let i=1;i<=N_SUB;i++){
           const k=lv+i;
-          if(S.cl[k]&&(S.cl[k].students||[]).length){ analyseSelCls=k; break; }
+          // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
+          if(S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k)){ analyseSelCls=k; break; }
         }
         if(analyseSelCls) break;
       }
@@ -58875,11 +58918,9 @@ function renderAnalyse(){
     return;
   }
 
-  const getClasses=()=>{
-    if(analyseSelCls) return [analyseSelCls];
-    const lvs=analyseLv?[analyseLv]:LEVELS.filter(l=>S.en[l]);
-    return Object.keys(S.cl).filter(k=>lvs.includes(k.slice(0,-1))&&S.cl[k]&&(S.cl[k].students||[]).length);
-  };
+  // V035-V11.3.21 — délègue à _getAnalyseClasses() : cohérence des filtres +
+  // filtre « mes classes » (au lieu de dupliquer la même logique sans le filtre).
+  const getClasses=()=>_getAnalyseClasses();
 
   let text='';
   const classes=getClasses();
