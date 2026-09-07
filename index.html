@@ -3869,7 +3869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.25';
+const APP_VERSION = 'v11.3.26';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -32724,7 +32724,7 @@ function getCochesForSlot(slotKey, clsCode){
  *  Phase 2c session 12 : passe par getCochesForSlot pour bénéficier de la résolution
  *  grp automatique + promotion legacy→composite.
  */
-function toggleCoche(slotKey, clsCode, itemKey, checked){
+function toggleCoche(slotKey, clsCode, itemKey, checked, labelHint){
   const bucket=getCochesForSlot(slotKey, clsCode); // crée si besoin, avec bonne clé
   bucket[itemKey]=checked;
   saveS();
@@ -32750,9 +32750,15 @@ function toggleCoche(slotKey, clsCode, itemKey, checked){
         const _autoPreset = _grpO ? 'Gr' : 'CE';
         const _verifSKs = (typeof resolveVerifSlots==='function')
           ? resolveVerifSlots(_autoPreset, slotKey, clsCode, _grpO) : [];
-        // Récupérer le label du TAF : priorité savedSeance, fallback prog
-        let _label = '';
+        // Récupérer le label du TAF. v11.3.26 (§4.12) : PRIORITÉ au libellé fourni
+        // par l'appelant. Motif : le chemin d'auto-cochage à l'enregistrement
+        // ("S27 patch 7") s'exécute AVANT writeSeanceForSlot, donc la séance
+        // d'origine n'est pas encore persistée et les deux replis ci-dessous
+        // échouent silencieusement (label vide, affiché « (TAF sans libellé) »).
+        // Les replis historiques restent en place pour les appelants sans libellé.
+        let _label = (typeof labelHint==='string') ? labelHint.trim() : '';
         try {
+          if(!_label){
           const _sb = (typeof readSeancesBucket==='function') ? readSeancesBucket(clsCode, _grpO) : [];
           const _saved = _sb.find(x=>x.slotKey===slotKey);
           const _tafs = (typeof getTafArray==='function')
@@ -32763,7 +32769,7 @@ function toggleCoche(slotKey, clsCode, itemKey, checked){
             const _layout = (typeof getSlotLayout==='function') ? getSlotLayout(clsCode, slotKey) : null;
             const _seanIds = [];
             if(_layout) _layout.items.forEach(it=>{ if(it.type==='task' && !_seanIds.includes(it.seanId)) _seanIds.push(it.seanId); });
-            const _lvl = clsCode ? clsCode.slice(0,-1) : '5e';
+            const _lvl = clsCode ? clsCode.replace(/[0-9]+$/,'') : '5e';
             const _prog = (typeof getProgression==='function') ? (getProgression(_lvl)||[]) : [];
             const _allTafs = _seanIds.flatMap(sid=>{
               const _seq = _prog.find(s=>(s.seances||[]).some(sn=>sn.id===sid));
@@ -32771,6 +32777,7 @@ function toggleCoche(slotKey, clsCode, itemKey, checked){
               return _sn && typeof getTafArray==='function' ? getTafArray(_sn) : [];
             });
             if(_allTafs[_tafIdx]) _label = _allTafs[_tafIdx];
+          }
           }
         } catch(e){ /* tolérant : on accepte un label vide */ }
         if(typeof writeTafVerif==='function'){
@@ -33152,6 +33159,47 @@ function _getTafLabelsForCurrentSlot(){
 }
 
 /**
+ * v11.3.26 (§4.12) — AUTO-RÉPARATION d'un libellé de vérification resté vide.
+ *
+ * Contexte : avant v11.3.26, toggleCoche pouvait écrire une entrée avec label:''
+ * (TAF saisi au textarea puis auto-coché AVANT la persistance de la séance —
+ * cf. "S27 patch 7"). Au moment où l'on AFFICHE la vérification, la séance
+ * d'origine est, elle, persistée : le texte est donc retrouvable.
+ *
+ * Même esprit que l'auto-réparation startLundi de v11.3.25 : on répare la donnée
+ * au premier affichage post-mise à jour, sans action de l'utilisateur.
+ *
+ * ATTENTION — l'écriture est faite DIRECTEMENT puis saveS(), volontairement PAS
+ * via writeTafVerif() : celui-ci rappelle renderVoletDroit(), or cette fonction
+ * est appelée depuis le rendu (volet droit et modal Séance) → récursion infinie.
+ *
+ * Ne fait rien si le libellé est déjà renseigné, ou si la séance d'origine reste
+ * introuvable (l'UI garde alors son repli « (TAF sans libellé) »).
+ */
+function _healTafVerifLabel(key, tv, clsCode, slotOrigineK, grpId, tafIdx){
+  if(!tv) return '';
+  if(tv.label && String(tv.label).trim()) return tv.label;
+  let found='';
+  try{
+    const _sb=(typeof readSeancesBucket==='function') ? (readSeancesBucket(clsCode, grpId)||[]) : [];
+    let _saved=_sb.find(x=>x && x.slotKey===slotOrigineK);
+    // Repli : la séance d'origine peut avoir été écrite dans un bucket composite
+    // classe|groupe alors que la clé de vérification porte un grpId vide (ou l'inverse).
+    // Un slotKey identifie un créneau physique unique pour la classe : la recherche
+    // élargie ne peut donc pas rapporter la séance d'un autre groupe pour ce créneau.
+    if(!_saved && typeof readAllSeancesForClass==='function'){
+      _saved=(readAllSeancesForClass(clsCode)||[]).find(x=>x && x.slotKey===slotOrigineK);
+    }
+    const _tafs=(_saved && typeof getTafArray==='function') ? (getTafArray(_saved)||[]) : [];
+    if(_tafs[tafIdx] && String(_tafs[tafIdx]).trim()) found=String(_tafs[tafIdx]).trim();
+  }catch(e){ /* tolérant : on laisse le libellé vide */ }
+  if(!found) return '';
+  tv.label=found;
+  try{ saveS(); }catch(e){}
+  return found;
+}
+
+/**
  * v37 (Phase 3c suite — Bloc 2 §5.13) — Retourne les entrées tafVerifs
  * "pending" qui ciblent le slotKey donné pour la classe donnée.
  * Tri : par slotOrigineK croissant (les TAFs les plus anciens d'abord).
@@ -33167,6 +33215,10 @@ function getTafVerifsForTargetSlot(slotKey, clsCode){
     if(parts.length !== 4) return;
     const [slotOrigineK, kCls, grpId, tafIdxStr] = parts;
     if(kCls !== clsCode) return;
+    // v11.3.26 (§4.12) — réparation paresseuse d'un libellé vide hérité.
+    if(!tv.label || !String(tv.label).trim()){
+      _healTafVerifLabel(key, tv, clsCode, slotOrigineK, grpId, +tafIdxStr);
+    }
     out.push({key, tv, slotOrigineK, grpId, tafIdx: +tafIdxStr});
   });
   out.sort((a,b)=> a.slotOrigineK.localeCompare(b.slotOrigineK));
@@ -34454,7 +34506,7 @@ function renderVoletDroit(){
     const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!coches[k];
     const ico=document.createElement('span'); ico.textContent=icon; ico.style.cssText='font-size:10px;flex-shrink:0';
     const lbl=document.createElement('span'); lbl.className='vd-item-text'+(cb.checked?' vd-done':''); lbl.textContent=label;
-    cb.onchange=()=>{ lbl.className='vd-item-text'+(cb.checked?' vd-done':''); toggleCoche(slotKey,clsCode,k,cb.checked); renderSynthese&&renderSynthese(); };
+    cb.onchange=()=>{ lbl.className='vd-item-text'+(cb.checked?' vd-done':''); toggleCoche(slotKey,clsCode,k,cb.checked,label); renderSynthese&&renderSynthese(); };
     item.appendChild(cb); item.appendChild(ico); item.appendChild(lbl);
     if(durTxt){ const d=document.createElement('span'); d.style.cssText='font-size:9px;color:var(--tx3);flex-shrink:0;margin-left:3px'; d.textContent=durTxt; item.appendChild(d); }
     return item;
@@ -39599,11 +39651,30 @@ function openSaveSeance(){
     });
     // ── Fin pré-calcul Fix R3 ───────────────────────────────────────────────────
 
+    // ── v11.3.26 (§4.12) : pré-calcul du dédoublonnage legacy ↔ S.tafVerifs ────
+    // Deux mécanismes décrivent la même vérification de TAF :
+    //   (legacy) un freeItem type 'taf-verif' injecté au cours suivant à
+    //            l'enregistrement de la séance (« stratégie A », v181) ;
+    //   (moderne) une entrée S.tafVerifs (Phase 3a v35 → 3c v37), affichée plus bas
+    //            dans la section « TAFs à vérifier ici » avec Fait / Annuler / Reporter.
+    // Décision (session TafVérif) : le moderne fait autorité à l'affichage. Le legacy
+    // n'est masqué que lorsqu'une entrée moderne couvre EXACTEMENT le même couple
+    // (slot d'origine, index de TAF) — rapprochement structurel, jamais par libellé.
+    // Un TAF sans entrée moderne (jamais coché, vérif supprimée…) reste donc visible :
+    // aucune disparition silencieuse possible.
+    const _tvCoveredByModern=new Set();
+    try{
+      ((typeof getTafVerifsForTargetSlot==='function')
+        ? getTafVerifsForTargetSlot(slotKey, curCls) : [])
+        .forEach(({slotOrigineK, tafIdx})=>{ _tvCoveredByModern.add(slotOrigineK+'#'+tafIdx); });
+    }catch(e){ /* tolérant : sans couverture, on retombe sur l'affichage historique */ }
+
     // 0. Reporter/partiel/taf-verif (en premier)
     // Fix R3A : sauter les reporters mo_* déjà couverts par le layout engine (section 1)
     (entry4.freeItems||[]).filter(fi=>{
       if(fi.type!=='reporter'&&fi.type!=='taf-verif') return false;
       if(fi.adjustmentKey&&_layoutMoKeys.has(fi.adjustmentKey)) return false; // doublon layout
+      if(fi.type==='taf-verif'&&_tvCoveredByModern.has(fi.sourceSlot+'#'+fi.sourceIndex)) return false;
       return true;
     }).forEach(fi=>{
       items.push({key:'fi_'+fi.id, icon:fi.icon||'↩', label:fi.label, checked:!!coches2['fi_'+fi.id], source:'free', fi, duree:fi.duree||0, isReporter:true});
@@ -39756,8 +39827,12 @@ function openSaveSeance(){
       });
     }
 
-    // 4. Autres freeItems (non-reporter, non-eval)
-    (entry4.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter').forEach(fi=>{
+    // 4. Autres freeItems (non-reporter, non-eval, non-taf-verif)
+    // v11.3.26 (§4.12) — BUG : l'exclusion de 'taf-verif' manquait ici, alors que les
+    // deux sites frères la font (volet droit « Tâches libres », et « Fix S » plus bas).
+    // Conséquence : tout freeItem taf-verif était poussé une 2e fois (déjà présent en
+    // section 0), d'où deux lignes identiques par TAF dans le modal Séance.
+    (entry4.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif').forEach(fi=>{
       items.push({key:'fi_'+fi.id, icon:fi.icon||'📝', label:fi.label+(fi.duree?' ('+fi.duree+'mn)':''), checked:!!coches2['fi_'+fi.id], source:'free', fi});
     });
 
@@ -39806,7 +39881,7 @@ function openSaveSeance(){
           if(x.cb.checked === true) return;
           if(tacheDecisions[x.item.key]) return;
           x.cb.checked=true;
-          toggleCoche(slotKey,curCls,x.item.key,true);
+          toggleCoche(slotKey,curCls,x.item.key,true,(x.item.source==='taf'?x.item.label:''));
           // §5.27 (S20) — Création tafVerifs centralisée via toggleCoche (§5.25 S18).
           // Ancien bloc Phase 3a v35/v36 supprimé (~22 lignes inertes grâce à la garde !readTafVerif).
           // Mettre à jour visuellement
@@ -39960,7 +40035,7 @@ function openSaveSeance(){
       };
 
       const refreshActionsVisibility=()=>{ actionsDiv.style.display=cb.checked?'none':'flex'; lbl.style.textDecoration=cb.checked?'line-through':''; lbl.style.color=cb.checked?'var(--tx3)':'var(--tx)'; if(cb.checked) delete tacheDecisions[item.key]; };
-      cb.onchange=()=>{ refreshActionsVisibility(); persistTaskDecisionDraft(); toggleCoche(slotKey,curCls,item.key,cb.checked);
+      cb.onchange=()=>{ refreshActionsVisibility(); persistTaskDecisionDraft(); toggleCoche(slotKey,curCls,item.key,cb.checked,(item.source==='taf'?item.label:''));
         // §5.27 (S20) — Création/suppression tafVerifs centralisée via toggleCoche (§5.25 S18).
         // Ici on garde uniquement le rebuild visuel : un TAF coché/décoché doit faire apparaître
         // ou disparaître les contrôles CE/Gr/📅 au-dessous de la row.
@@ -41051,7 +41126,7 @@ function openSaveSeance(){
         if(!tafTxt || !tafTxt.trim()) return;
         const _tk='taf_'+ti;
         if(_tafCoches[_tk]) return; // déjà coché précédemment, on respecte
-        if(typeof toggleCoche==='function') toggleCoche(slotKey, curCls, _tk, true);
+        if(typeof toggleCoche==='function') toggleCoche(slotKey, curCls, _tk, true, tafTxt);
       });
     }
     if(modeOpDone.length) seance.modeOpDone=modeOpDone;
