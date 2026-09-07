@@ -3869,7 +3869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.24';
+const APP_VERSION = 'v11.3.25';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -21071,9 +21071,26 @@ function resolveDay(dateStr){
 
   // Compute week parity from startLundi
   const msPerWeek=7*24*3600*1000;
-  const refDate=new Date(periode.startLundi+'T12:00:00');
+  let refDate=new Date(periode.startLundi+'T12:00:00');
+  if(isNaN(refDate.getTime())){
+    // V035-V11.3.25 — startLundi absent/invalide (donnée orpheline, ex. après
+    // une migration d'année scolaire où periode.debut a été renseigné sans
+    // recalcul de startLundi). Sans ce filet : new Date(null+'T…') → Invalid
+    // Date → weekDiff=NaN → « NaN%2===0 » toujours FAUX → semType verrouillé
+    // en permanence sur l'INVERSE de startSem, quelle que soit la date réelle
+    // (symptôme observé : toujours « semaine B » même sur des semaines qui
+    // devraient être A). Repli : recalculer le lundi depuis periode.debut, et
+    // réparer la donnée en mémoire pour ne pas refaire ce calcul à chaque appel.
+    const fallbackLundi=(typeof _lundiOnOrBefore==='function') ? _lundiOnOrBefore(periode.debut) : periode.debut;
+    refDate=new Date((fallbackLundi||dateStr)+'T12:00:00');
+    if(!isNaN(refDate.getTime()) && fallbackLundi && fallbackLundi!==periode.startLundi){
+      periode.startLundi=fallbackLundi;
+      if(typeof saveS==='function') saveS();
+    }
+  }
   const curDate=new Date(dateStr+'T12:00:00');
-  const weekDiff=Math.floor((curDate-refDate)/msPerWeek);
+  let weekDiff=Math.floor((curDate-refDate)/msPerWeek);
+  if(isNaN(weekDiff)) weekDiff=0; // ultime filet de sécurité (ne devrait plus jamais se produire)
   const baseSem=periode.startSem||'A';
   const semType=(weekDiff%2===0)?baseSem:(baseSem==='A'?'B':'A');
 
