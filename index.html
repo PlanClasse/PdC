@@ -3869,7 +3869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.23';
+const APP_VERSION = 'v11.3.24';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -17310,17 +17310,29 @@ function showParamsTab(tab){
 }
 
 /* ---- Statuts ---- */
-function renderParamsStatuts(){
-  const pane=document.getElementById('params-pane-statuts');
+function renderParamsStatuts(body){
+  // V035-V11.3.23 — Contrat renderLegacyPaneSection : le conteneur visible réel
+  // (section._body, distinct du placeholder statique id=params-pane-statuts du HTML)
+  // est passé en argument. Sans ce paramètre, tout re-rendu déclenché DEPUIS un
+  // bouton de cette section (toggle, +Incident, +Point positif, ✕, ↺, édition de
+  // label) reconstruisait le contenu dans le placeholder statique orphelin au lieu
+  // du conteneur affiché — les nouvelles lignes n'apparaissaient jamais et les
+  // lignes déjà visibles restaient figées (« toggles plus actifs »). Cf. la même
+  // convention déjà appliquée par renderParamsDiscipline(body).
+  const pane=body||document.getElementById('params-pane-statuts');
   pane.innerHTML='';
 
   if(!S.customStatuts) S.customStatuts=[...STATUTS.map(s=>({...s}))];
-  // Migration : synchroniser customStatuts avec STATUTS (ajouter manquants, supprimer custom_xxx orphelins sans label utile)
+  // Migration : synchroniser customStatuts avec STATUTS (ajouter les manquants).
   STATUTS.forEach(def=>{
     if(!S.customStatuts.find(s=>s.key===def.key)) S.customStatuts.push({...def, enabled:true});
   });
-  // Nettoyer les statuts custom sans label personnalisé (label='Nouveau statut' = jamais édités)
-  S.customStatuts=S.customStatuts.filter(s=>!s.key.startsWith('custom_')||s.label!=='Nouveau statut');
+  // V035-V11.3.23 — Ancien nettoyage retiré : il supprimait un statut custom
+  // fraîchement créé (label par défaut 'Nouveau statut') AVANT que l'utilisateur
+  // ait pu le renommer, puisque le bouton « + Incident »/« + Point positif »
+  // ré-appelle renderParamsStatuts() juste après l'avoir ajouté — rendant ces
+  // boutons inopérants en pratique. La suppression volontaire reste possible via
+  // le bouton ✕ de chaque ligne custom.
 
   const intro=document.createElement('div');
   intro.style.cssText='font-size:12px;color:var(--tx2);margin-bottom:1rem;line-height:1.5';
@@ -17334,10 +17346,16 @@ function renderParamsStatuts(){
     {label:'Statuts personnalisés',cols:['custom']},
   ];
 
+  // V035-V11.3.23 — colonnes déjà couvertes par un groupe dédié ci-dessus : un
+  // statut custom créé via « + Incident »/« + Point positif » a un col connu
+  // (neg-r/pos) et doit apparaître UNE SEULE FOIS, dans son groupe naturel — pas
+  // une 2e fois ici (l'ancien filtre, basé sur « absent de STATUTS », le
+  // dupliquait systématiquement).
+  const KNOWN_COLS=['neg-l','neg-r','pos','appel'];
   groups.forEach(({label,cols})=>{
     const items=S.customStatuts.filter(s=>
       cols.includes('custom')
-        ? !STATUTS.find(d=>d.key===s.key)
+        ? !KNOWN_COLS.includes(s.col)
         : cols.some(c=>s.col===c)
     );
     if(!items.length && !cols.includes('custom')) return;
@@ -17369,7 +17387,7 @@ function renderParamsStatuts(){
       tog.title=isEnabled?'Désactiver ce statut':'Activer ce statut';
       tog.onclick=()=>{
         S.customStatuts[idx].enabled=!isEnabled;
-        saveS(); renderParamsStatuts();
+        saveS(); renderParamsStatuts(pane);
       };
       row.appendChild(tog);
 
@@ -17399,7 +17417,7 @@ function renderParamsStatuts(){
         delBtn.style.cssText='font-size:10px;padding:2px 8px;border:1px solid #FCA5A5;border-radius:var(--r1);background:var(--sur);color:#B91C1C;cursor:pointer;font-family:inherit;flex-shrink:0';
         delBtn.textContent='✕';
         delBtn.title='Supprimer ce statut';
-        delBtn.onclick=()=>{ S.customStatuts.splice(idx,1); saveS(); renderParamsStatuts(); };
+        delBtn.onclick=()=>{ S.customStatuts.splice(idx,1); saveS(); renderParamsStatuts(pane); };
         row.appendChild(delBtn);
       } else {
         const orig=STATUTS.find(s=>s.key===st.key);
@@ -17411,7 +17429,7 @@ function renderParamsStatuts(){
           resetBtn.onclick=()=>{
             S.customStatuts[idx].label=orig.label;
             S.customStatuts[idx].short=orig.short;
-            saveS(); renderParamsStatuts();
+            saveS(); renderParamsStatuts(pane);
           };
           row.appendChild(resetBtn);
         }
@@ -17432,9 +17450,17 @@ function renderParamsStatuts(){
     btn.textContent=label;
     btn.onclick=()=>{
       if(!S.customStatuts) S.customStatuts=[...STATUTS.map(s=>({...s}))];
-      const newKey='custom_'+Date.now();
+      // V035-V11.3.24 — Date.now() seul peut produire deux clés identiques si
+      // « + Incident » et « + Point positif » sont cliqués dans la même
+      // milliseconde (ex. clics rapprochés) : les 2 entrées custom se
+      // retrouvaient alors avec la même clé et s'affichaient l'une sur
+      // l'autre (doublon visuel, ✕ ambigu). Un suffixe aléatoire + une
+      // boucle anti-collision garantissent une clé unique à chaque ajout.
+      let newKey;
+      do { newKey='custom_'+Date.now()+'_'+Math.floor(Math.random()*1e6); }
+      while(S.customStatuts.some(s=>s.key===newKey));
       S.customStatuts.push({key:newKey, label:'Nouveau statut', short:'NEW', col, enabled:true});
-      saveS(); renderParamsStatuts();
+      saveS(); renderParamsStatuts(pane);
     };
     addWrap.appendChild(btn);
   });
