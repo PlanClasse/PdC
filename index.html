@@ -1382,6 +1382,16 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .seat-partic-count{display:none}
 /* Mode TAF — cases à cocher à l'intérieur de la tuile */
 .seat-taf-wrap{position:absolute;right:4px;top:0;bottom:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:4px;z-index:5;pointer-events:all}
+/* v11.3.28 — bande de vérification multi-TAF : une pastille numérotée par TAF,
+   dans le flux normal, poussée en bas de tuile (margin-top:auto). La hauteur
+   correspondante est réservée par seatHeight() via TAF_STRIP_H, uniquement
+   pendant le mode vérif. — hors mode, la bande est masquée ET la tuile reprend
+   sa hauteur habituelle. */
+.seat-taf-strip{display:none;gap:5px;justify-content:center;align-items:center;width:100%;margin-top:auto;flex-shrink:0;pointer-events:all}
+.seat-taf-pill{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--brd2);background:var(--sur2);color:var(--tx3);font-size:11px;font-weight:700;font-family:inherit;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;flex-shrink:0;transition:background .1s,border-color .1s,color .1s}
+.seat-taf-pill:hover{border-color:var(--tx3)}
+.seat-taf-pill.tnf{background:#FEE2E2;border-color:#DC2626;color:#B91C1C}
+.seat-taf-pill.done{background:#DCFCE7;border-color:#16A34A;color:#15803D}
 /* Icône besoins particuliers — petit rond bleu discret */
 .seat-besoin{position:absolute;top:3px;left:4px;width:7px;height:7px;border-radius:50%;background:#3B82F6;cursor:pointer;display:none;border:none}
 .seat-besoin.has-besoin{display:none !important}
@@ -3869,7 +3879,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.27';
+const APP_VERSION = 'v11.3.28';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -6588,6 +6598,84 @@ function buildTafSeatKey(studentId, slotKey, tafIdx, pointIdx){
 }
 function readLegacyTafSeatKey(studentId, slotKey, tafIdx){
   return 'taf_seat_'+tafIdx+'|'+studentId+'|'+(slotKey||'');
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   v11.3.28 (§4.14) — VÉRIFICATION MULTI-TAF SUR LA TUILE
+   ──────────────────────────────────────────────────────────────────
+   Problème résolu : avec 3 TAF donnés le même jour, le mode vérif.
+   n'affichait qu'UNE coche par élève (celle du « TAF actif »), donc
+   trois tours de salle avec un retour au volet droit entre chaque.
+
+   SÉMANTIQUE DES DONNÉES — À NE SURTOUT PAS INVERSER :
+   `S.tafCoches[cle] === true` signifie « travail NON FAIT ». C'est la
+   convention historique, lue par TROIS consommateurs indépendants :
+   `_collectTnfForSlot` (export séance), l'agrégat TNF de l'écran Suivi,
+   et le jeu de démo. Une coche = un TNF.
+
+   D'où le 3e état. On veut distinguer « non renseigné » de « fait »,
+   sans jamais faire compter un « fait » comme un TNF. Écrire une valeur
+   vraie dans `S.tafCoches` pour « fait » casserait les trois lecteurs
+   d'un coup. On ajoute donc un store PARALLÈLE `S.tafFaits`, de mêmes
+   clés, dont aucun lecteur historique ne connaît l'existence :
+     - non fait  → S.tafCoches[cle]=true   (inchangé, contrat TNF intact)
+     - fait      → S.tafFaits[cle]=true    (nouveau, invisible du TNF)
+     - neutre    → absent des deux
+   Invariant maintenu par writeTafSeatState : jamais les deux à la fois.
+
+   ORDRE DU CYCLE (demandé par l'utilisateur) : le 1er appui pose
+   « non fait ». C'est le geste fréquent — on saisit les manquants, et
+   qui ne veut pas déclarer les « fait » n'a rien de plus à faire.
+   ════════════════════════════════════════════════════════════════════ */
+const TAF_PILL_MAX = 4;   // au-delà, la numérotation devient illisible sur la tuile
+const TAF_STRIP_H  = 22;  // pastille 20px + respiration ; réservé par seatHeight()
+
+/** Liste des TAF à afficher en pastilles, ou null s'il faut garder le mode
+ *  « TAF actif » historique (coche unique).
+ *  Repli volontaire : 0 ou 1 TAF (aucun gain, et on ne change rien pour ceux
+ *  qui n'en donnent qu'un), plus de TAF_PILL_MAX, ou un TAF découpé en
+ *  plusieurs points (le numéro de pastille ne saurait plus quoi désigner). */
+function _tafPillList(){
+  const list=(typeof _getTafLabelsForCurrentSlot==='function') ? (_getTafLabelsForCurrentSlot()||[]) : [];
+  if(list.length<2 || list.length>TAF_PILL_MAX) return null;
+  if(typeof getTafPoints==='function' && list.some(t=>getTafPoints(t).length>1)) return null;
+  return list;
+}
+
+/** État d'une pastille : '' (non renseigné) | 'nonfait' | 'fait'. */
+function readTafSeatState(studentId, slotKey, tafIdx, pointIdx){
+  const k=buildTafSeatKey(studentId, slotKey, tafIdx, pointIdx);
+  const legacy=readLegacyTafSeatKey(studentId, slotKey, tafIdx);
+  if(S.tafCoches && (S.tafCoches[k] || S.tafCoches[legacy])) return 'nonfait';
+  if(S.tafFaits && S.tafFaits[k]) return 'fait';
+  return '';
+}
+
+/** Écrit l'état en respectant l'invariant (jamais dans les deux stores). */
+function writeTafSeatState(studentId, slotKey, tafIdx, pointIdx, state){
+  const k=buildTafSeatKey(studentId, slotKey, tafIdx, pointIdx);
+  const legacy=readLegacyTafSeatKey(studentId, slotKey, tafIdx);
+  if(!S.tafCoches) S.tafCoches={};
+  if(!S.tafFaits)  S.tafFaits={};
+  if(state==='nonfait'){
+    S.tafCoches[k]=true;
+    delete S.tafFaits[k];
+  } else if(state==='fait'){
+    delete S.tafCoches[k];
+    S.tafFaits[k]=true;
+  } else {
+    delete S.tafCoches[k];
+    delete S.tafFaits[k];
+  }
+  // La clé legacy (sans index de point) ne doit jamais survivre à une écriture,
+  // sinon readTafSeatState la relirait et figerait l'état sur « non fait ».
+  if(legacy!==k) delete S.tafCoches[legacy];
+  saveS();
+}
+
+/** 1 appui → non fait · 2 appuis → fait · 3 appuis → non renseigné. */
+function nextTafSeatState(cur){
+  return cur==='' ? 'nonfait' : (cur==='nonfait' ? 'fait' : '');
 }
 // === Phase 3d-1 — Typage séance CE/Gr/null ============================
 // Une séance peut être typée :
@@ -28679,6 +28767,10 @@ function applyPopupSwitches(){
   document.querySelectorAll('.seat-taf-wrap').forEach(el=>{
     el.style.display=tafMode?'flex':'none';
   });
+  // v11.3.28 (§4.14) — même règle pour la bande de pastilles multi-TAF.
+  document.querySelectorAll('.seat-taf-strip').forEach(el=>{
+    el.style.display=tafMode?'flex':'none';
+  });
   // V020-v181.6.4 — Toggles psw condensés du header mobile : refléter l'état
   // (utilise .psw-off, identique au desktop).
   ['statuts','comps','num','partic','taf'].forEach(k=>{
@@ -28730,6 +28822,11 @@ function toggleTafMode(){
   tafMode=!tafMode;
   if(tafMode) ensureActiveTafSelection();
   applyPopupSwitches();
+  // v11.3.28 (§4.14) — seatHeight() dépend désormais de tafMode (bande de
+  // pastilles) : un simple applyPopupSwitches ne suffit plus, il faut re-poser
+  // la géométrie du plan. Sans ça, la bande s'affiche dans une tuile restée
+  // à sa hauteur d'origine et déborde.
+  if(typeof renderClassroom==='function') renderClassroom();
 }
 
 function updateTafButton(){
@@ -30328,7 +30425,30 @@ function makeSeat(idx,name,extraCls){
     if(curSlotKey&&!isAbsent){
       // v37 Bloc 3 : source mise à niveau — tafVerifs explicites
       const tafList=_getTafLabelsForCurrentSlot();
-      if(tafList.length){
+      // v11.3.28 (§4.14) — bande multi-TAF si elle s'applique, sinon on retombe
+      // intégralement sur la coche unique historique (code inchangé plus bas).
+      const _pills=(typeof _tafPillList==='function') ? _tafPillList() : null;
+      if(_pills){
+        const stripEl=document.createElement('div');
+        stripEl.className='seat-taf-strip';
+        stripEl.style.display=tafMode?'flex':'none';
+        _pills.forEach((tafTxt, pi)=>{
+          const pill=document.createElement('div');
+          const st=readTafSeatState(name, curSlotKey||'', pi, 0);
+          pill.className='seat-taf-pill'+(st==='nonfait'?' tnf':st==='fait'?' done':'');
+          pill.textContent=String(pi+1);
+          pill.title='TAF '+(pi+1)+' : '+String(tafTxt||'').slice(0,120)
+            +'\n1 appui : non fait · 2 appuis : fait · 3 appuis : non renseigné';
+          pill.onclick=e=>{
+            e.stopPropagation();
+            const nx=nextTafSeatState(readTafSeatState(name, curSlotKey||'', pi, 0));
+            writeTafSeatState(name, curSlotKey||'', pi, 0, nx);
+            pill.className='seat-taf-pill'+(nx==='nonfait'?' tnf':nx==='fait'?' done':'');
+          };
+          stripEl.appendChild(pill);
+        });
+        seat.appendChild(stripEl);
+      } else if(tafList.length){
         const safeIdx=(typeof tafModeSelectedIndex==='number'&&tafModeSelectedIndex>=0&&tafModeSelectedIndex<tafList.length)?tafModeSelectedIndex:0;
         const tafPoints=getActiveTafPoints();
         const safePointIdx=(typeof tafModeSelectedPointIndex==='number'&&tafModeSelectedPointIndex>=0&&tafModeSelectedPointIndex<tafPoints.length)?tafModeSelectedPointIndex:0;
@@ -30824,6 +30944,11 @@ function seatHeight(name){
     if(hasMajor) h+=26;
   }
   h+=_compBadgeLines(name);
+  // v11.3.28 (§4.14) — bande de vérification multi-TAF. Réservée UNIQUEMENT
+  // pendant le mode vérif. et quand les pastilles s'appliquent : dès qu'on
+  // quitte le mode, la tuile reprend exactement sa hauteur historique.
+  if(typeof tafMode!=='undefined' && tafMode
+     && typeof _tafPillList==='function' && _tafPillList()) h+=TAF_STRIP_H;
   return h;
 }
 function getStudentEQFromIdx(si, floatTarget){
