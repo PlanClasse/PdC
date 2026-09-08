@@ -3869,7 +3869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.26';
+const APP_VERSION = 'v11.3.27';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -35233,7 +35233,12 @@ function renderStList(){
     const sev=severityClass(keys);
     const d=document.createElement('div');
     d.className='sti'+(seatedAny?' seated':'')+(isHl?' hl':'')+(sev?' st-'+sev:'');
-    d.draggable=!seatedAny && !isHl; d.dataset.student=id;
+    // v11.3.27 (§4.13) — BUG : la condition était `!seatedAny && !isHl`. Or cliquer
+    // un élève du volet appelle selectStudent() → hlStudent=id → re-rendu → isHl=true
+    // → draggable=false. Le geste naturel « je clique l'élève que je veux placer, puis
+    // je le glisse » désactivait donc le glisser, sans aucun signal (curseur "grab"
+    // conservé par la CSS). Seul « déjà placé » doit rendre la ligne non déplaçable.
+    d.draggable=!seatedAny; d.dataset.student=id;
     const label=getSidebarLabel(id);
     const eqLabel=seatedAny?getStudentEQFromIdx(si,rawCls.floatTarget):'—';
     const eqKey=eqLabel.replace('*','');
@@ -35262,7 +35267,9 @@ function renderStList(){
       }
       if(_contrainteSel1===id) d.style.outline='2px solid #F59E0B';
     }
-    if(!seatedAny && !isHl){
+    // v11.3.27 (§4.13) — même règle que draggable ci-dessus : la sélection (isHl) ne
+    // doit plus couper le câblage, ni au clavier/souris ni en tactile (appui long iPad).
+    if(!seatedAny){
       d.addEventListener('dragstart',onStDS); d.addEventListener('dragend',onDE);
       // V020-v169 — Tap-to-place tactile pour les élèves de la sidebar
       if(typeof _v169AttachTouchMove === 'function') _v169AttachTouchMove(d, 'student');
@@ -36126,7 +36133,11 @@ function _performDeplacement(targetSeatEl){
   const occ = seats[to] || null;
   if(src.t === 'student'){
     if(occ){
-      // Le siège cible est occupé : on annule (cohérent avec onDrop legacy)
+      // Le siège cible est occupé : on annule (cohérent avec onDrop legacy).
+      // v11.3.27 (§4.13) — le refus était TOTALEMENT silencieux : l'enseignant
+      // voyait son élève « ne pas partir » sans savoir pourquoi. Le comportement
+      // (refus) est inchangé, on l'explique simplement.
+      if(typeof showDropToast==='function') showDropToast('⚠️ Place déjà occupée — choisis une place libre');
       _v169ClearSource();
       return;
     }
@@ -55604,6 +55615,12 @@ const TIRAGE_CATS=[
   {id:'distribution', label:'📦 Distribution'},
   {id:'ramassage',    label:'🗂 Ramassage'},
   {id:'interrogation',label:'🎤 Interrogation'},
+  // v11.3.27 — 4e catégorie demandée par l'utilisateur. L'historique de tirage est
+  // stocké par catégorie (S.tirageHistory[classe][id]) : un nouvel id démarre donc
+  // avec un historique vide, sans migration ni impact sur les 3 existants.
+  // NB : l'id 'cahier' vit dans S.tirageHistory, store distinct des clés de statut —
+  // aucune collision avec le statut élève du même nom.
+  {id:'cahier',       label:'📓 Cahier à vérifier'},
 ];
 
 function openTirageModal(){
