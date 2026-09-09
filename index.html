@@ -3879,7 +3879,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.29';
+const APP_VERSION = 'v11.3.30';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -11122,6 +11122,32 @@ function _tempBlock(quoi){
   if(typeof showDropToast==='function') showDropToast('🕘 Plan temporaire — '+quoi+' est indisponible. Reviens au plan habituel d\'abord.');
   return true;
 }
+/* ── V035-V11.3.30 (lot 4) — Occupation d'une GEOMETRIE DONNEE ────────────
+   Differe de getCls().seats, qui rend la geometrie AFFICHEE. Deux appelants en
+   ont besoin :
+     - la trace-seance capture TOUJOURS les ilots, meme si l'ecran est en
+       rangees (elle parcourt ILOT_MAP) ;
+     - les deux constructeurs de page PDF, pour ne plus dependre de la valeur
+       ambiante de `layout` (ils etaient jusqu'ici corrects par accident, parce
+       que leur unique appelant les gardait derriere un test sur `layout`).
+
+   Implementation : on bascule `layout` le temps d'une lecture du proxy, ce qui
+   REUTILISE tout le dispatch existant — scope (classe / demi-groupe / groupe
+   inter-classes), plan temporaire, et filet. Reecrire ce dispatch a la main
+   serait la 4e copie de la meme logique : c'est exactement la duplication qui a
+   produit les bugs que ce lot repare. `finally` restaure la valeur meme en cas
+   d'exception ; aucun code asynchrone ne s'intercale.                        */
+function _seatsForLayoutId(lid){
+  const _prev=layout;
+  try{
+    layout=lid;
+    const c=(typeof getCls==='function')?getCls():null;
+    const a=c?c.seats:null;
+    return Array.isArray(a)?a:[];
+  }catch(e){ return []; }
+  finally{ layout=_prev; }
+}
+
 /* Purge des entrees du creneau arme (toutes geometries confondues). */
 function _tempClearAll(){
   _tempPlans={};
@@ -35914,7 +35940,15 @@ function _pdfHeader(clsCode, sub){
 function _pdfBoard(){ const b=document.createElement('div'); b.className='pdfp-board'; b.textContent='Tableau · Enseignant'; return b; }
 
 function _pdfBuildClassic(cls, clsCode, nums){
-  const seats=cls.seatsClassic||[];
+  // V035-V11.3.30 (lot 4) — Lisait `cls.seatsClassic`, le stockage BRUT. Deux
+  // consequences, toutes deux silencieuses :
+  //   1. en plan temporaire, l'ecran montrait la reorganisation du jour et le
+  //      papier imprimait le plan habituel ;
+  //   2. en DEMI-GROUPE, `cls` est l'objet CLASSE (seul `.seats` est detourne
+  //      vers les sieges du groupe) => on imprimait la classe entiere. Bug
+  //      preexistant, arbitre avec l'utilisateur : on repare. _pdfBuildCustom
+  //      faisait deja le bon choix et son commentaire l'annoncait.
+  const seats=_seatsForLayoutId('classic');
   const page=document.createElement('div'); page.className='pdfp-page';
   page.appendChild(_pdfHeader(clsCode,''));
   const body=document.createElement('div'); body.className='pdfp-body';
@@ -35940,7 +35974,9 @@ function _pdfBuildClassic(cls, clsCode, nums){
 }
 
 function _pdfBuildIlots(cls, clsCode, nums){
-  const seats=cls.seatsIlot||[];
+  // V035-V11.3.30 (lot 4) — idem _pdfBuildClassic : plan temporaire + scope
+  // demi-groupe. Voir le commentaire la-bas.
+  const seats=_seatsForLayoutId('ilots');
   const nSt=(cls.students||[]).length;
   const ft=cls.floatTarget||FLOAT_DEFAULT;
   const showFloat=nSt>28||FLOAT_IDX.some(idx=>seats[idx]);
@@ -41802,14 +41838,25 @@ function openSaveSeance(){
     // non assis (listés à part, par ex. flottants ou non placés ce jour-là).
     let _ilotsExport=null;
     if(extra._ilotsExportCb && extra._ilotsExportCb.checked){
-      const _cl=S.cl&&S.cl[curCls];
-      if(_cl && Array.isArray(_cl.seatsIlot) && typeof ILOT_MAP!=='undefined'){
+      // V035-V11.3.30 (lot 4) — Lisait S.cl[curCls].seatsIlot, le stockage BRUT
+      // de la CLASSE. C'est le plus critique des trois court-circuits : cette
+      // case existe pour repondre a « qui etait avec qui ce jour-la », donc
+      // exactement au besoin qui justifie le plan temporaire — un travail de
+      // groupe est le cas d'usage n°1, et la trace mentait precisement la.
+      // Elle ignorait de surcroit le scope demi-groupe / groupe inter-classes
+      // (bug preexistant, arbitre avec l'utilisateur : on repare, meme regle
+      // que le PDF).
+      // On demande explicitement la geometrie ILOTS : cette capture parcourt
+      // ILOT_MAP, elle ne doit donc PAS suivre la geometrie affichee si
+      // l'enseignante travaille en rangees au moment d'enregistrer.
+      const _seatsIl=_seatsForLayoutId('ilots');
+      if(_seatsIl.length && typeof ILOT_MAP!=='undefined'){
         const _grpAbs=(typeof getCurrentGrpId==='function')?getCurrentGrpId(curCls, slotKey):'';
         const _absentList=(typeof getEvalAbsentsForSlot==='function')?getEvalAbsentsForSlot(slotKey, curCls, _grpAbs):[];
         _ilotsExport={eqs:[], absentIds:[..._absentList], absentsHorsIlot:[]};
         const _placedIds=new Set();
         Object.entries(ILOT_MAP).forEach(([eqName, indices])=>{
-          const studentIds=indices.map(idx=>_cl.seatsIlot[idx]).filter(sid=>sid);
+          const studentIds=indices.map(idx=>_seatsIl[idx]).filter(sid=>sid);
           studentIds.forEach(sid=>_placedIds.add(sid));
           _ilotsExport.eqs.push({eq:eqName, studentIds});
         });
