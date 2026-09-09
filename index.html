@@ -3879,7 +3879,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.28';
+const APP_VERSION = 'v11.3.29';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -5002,6 +5002,24 @@ function _resolveLegacyCrcnId(compId){
 
 
 let S=loadS(), curCls=null, layout='classic', flipped=false, dragSrc=null;
+
+// V035-V11.3.29 — PLAN TEMPORAIRE (lot 1). Etat de session, VOLONTAIREMENT
+// HORS DE S : le plan temporaire ne doit PAS survivre a un rechargement
+// (fiche de cadrage §5.3, decision utilisateur « on laisse filer »). Le mettre
+// dans S le ferait persister via saveS(), puis fuir dans les exports et les
+// sauvegardes — cf. dette memo V18 §5.8 (S.tafCoches jamais purge). Declare
+// ici, sur la meme ligne que layout, pour partager exactement sa duree de vie.
+//   tempPlanActive : mode temporaire arme ?
+//   tempPlanSlot   : slotKey sur lequel il a ete arme (un seul par creneau) ;
+//                    sur tout autre creneau le plan temporaire est INERTE et
+//                    le plan permanent reapparait (fiche §5.1).
+//   _tempPlans     : { '<scope>|<slotKey>|<layoutId>' : {seats, layoutId, ts} }
+//                    Une entree PAR LAYOUT : si l'enseignante bascule
+//                    classique <-> ilots en cours de seance, la nouvelle
+//                    geometrie recoit sa propre copie du plan permanent. Sans
+//                    cela, les deplacements faits apres la bascule iraient
+//                    ecrire le plan PERMANENT — l'invariant n°1 tomberait.
+let tempPlanActive=false, tempPlanSlot=null, _tempPlans={};
 
 // §5.31c (S24) — Cleanup au load des décisions éval orphelines (filet général).
 // Différé via setTimeout pour s'assurer que toutes les fonctions globales sont
@@ -11029,6 +11047,88 @@ function _grpCustomOcc(grp, parentCls, layoutId){
   }
   return grp.layouts[layoutId].students;
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   PLAN TEMPORAIRE — noyau (V035-V11.3.29, lot 1)
+
+   Ce qui est temporaire, c'est l'AFFECTATION des eleves aux tables. Le LAYOUT
+   (la disposition des tables) ne change jamais : on reorganise les eleves DANS
+   la geometrie affichee. Cf. fiche de cadrage, §Vocabulaire et §3.
+
+   Point d'insertion : les 3 getters/setters de getCls().seats, ci-dessous.
+   Le corps historique de chaque getter est conserve MOT POUR MOT dans une
+   fonction locale _perm() ; on ne fait que le consulter en second.
+
+   INVARIANT N°1 — le plan permanent n'est JAMAIS ecrit tant que le mode est
+   arme. Il tient parce que :
+     - le getter rend le tableau temporaire (les deplacements mutent en place,
+       cf. _performDeplacement) ;
+     - le setter derive vers le store temporaire (randomPlace / clearSeats
+       AFFECTENT cls.seats, ils ne le mutent pas) ;
+     - les rares ecrivains qui court-circuitent le proxy (rotation, sync
+       classique<->ilots, import de plan, retrait d'un eleve) sont BLOQUES en
+       mode temporaire — cf. _tempBlock() et ses 4 appelants.
+   Toute nouvelle fonction qui ecrit .seatsClassic / .seatsIlot en direct doit
+   etre ajoutee a cette liste, SINON elle corrompra le plan permanent en
+   silence.
+
+   Filet : toute situation non resolue (pas de creneau, autre creneau, scope
+   introuvable, plan permanent illisible) rend null, et l'appelant retombe sur
+   le comportement historique. Aucune perte de donnees possible par ce chemin.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Cle de scope du plan temporaire. ATTENTION : ce n'est PAS _scopeBucketKey(),
+   qui confond un demi-groupe intra-classe avec sa classe (il rend curCls). Or
+   le demi-groupe a ses PROPRES sieges (grp.seatsClassic) : partager la cle
+   ferait fuir le plan temporaire d'un groupe vers la classe entiere. */
+function _tempScopeKey(){
+  if(typeof curGrpInter!=='undefined' && curGrpInter && S.groupes && S.groupes[curGrpInter]) return 'grp:'+curGrpInter;
+  if(typeof curGroupeId!=='undefined' && curGroupeId && S.groupes && S.groupes[curGroupeId] && S.groupes[curGroupeId].parentCls===curCls) return curCls+'|'+curGroupeId;
+  return curCls||null;
+}
+/* Cle complete, ou null si le plan temporaire ne s'applique pas ici. */
+function _tempPlanKey(){
+  if(!tempPlanActive) return null;
+  if(typeof curSlotKey==='undefined' || !curSlotKey) return null;
+  if(curSlotKey!==tempPlanSlot) return null;   // autre creneau => inerte (fiche §5.1)
+  const sc=_tempScopeKey(); if(!sc) return null;
+  return sc+'|'+curSlotKey+'|'+layout;
+}
+/* Lecture. permFn() rend le plan PERMANENT de la branche courante ; il n'est
+   appele qu'a la premiere lecture, pour amorcer la copie. */
+function _tempSeatsFor(permFn){
+  const k=_tempPlanKey(); if(!k) return null;
+  let e=_tempPlans[k];
+  if(!e){
+    let base=null;
+    try{ base=(typeof permFn==='function')?permFn():null; }catch(err){ base=null; }
+    if(!Array.isArray(base)) return null;      // filet : plan permanent illisible
+    e=_tempPlans[k]={seats:base.slice(), layoutId:layout, ts:Date.now()};
+  }
+  return Array.isArray(e.seats)?e.seats:null;
+}
+/* Ecriture (setter du proxy). Rend true si l'ecriture a ete DETOURNEE vers le
+   store temporaire — l'appelant doit alors s'arreter sans toucher a S. */
+function _tempSetSeats(v){
+  const k=_tempPlanKey(); if(!k) return false;
+  if(!Array.isArray(v)) return false;
+  _tempPlans[k]={seats:v, layoutId:layout, ts:Date.now()};
+  return true;
+}
+/* Garde des ecrivains qui court-circuitent le proxy. Rend true si l'action
+   doit etre refusee (et l'explique — un refus silencieux est un bug d'UX,
+   cf. memo V18 §2). */
+function _tempBlock(quoi){
+  if(!_tempPlanKey()) return false;
+  if(typeof showDropToast==='function') showDropToast('🕘 Plan temporaire — '+quoi+' est indisponible. Reviens au plan habituel d\'abord.');
+  return true;
+}
+/* Purge des entrees du creneau arme (toutes geometries confondues). */
+function _tempClearAll(){
+  _tempPlans={};
+  tempPlanActive=false;
+  tempPlanSlot=null;
+}
+
 function getCls(){
   // V035-v181.15.6 (v4a) — Scope « groupe inter-classes » : si curGrpInter pointe
   // un groupe, on renvoie le GROUPE comme objet cls-like (membres = g.students,
@@ -11041,12 +11141,19 @@ function getCls(){
     try { delete g.seats; } catch(e){}
     Object.defineProperty(g,'seats',{
       get:()=>{
-        if(layout==='classic') return g.seatsClassic;
-        if(layout==='ilots')   return g.seatsIlot;
-        if(_pdcUg&&g.layouts&&g.layouts[layout]) return g.layouts[layout].students;
-        return g.seatsClassic; // filet
+        // V035-V11.3.29 — Plan temporaire : le corps historique est intact,
+        // simplement isole dans _perm() pour pouvoir etre consulte en second.
+        const _perm=()=>{
+          if(layout==='classic') return g.seatsClassic;
+          if(layout==='ilots')   return g.seatsIlot;
+          if(_pdcUg&&g.layouts&&g.layouts[layout]) return g.layouts[layout].students;
+          return g.seatsClassic; // filet
+        };
+        const _t=_tempSeatsFor(_perm); if(_t) return _t;
+        return _perm();
       },
       set:v=>{
+        if(_tempSetSeats(v)) return;   // V035-V11.3.29 — derive vers le store temporaire
         if(layout==='classic') g.seatsClassic=v;
         else if(layout==='ilots') g.seatsIlot=v;
         else if(_pdcUg&&g.layouts&&g.layouts[layout]) g.layouts[layout].students=v;
@@ -11085,12 +11192,21 @@ function getCls(){
       // V035-v181.15.13 — Mode groupe + custom : occupation PROPRE au groupe
       // (géométrie partagée avec la classe), plus de partage du tableau classe.
       get:()=>{
-        if(layout==='classic') return grp.seatsClassic;
-        if(layout==='ilots')   return grp.seatsIlot;
-        if(_pdcU&&c.layouts&&c.layouts[layout]) return _grpCustomOcc(grp, c, layout);
-        return grp.seatsClassic; // filet
+        // V035-V11.3.29 — Plan temporaire : corps historique intact dans _perm().
+        // Note : la branche custom a un EFFET DE BORD voulu (_grpCustomOcc cree
+        // ou redimensionne l'occupation du groupe) — le garder dans _perm()
+        // preserve cet effet, y compris a l'amorcage de la copie temporaire.
+        const _perm=()=>{
+          if(layout==='classic') return grp.seatsClassic;
+          if(layout==='ilots')   return grp.seatsIlot;
+          if(_pdcU&&c.layouts&&c.layouts[layout]) return _grpCustomOcc(grp, c, layout);
+          return grp.seatsClassic; // filet
+        };
+        const _t=_tempSeatsFor(_perm); if(_t) return _t;
+        return _perm();
       },
       set:v=>{
+        if(_tempSetSeats(v)) return;   // V035-V11.3.29 — derive vers le store temporaire
         if(layout==='classic') grp.seatsClassic=v;
         else if(layout==='ilots') grp.seatsIlot=v;
         else if(_pdcU&&c.layouts&&c.layouts[layout]){ _grpCustomOcc(grp, c, layout); grp.layouts[layout].students=v; }
@@ -11102,12 +11218,18 @@ function getCls(){
     Object.defineProperty(c,'seats',{
       // V020-v181.8.0 — PdC Universel : proxy étendu (3 branches), idem ci-dessus hors groupe.
       get:()=>{
-        if(layout==='classic') return c.seatsClassic;
-        if(layout==='ilots')   return c.seatsIlot;
-        if(_pdcU&&c.layouts&&c.layouts[layout]) return c.layouts[layout].students;
-        return c.seatsClassic; // filet
+        // V035-V11.3.29 — Plan temporaire : corps historique intact dans _perm().
+        const _perm=()=>{
+          if(layout==='classic') return c.seatsClassic;
+          if(layout==='ilots')   return c.seatsIlot;
+          if(_pdcU&&c.layouts&&c.layouts[layout]) return c.layouts[layout].students;
+          return c.seatsClassic; // filet
+        };
+        const _t=_tempSeatsFor(_perm); if(_t) return _t;
+        return _perm();
       },
       set:v=>{
+        if(_tempSetSeats(v)) return;   // V035-V11.3.29 — derive vers le store temporaire
         if(layout==='classic') c.seatsClassic=v;
         else if(layout==='ilots') c.seatsIlot=v;
         else if(_pdcU&&c.layouts&&c.layouts[layout]) c.layouts[layout].students=v;
@@ -32015,7 +32137,10 @@ function summarizePlanImport(d){
 
 // ── Import plan de classe depuis JSON (généré par l'outil import-plan-classe.html) ──
 function importPlanDeClasse(){
-
+  // V035-V11.3.29 — Plan temporaire : l'import ecrit cls.seatsClassic /
+  // cls.seatsIlot en direct (l.~31955 et suivantes), hors proxy. Il ecraserait
+  // donc le plan PERMANENT pendant que l'ecran montre le plan temporaire.
+  if(_tempBlock('l\'import d\'un plan')) return;
   document.getElementById('mt').textContent='📥 Importer un plan de classe';
   document.getElementById('mb').textContent='Collez le JSON généré par l\'outil "Import Plan de Classe" ou ouvrez directement un fichier .json.';
   document.getElementById('mok').style.display='none';
@@ -32253,6 +32378,11 @@ Vérifiez les placements puis synchronisez classique ↔ îlots si nécessaire.`
 }
 
 function syncLayouts(){
+  // V035-V11.3.29 — Plan temporaire : la synchro recopie seatsClassic vers
+  // seatsIlot (ou l'inverse) en direct, hors proxy => ecrasement du plan
+  // permanent. Et l'operation n'a pas de sens ici : chaque geometrie a sa
+  // propre copie temporaire.
+  if(_tempBlock('la synchro classique/ilots')) return;
   // Build a choice modal
   document.getElementById('mt').textContent='Synchroniser les places';
   document.getElementById('mb').textContent='Choisissez le sens de la synchronisation. Les places de la vue source seront copiées vers la vue destination (écrasement).';
@@ -35421,6 +35551,148 @@ function renderStList(){
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   PLAN TEMPORAIRE — interface (V035-V11.3.29, lot 1)
+
+   Le risque de cette fonctionnalite n'est pas technique, il est humain : croire
+   qu'on est sur le plan permanent alors qu'on est sur le temporaire (ou
+   l'inverse). D'ou un bandeau PERMANENT, place dans la barre d'outils — donc
+   hors de la zone qui defile — et non dans le plan lui-meme : sur iPad en
+   paysage le plan occupe deja toute la hauteur et un bandeau interne sortirait
+   du champ des le premier defilement.
+
+   Tout est construit en createElement : aucune balise litterale n'est ajoutee
+   au fichier, les invariants de balises restent inchanges (memo V18 §2).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function activateTempPlan(){
+  if(!_tempScopeKey()){
+    if(typeof showDropToast==='function') showDropToast('⚠️ Choisis d\'abord une classe.');
+    return;
+  }
+  if(typeof curSlotKey==='undefined' || !curSlotKey){
+    // Sans creneau : aucune seance ou deposer l'instantane, et rien qui
+    // purgerait le plan temporaire ensuite. On refuse, en disant pourquoi.
+    if(typeof showModal==='function') showModal('Plan temporaire indisponible',
+      'Le plan temporaire s\'active depuis un COURS (barre du haut : ◁ ▷ pour choisir le creneau). Il est enregistre avec la seance, puis efface.',
+      null, true);
+    return;
+  }
+  // Un seul plan temporaire a la fois (fiche §9). S'il en restait un, arme sur
+  // un AUTRE creneau, ses entrees seraient deja inatteignables : on les purge
+  // plutot que de les laisser s'accumuler en memoire.
+  if(tempPlanSlot && tempPlanSlot!==curSlotKey) _tempPlans={};
+  tempPlanActive=true; tempPlanSlot=curSlotKey;
+  // Pas de copie explicite ici : la premiere lecture du proxy amorce la copie
+  // du plan permanent pour la geometrie affichee (_tempSeatsFor). Une bascule
+  // classique <-> ilots amorcera la sienne, a partir du plan permanent
+  // correspondant.
+  if(typeof renderApp==='function') renderApp();
+}
+
+function exitTempPlan(){
+  if(!tempPlanActive){ return; }
+  // Destructif (fiche §6) => confirmation. Le plan PERMANENT, lui, n'a jamais
+  // bouge : seul le travail de reorganisation est perdu.
+  if(typeof showModal==='function'){
+    showModal('Revenir au plan habituel ?',
+      'Les deplacements faits en plan temporaire seront abandonnes. Ton plan habituel, lui, n\'a jamais ete modifie : il reapparait tel quel.',
+      ()=>{
+        _tempClearAll();
+        if(typeof renderApp==='function') renderApp();
+        if(typeof showDropToast==='function') showDropToast('↩️ Retour au plan habituel');
+      });
+  } else {
+    _tempClearAll();
+    if(typeof renderApp==='function') renderApp();
+  }
+}
+
+function toggleTempPlan(){
+  if(tempPlanActive) exitTempPlan();
+  else activateTempPlan();
+}
+
+/* Bandeau. Construit a la demande, retire des que le mode s'eteint (y compris
+   quand on navigue vers un autre creneau : _tempPlanKey() devient null). */
+function _tempPlanBannerEl(host, compact){
+  let b=host.querySelector('.temp-plan-banner');
+  if(b) return b;
+  b=document.createElement('div');
+  b.className='temp-plan-banner';
+  b.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap;'
+    +'background:#7C2D12;color:#FFEDD5;border-top:2px solid #F97316;'
+    +'padding:'+(compact?'5px 8px':'6px 12px')+';font-size:'+(compact?'11px':'12.5px')
+    +';font-weight:800;letter-spacing:.01em;flex-shrink:0';
+  const lbl=document.createElement('span');
+  lbl.className='temp-plan-banner-lbl';
+  lbl.style.cssText='flex:1;min-width:120px;line-height:1.35';
+  b.appendChild(lbl);
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.className='temp-plan-banner-exit';
+  btn.textContent='↩ Revenir au plan habituel';
+  btn.style.cssText='background:#FFEDD5;color:#7C2D12;border:1.5px solid #FDBA74;'
+    +'border-radius:6px;padding:3px 9px;font-size:'+(compact?'10.5px':'11.5px')
+    +';font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap';
+  btn.onclick=(e)=>{ e.stopPropagation(); exitTempPlan(); };
+  b.appendChild(btn);
+  host.appendChild(b);
+  return b;
+}
+
+function _renderTempPlanBanner(){
+  if(typeof document==='undefined') return;
+  const on=!!_tempPlanKey();
+  // Deux hotes : la barre d'outils (desktop / iPad) et la vue plan mobile
+  // (sous body.is-phone la barre d'outils est reduite a une hauteur nulle par
+  // le CSS, le bandeau y serait invisible).
+  const hosts=[document.querySelector('.topbar'), document.getElementById('pc-mobile')];
+  hosts.forEach((host, i)=>{
+    if(!host) return;
+    const old=host.querySelector('.temp-plan-banner');
+    if(!on){ if(old&&old.parentNode) old.parentNode.removeChild(old); return; }
+    const b=_tempPlanBannerEl(host, i===1);
+    const lbl=b.querySelector('.temp-plan-banner-lbl');
+    if(lbl) lbl.textContent='🕘 Plan temporaire — sera enregistre avec la seance puis efface. Ton plan habituel n\'est pas modifie.';
+    // Toujours en dernier : un rendu qui ajoute des elements a l'hote ne doit
+    // pas repousser le bandeau au milieu.
+    if(b.parentNode===host && host.lastChild!==b) host.appendChild(b);
+  });
+}
+
+/* Entree du menu ⋯ Plus, zone Placement. Injectee en JS (pas de balise
+   litterale ajoutee au fichier), idempotente. */
+function _ensureTempPlanMenuItem(){
+  if(typeof document==='undefined') return;
+  const zone=document.querySelector('.pm-zone--placement');
+  if(!zone) return;
+  let b=document.getElementById('pmi-temp-plan');
+  if(!b){
+    b=document.createElement('button');
+    b.id='pmi-temp-plan';
+    b.type='button';
+    b.className='pmcard';
+    const ic=document.createElement('span');
+    ic.className='pmcard-ic';
+    ic.textContent='🕘';
+    b.appendChild(ic);
+    b.appendChild(document.createTextNode('Plan temporaire'));
+    b.onclick=()=>{
+      if(typeof closePlusMenu==='function') closePlusMenu();
+      setTimeout(toggleTempPlan, 50);   // laisse le menu se refermer avant la modale
+    };
+    zone.appendChild(b);
+  }
+  const on=!!_tempPlanKey();
+  const txt=b.lastChild;
+  if(txt && txt.nodeType===3) txt.textContent=on?'Quitter le plan temp.':'Plan temporaire';
+  b.style.fontWeight=on?'800':'';
+  b.title=on
+    ? 'Abandonner le plan temporaire et revenir au plan habituel'
+    : 'Reorganiser les eleves pour ce cours seulement — le plan habituel n\'est pas modifie';
+}
+
 function renderClassroom(){
   const area=document.getElementById('cls-area');
   area.innerHTML='';
@@ -35456,6 +35728,10 @@ function renderClassroom(){
   // V020-v181.6.0 — Peupler aussi la vue PdC mobile (#pc-mobile, sibling).
   // No-op si l'élément est absent (autre écran que plan-classe).
   if(typeof renderClassroomMobile==='function') renderClassroomMobile();
+  // V035-V11.3.29 — Plan temporaire : bandeau + entree de menu. Places APRES
+  // renderClassroomMobile, qui reecrit le contenu de la vue mobile.
+  try{ _renderTempPlanBanner(); }catch(e){}
+  try{ _ensureTempPlanMenuItem(); }catch(e){}
 }
 
 // V020-v181.8.3 — PdC Universel : renderer pour les layouts custom.
@@ -36431,6 +36707,11 @@ document.addEventListener('click', function(e){
 
 /* ============================================================ ACTIONS */
 function removeSt(name){
+  // V035-V11.3.29 — Plan temporaire : retirer un eleve de la CLASSE modifie
+  // c.seatsClassic / c.seatsIlot en direct (plan permanent) et laisserait en
+  // plus son uid orphelin dans le tableau temporaire. C'est une modification
+  // de la composition de la classe, pas un placement : hors sujet ici.
+  if(_tempBlock('le retrait d\'un eleve de la classe')) return;
   const c=S.cl[curCls]; if(!c) return;
   c.students=c.students.filter(s=>s!==name);
   if(c.seatsClassic) c.seatsClassic=c.seatsClassic.map(s=>s===name?null:s);
@@ -36485,6 +36766,10 @@ function removeSeatSlot(idx){getCls().seats[idx]=null; saveS(); renderApp();}
    Logique en vue îlots, transposée automatiquement sur les deux vues.
 ─────────────────────────────────────────────────────────────────────────── */
 function rotatePlaces(applyClassic, applyIlot){
+  // V035-V11.3.29 — Plan temporaire : la rotation AFFECTE cls.seatsClassic et
+  // cls.seatsIlot en direct (voir plus bas), hors proxy. Elle ecraserait le
+  // plan permanent. Blocage explicite plutot que refus muet.
+  if(_tempBlock('la rotation des equipes')) return;
   // Colonne G identique dans les deux vues : EQ4→EQ5→EQ6→EQ7→EQ4
   const ROT_G=[
     ['EQ4',0,'EQ5',3],['EQ4',1,'EQ5',2],['EQ4',2,'EQ5',1],['EQ4',3,'EQ5',0],
