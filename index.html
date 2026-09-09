@@ -3879,7 +3879,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.30';
+const APP_VERSION = 'v11.3.31';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -41377,21 +41377,26 @@ function openSaveSeance(){
   addWrap.appendChild(freeAddedList);
   extra.appendChild(addWrap);
 
-  // V020-v181.5.3 — Bug §17.M : option d'export composition des îlots
-  // dans la trace-séance.txt. Décochée par défaut. Si cochée, doSaveFull
-  // collecte la composition seatsIlot du moment et la liste des absents
-  // (lue via getEvalAbsentsForSlot, qui résout le grpId correctement),
-  // puis la passe à downloadSeanceTxtReport via data.ilots.
+  // V035-V11.3.31 — Option « joindre le plan du jour » dans la trace-séance.txt.
+  // Décochée par défaut. Si cochée, doSaveFull appelle _buildPlanJourForTrace,
+  // qui capture la GÉOMÉTRIE AFFICHÉE (plan temporaire et scope compris), et la
+  // passe à downloadSeanceTxtReport via data.plan.
+  // Le libellé ANNONCE la vue qui sera jointe : jusqu'en v11.3.30 la case disait
+  // « îlots » et joignait les îlots même en vue classique — l'enseignante ne
+  // pouvait pas le deviner avant d'ouvrir le fichier.
   const ilotsWrap=document.createElement('label');
   ilotsWrap.style.cssText='display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11px;color:var(--tx2);margin-top:10px;padding:6px 10px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur2);user-select:none';
   const ilotsCb=document.createElement('input'); ilotsCb.type='checkbox';
   ilotsCb.style.cssText='width:13px;height:13px;accent-color:var(--acc);flex-shrink:0';
   const ilotsLblEl=document.createElement('span');
-  ilotsLblEl.textContent='Inclure la composition des îlots dans la trace-séance (avec mention des absents)';
+  const _vueLbl=(layout==='ilots')?'vue îlots'
+              :(layout==='classic')?'vue classique'
+              :'layout personnalisé';
+  ilotsLblEl.textContent='Inclure le plan de classe du jour ('+_vueLbl+') dans la trace-séance, avec mention des absents';
   ilotsLblEl.style.cssText='line-height:1.3';
   ilotsWrap.appendChild(ilotsCb); ilotsWrap.appendChild(ilotsLblEl);
   extra.appendChild(ilotsWrap);
-  extra._ilotsExportCb=ilotsCb; // exposé pour doSaveFull
+  extra._planExportCb=ilotsCb; // exposé pour doSaveFull
 
   // Patch doSave to include contenu, taf, seqId, seanId + COURS1 décisions
   const _origDoSave=doSave;
@@ -41830,38 +41835,13 @@ function openSaveSeance(){
     // V020-v181.5.3 — Bug §17.M : si la checkbox d'export îlots est cochée,
     // capturer la composition seatsIlot du moment + la liste des absents.
     // On parcourt ILOT_MAP pour respecter l'ordre/nommage canonique des îlots.
-    // V020-v181.5.4 — Fix §17.M.1 : la constante est ILOT_MAP, pas EQ_BUCKETS
-    // (nom inventé à tort lors de la livraison initiale → typeof undefined,
-    // collecte silencieusement court-circuitée).
-    // Les absents sont lus via getEvalAbsentsForSlot (qui résout grpId), et on
-    // distingue les absents assis (marqués `(absent)` dans leur îlot) des absents
-    // non assis (listés à part, par ex. flottants ou non placés ce jour-là).
-    let _ilotsExport=null;
-    if(extra._ilotsExportCb && extra._ilotsExportCb.checked){
-      // V035-V11.3.30 (lot 4) — Lisait S.cl[curCls].seatsIlot, le stockage BRUT
-      // de la CLASSE. C'est le plus critique des trois court-circuits : cette
-      // case existe pour repondre a « qui etait avec qui ce jour-la », donc
-      // exactement au besoin qui justifie le plan temporaire — un travail de
-      // groupe est le cas d'usage n°1, et la trace mentait precisement la.
-      // Elle ignorait de surcroit le scope demi-groupe / groupe inter-classes
-      // (bug preexistant, arbitre avec l'utilisateur : on repare, meme regle
-      // que le PDF).
-      // On demande explicitement la geometrie ILOTS : cette capture parcourt
-      // ILOT_MAP, elle ne doit donc PAS suivre la geometrie affichee si
-      // l'enseignante travaille en rangees au moment d'enregistrer.
-      const _seatsIl=_seatsForLayoutId('ilots');
-      if(_seatsIl.length && typeof ILOT_MAP!=='undefined'){
-        const _grpAbs=(typeof getCurrentGrpId==='function')?getCurrentGrpId(curCls, slotKey):'';
-        const _absentList=(typeof getEvalAbsentsForSlot==='function')?getEvalAbsentsForSlot(slotKey, curCls, _grpAbs):[];
-        _ilotsExport={eqs:[], absentIds:[..._absentList], absentsHorsIlot:[]};
-        const _placedIds=new Set();
-        Object.entries(ILOT_MAP).forEach(([eqName, indices])=>{
-          const studentIds=indices.map(idx=>_seatsIl[idx]).filter(sid=>sid);
-          studentIds.forEach(sid=>_placedIds.add(sid));
-          _ilotsExport.eqs.push({eq:eqName, studentIds});
-        });
-        _absentList.forEach(sid=>{ if(!_placedIds.has(sid)) _ilotsExport.absentsHorsIlot.push(sid); });
-      }
+    // V035-V11.3.31 — Capture du PLAN DU JOUR. Toute la logique est dans
+    // _buildPlanJourForTrace (a cote du rendu TXT, ou on la relira) : geometrie
+    // AFFICHEE, scope courant, plan temporaire, absents. Rend null s'il n'y a
+    // rien a dire — la section disparait alors du fichier.
+    let _planExport=null;
+    if(extra._planExportCb && extra._planExportCb.checked){
+      try{ _planExport=_buildPlanJourForTrace(slotKey, curCls); }catch(e){ _planExport=null; }
     }
 
     // V035-v181.15.30 (v5c-2a-3) — identité scope pour l'export (nom + en-tête)
@@ -41892,7 +41872,7 @@ function openSaveSeance(){
       observations:seance.observations||{},
       tasks:taskRows,
       evalCompPlan:evalCompRows,
-      ilots:_ilotsExport
+      plan:_planExport
     });
 
     // ── Injection vérification TAF au cours suivant (stratégie A) ──
@@ -58497,28 +58477,43 @@ function buildSeanceTxtReport(data){
   lines.push((data.commentaire&&data.commentaire.trim())?data.commentaire.trim():'—');
   lines.push('');
 
-  // V020-v181.5.3 — Bug §17.M : composition des îlots (optionnelle).
-  // Activée par la checkbox du modal Enregistrer Séance. Reflète l'état
-  // de S.cl[cls].seatsIlot au moment de la validation, avec mention
-  // (absent) pour chaque élève marqué 'absent' dans S.statutsCours du slot.
-  if(data.ilots && Array.isArray(data.ilots.eqs) && data.ilots.eqs.length){
-    const _absSet=new Set(data.ilots.absentIds||[]);
-    lines.push('COMPOSITION DES ÎLOTS');
+  // V035-V11.3.31 — PLAN DU JOUR (optionnel, case à cocher du modal Séance).
+  // Remplace la section « COMPOSITION DES ÎLOTS » de V020-v181.5.3, qui ne
+  // savait décrire que les îlots. Suit désormais la géométrie affichée —
+  // cf. _buildPlanJourForTrace, juste au-dessus. Mention (absent) pour chaque
+  // élève marqué 'absent' dans le slot.
+  if(data.plan && Array.isArray(data.plan.groupes) && data.plan.groupes.length){
+    const P=data.plan;
+    const _absSet=new Set(P.absentIds||[]);
+    const _nm=(sid)=>{
+      const name=(typeof getFullName==='function')?getFullName(sid):sid;
+      return name + (_absSet.has(sid)?' (absent)':'');
+    };
+    lines.push('PLAN DE CLASSE DU JOUR'+(P.vue?(' ('+P.vue+')'):''));
     lines.push('-'.repeat(78));
-    data.ilots.eqs.forEach(eq=>{
-      const labels=(eq.studentIds||[]).map(sid=>{
-        const name=(typeof getFullName==='function')?getFullName(sid):sid;
-        return name + (_absSet.has(sid)?' (absent)':'');
-      });
-      lines.push(eq.eq + ' : ' + (labels.length?labels.join(', '):'(vide)'));
+    P.groupes.forEach(g=>{
+      const ids=g.studentIds||[];
+      const occupes=ids.filter(Boolean);
+      let txt;
+      if(!occupes.length) txt='(vide)';
+      else if(g.avecVides) txt=ids.map(sid=>sid?_nm(sid):'(vide)').join(', ');
+      else txt=occupes.map(_nm).join(', ');
+      lines.push(g.label+' : '+txt);
     });
-    if((data.ilots.absentsHorsIlot||[]).length){
+    if((P.volantes||[]).length){
+      lines.push('Tables volantes : '+P.volantes.map(_nm).join(', '));
+    }
+    if(P.binomes && (P.binomes.length || (P.seuls||[]).length)){
       lines.push('');
-      lines.push('Absents non assis dans un îlot :');
-      data.ilots.absentsHorsIlot.forEach(sid=>{
-        const name=(typeof getFullName==='function')?getFullName(sid):sid;
-        lines.push('- '+name);
-      });
+      lines.push('Binômes (tables collées)');
+      lines.push('-'.repeat(78));
+      P.binomes.forEach(pr=>lines.push(_nm(pr[0])+' + '+_nm(pr[1])));
+      if((P.seuls||[]).length) lines.push('Seuls à leur table : '+P.seuls.map(_nm).join(', '));
+    }
+    if((P.absentsHorsPlan||[]).length){
+      lines.push('');
+      lines.push('Absents non assis : '+P.absentsHorsPlan.map(sid=>
+        (typeof getFullName==='function')?getFullName(sid):sid).join(', '));
     }
     lines.push('');
   }
@@ -58618,6 +58613,95 @@ function buildSeanceTxtReport(data){
   lines.push('Fin du relevé.');
 
   return lines.join('\n');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V035-V11.3.31 — PLAN DU JOUR joint a la trace-seance
+
+   Remplace la capture « composition des ilots » de V020-v181.5.3, qui parcourait
+   TOUJOURS ILOT_MAP : en vue classique elle joignait donc la composition d'ilots
+   habituelle, c'est-a-dire un plan que l'enseignante n'utilisait pas. Signale par
+   l'utilisateur apres avoir fait un plan temporaire en rangees et vu les ilots
+   dans le fichier.
+
+   Desormais la capture suit la GEOMETRIE AFFICHEE (et, via _seatsForLayoutId, le
+   scope courant et le plan temporaire) :
+     - ilots   -> EQ1..EQ7, plus les tables volantes ;
+     - classique -> 6 rangees de 5, plus les binomes de tables collees ;
+     - layout perso -> les rangees de la grille, couloirs ignores.
+
+   ⚠️ Correction annexe : les places volantes (FLOAT_IDX) n'appartiennent a aucune
+   entree d'ILOT_MAP. Un eleve assis sur une volante DISPARAISSAIT purement et
+   simplement de la trace. Elles ont desormais leur ligne.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _buildPlanJourForTrace(slotKey, clsCode){
+  const lay=layout;
+  const seats=(typeof _seatsForLayoutId==='function')?_seatsForLayoutId(lay):[];
+  if(!Array.isArray(seats)||!seats.length) return null;
+
+  const _grp=(typeof getCurrentGrpId==='function')?getCurrentGrpId(clsCode, slotKey):'';
+  const absentList=(typeof getEvalAbsentsForSlot==='function')?getEvalAbsentsForSlot(slotKey, clsCode, _grp):[];
+  const placed=new Set();
+  const out={kind:'classic', vue:'', groupes:[], binomes:null, seuls:null, volantes:null,
+             absentIds:[...absentList], absentsHorsPlan:[]};
+
+  if(lay==='ilots' && typeof ILOT_MAP!=='undefined'){
+    out.kind='ilots'; out.vue='vue îlots';
+    Object.entries(ILOT_MAP).forEach(([eq, idxs])=>{
+      const ids=idxs.map(i=>seats[i]).filter(Boolean);
+      ids.forEach(id=>placed.add(id));
+      out.groupes.push({label:eq, studentIds:ids});
+    });
+    const vol=((typeof FLOAT_IDX!=='undefined')?FLOAT_IDX:[]).map(i=>seats[i]).filter(Boolean);
+    vol.forEach(id=>placed.add(id));
+    if(vol.length) out.volantes=vol;
+  } else if(lay==='classic'){
+    out.kind='classic'; out.vue='vue classique';
+    // 6 rangees de 5, comme renderClassic et _pdfBuildClassic.
+    for(let r=0;r<6;r++){
+      const ids=[];
+      for(let c=0;c<5;c++){ const id=seats[r*5+c]||null; ids.push(id); if(id) placed.add(id); }
+      out.groupes.push({label:'Rangée '+(r+1), studentIds:ids, avecVides:true});
+    }
+    // Binomes : les colonnes 1-2 et 4-5 sont des tables COLLEES (bord partage,
+    // cf. renderClassic / _pdfBuildClassic) ; la colonne 3 est isolee. C'est la
+    // seule vue ou cette notion existe — en ilots l'equipe joue deja ce role.
+    const bin=[], seuls=[];
+    for(let r=0;r<6;r++){
+      [[0,1],[3,4]].forEach(pair=>{
+        const A=seats[r*5+pair[0]], B=seats[r*5+pair[1]];
+        if(A&&B) bin.push([A,B]);
+        else if(A) seuls.push(A);
+        else if(B) seuls.push(B);
+      });
+      const M=seats[r*5+2]; if(M) seuls.push(M);
+    }
+    out.binomes=bin; out.seuls=seuls;
+  } else {
+    const c=(typeof getCls==='function')?getCls():null;
+    const ld=c&&c.layouts&&c.layouts[lay];
+    const positions=(ld&&ld.seats)||[];
+    if(!positions.length) return null;
+    out.kind='custom';
+    out.vue=String((c&&c.layoutLabels&&c.layoutLabels[lay])||lay);
+    const rows={};
+    positions.forEach((p,i)=>{
+      if(!p) return;
+      const r=(typeof p.row==='number')?p.row:0;
+      if(!rows[r]) rows[r]=[];
+      rows[r].push({col:(typeof p.col==='number')?p.col:0, id:seats[i]||null});
+    });
+    Object.keys(rows).map(Number).sort((a,b)=>a-b).forEach((r,n)=>{
+      const ids=rows[r].sort((x,y)=>x.col-y.col).map(x=>x.id);
+      ids.forEach(id=>{ if(id) placed.add(id); });
+      out.groupes.push({label:'Rangée '+(n+1), studentIds:ids, avecVides:true});
+    });
+  }
+
+  absentList.forEach(id=>{ if(!placed.has(id)) out.absentsHorsPlan.push(id); });
+  const anyPlaced=out.groupes.some(g=>(g.studentIds||[]).some(Boolean)) || !!(out.volantes&&out.volantes.length);
+  if(!anyPlaced && !out.absentsHorsPlan.length) return null;   // rien a dire : pas de section
+  return out;
 }
 
 function downloadSeanceTxtReport(data){
