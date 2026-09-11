@@ -3879,7 +3879,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.31';
+const APP_VERSION = 'v11.3.35';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -6560,6 +6560,23 @@ function renderHomeMobile(){
 // Chaque champ n'est posé que si l'utilisateur a touché le textarea correspondant.
 // Debounce 300ms pour ne pas hammer localStorage à chaque keystroke.
 let _seanceDraftSaveT = null;
+/** V035-V11.3.35 (Q3) — Un brouillon VIDE ne masque jamais une donnée enregistrée.
+ *  Le brouillon des textareas du modal Séance est écrit à CHAQUE frappe, y
+ *  compris quand le champ est vidé, et n'est effacé qu'à l'ENREGISTREMENT.
+ *  Vider un champ puis annuler (ou simplement fermer) laissait donc un `''`
+ *  prioritaire qui masquait la valeur enregistrée à chaque réouverture — et le
+ *  premier enregistrement suivant la détruisait pour de bon, sans un mot.
+ *  Un brouillon vide n'apporte rien : on ne le retient que s'il n'y a rien
+ *  d'enregistré à afficher. Limite assumée : un brouillon TRONQUÉ (non vide)
+ *  reste prioritaire — c'est bien une saisie en cours, on ne peut pas deviner.
+ *  @returns {{value:string, fromDraft:boolean}}
+ */
+function _draftOrSaved(draftVal, savedVal){
+  const saved = String(savedVal==null ? '' : savedVal);
+  const useDraft = (typeof draftVal === 'string') && (draftVal.trim() !== '' || !saved.trim());
+  return { value: useDraft ? draftVal : saved, fromDraft: useDraft };
+}
+
 function _persistSeanceContentDraft(cls, slotKey, fieldKey, value){
   if(!cls || !slotKey || !fieldKey) return;
   if(!S.seanceContentDraft) S.seanceContentDraft = {};
@@ -11146,6 +11163,53 @@ function _seatsForLayoutId(lid){
     return Array.isArray(a)?a:[];
   }catch(e){ return []; }
   finally{ layout=_prev; }
+}
+
+/* ── V035-V11.3.32 (lot 2) — INSTANTANE du plan temporaire pour la seance ──
+   Rend l'objet a ranger dans seance.planTemp, ou null s'il n'y a pas de plan
+   temporaire actif sur ce creneau. C'est lui qui permettra a Sc.Prec. de
+   REDESSINER la salle (lot 3) — a ne pas confondre avec la trace-seance TXT,
+   qui decrit le plan en texte dans un fichier (cf. _buildPlanJourForTrace).
+
+   Decision utilisateur : on n'enregistre l'instantane QUE pour les seances
+   reorganisees. Une seance ordinaire n'en porte pas.
+
+   On ne capture que la GEOMETRIE AFFICHEE : c'est celle sur laquelle
+   l'enseignante a travaille. Le store peut contenir d'autres entrees (une par
+   geometrie visitee) ; elles disparaissent a la purge.                       */
+function _buildPlanTempSnapshot(){
+  if(!_tempPlanKey()) return null;
+  const seats=_seatsForLayoutId(layout);
+  if(!Array.isArray(seats)||!seats.length) return null;
+  const c=(typeof getCls==='function')?getCls():null;
+  const snap={layoutId:layout, seats:seats.slice(), ts:Date.now()};
+  // Tables volantes : leur cible d'equipe est necessaire pour redessiner en ilots.
+  if(c && Array.isArray(c.floatTarget)) snap.floatTarget=[...c.floatTarget];
+  if(layout!=='classic' && layout!=='ilots'){
+    // ⚠️ PIEGE (fiche §4.2) : un layout PERSONNALISE vit dans
+    // S.cl[cls].layouts[customN]. Il n'existe aucun ecran pour les gerer, et un
+    // garde-fou de 24 entrees + une purge LRU peuvent le faire disparaitre. Un
+    // instantane qui se contenterait de referencer customN deviendrait donc
+    // ILLISIBLE ce jour-la. On RECOPIE la geometrie : quelques dizaines de
+    // positions, et la seance devient autonome.
+    const ld=c&&c.layouts&&c.layouts[layout];
+    if(ld){
+      snap.geometrie={
+        rows:ld.rows||0,
+        cols:ld.cols||0,
+        seats:(ld.seats||[]).map(p=>({row:(p&&p.row)||0, col:(p&&p.col)||0})),
+        boardPosition:ld.boardPosition||null,
+        rowGaps:Array.isArray(ld.rowGaps)?[...ld.rowGaps]:null,
+        label:(c.layoutLabels&&c.layoutLabels[layout])||layout
+      };
+    } else {
+      // Geometrie deja introuvable a l'enregistrement : on garde l'occupation
+      // quand meme. La relecture (lot 3) affichera la composition en TEXTE
+      // plutot qu'un plan faux.
+      snap.geometrieManquante=true;
+    }
+  }
+  return snap;
 }
 
 /* Purge des entrees du creneau arme (toutes geometries confondues). */
@@ -25095,6 +25159,184 @@ function _scprecBuildBandeau(clsCode, beforeSlotKey, oldestShownSlotKey, mode){
 }
 /* ── Fin V018-v152 ───────────────────────────────────────────── */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   V035-V11.3.33 (lot 3) — RELECTURE du plan temporaire dans Sc.Prec.
+
+   Redessine la salle telle qu'elle etait, avec les statuts de CE cours, en
+   LECTURE SEULE. Aucun `dragstart`, aucun `drop`, aucun `_performDeplacement`
+   n'est cable ici : il est donc impossible d'ecraser le plan permanent depuis
+   cette vue, et c'est volontaire (fiche §5.2).
+
+   La vue dessine a partir de l'INSTANTANE (seance.planTemp), jamais de l'etat
+   courant : elle ne consulte ni `layout`, ni `tempPlanActive`, ni getCls(). Une
+   seance sans instantane (cours ordinaire, ou anterieure a v11.3.32) n'affiche
+   simplement rien de plus qu'avant.
+
+   Tout est construit en createElement : le contenu de Sc.Prec. est assemble en
+   chaines HTML, mais y coller des balises litterales ferait bouger les
+   invariants de balises (memo V18 §2). D'ou l'injection APRES rendu, sur un
+   simple attribut porte par un conteneur qui existe deja.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Une place. `keys` = statuts de l'eleve POUR CE COURS. */
+function _scprecSeatCell(uid, keys, compact){
+  const d=document.createElement('div');
+  // Classe posee pour etre reperable (sonde _browser_check.js) ; aucun style CSS
+  // ne s'y rattache, la mise en forme reste inline.
+  d.className='scprec-seat';
+  const base='border:1px solid var(--brd);border-radius:4px;padding:2px 3px;min-width:0;'
+    +'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;'
+    +'font-size:'+(compact?'8.5px':'9.5px')+';line-height:1.15;overflow:hidden;text-align:center';
+  if(!uid){
+    d.style.cssText=base+';background:transparent;border-style:dashed;opacity:.4;min-height:18px';
+    d.textContent='·';
+    return d;
+  }
+  const absent=(keys||[]).indexOf('absent')>=0;
+  d.style.cssText=base+';background:var(--sur);min-height:18px'+(absent?';opacity:.55':'');
+  const n=document.createElement('div');
+  n.style.cssText='font-weight:700;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+    +(absent?';text-decoration:line-through':'');
+  n.textContent=(typeof getSeatLabel==='function')?getSeatLabel(uid):String(uid);
+  d.appendChild(n);
+  // Memes pastilles de statut que sur le plan de classe (classes CSS existantes).
+  const shown=(keys||[]).indexOf('absent')>=0?['absent']:(keys||[]);
+  if(shown.length){
+    const bw=document.createElement('div');
+    bw.style.cssText='display:flex;gap:1px;flex-wrap:wrap;justify-content:center';
+    shown.slice(0,3).forEach(k=>{
+      const st=(typeof getStatuts==='function')?getStatuts().find(s=>s.key===k):null;
+      if(!st) return;
+      const b=document.createElement('span');
+      b.className='status-badge sb-'+k;
+      b.style.cssText='font-size:7px;padding:0 2px';
+      b.textContent=st.short||k;
+      bw.appendChild(b);
+    });
+    if(bw.childNodes.length) d.appendChild(bw);
+  }
+  return d;
+}
+
+/* Rend le noeud complet, ou null si la seance ne porte pas d'instantane. */
+function _scprecBuildPlanNode(seance){
+  const P=seance&&seance.planTemp;
+  if(!P||!Array.isArray(P.seats)||!P.seats.length) return null;
+  const st=(seance&&seance.statuts)||{};
+  const K=(uid)=>(uid&&Array.isArray(st[uid]))?st[uid]:[];
+
+  const wrap=document.createElement('div');
+  wrap.className='scprec-plan';
+  wrap.style.cssText='margin:0 0 12px;border:1.5px solid #FDBA74;border-radius:10px;'
+    +'background:#FFF7ED;padding:7px 7px 6px';
+
+  const hd=document.createElement('div');
+  hd.style.cssText='font-size:10.5px;font-weight:800;color:#7C2D12;margin-bottom:6px;'
+    +'display:flex;align-items:center;gap:5px;flex-wrap:wrap';
+  const vue=(P.layoutId==='classic')?'rangées'
+           :(P.layoutId==='ilots')?'îlots'
+           :((P.geometrie&&P.geometrie.label)||P.layoutId||'plan perso');
+  hd.textContent='🕘 Plan de ce cours — '+vue;
+  wrap.appendChild(hd);
+
+  const body=document.createElement('div');
+
+  if(P.layoutId==='classic'){
+    body.style.cssText='display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px';
+    for(let i=0;i<30;i++) body.appendChild(_scprecSeatCell(P.seats[i]||null, K(P.seats[i]), true));
+    wrap.appendChild(body);
+    const tb=document.createElement('div');
+    tb.style.cssText='margin-top:4px;text-align:center;font-size:8px;font-weight:700;'
+      +'letter-spacing:.08em;color:#3B6D11;background:#DCFCE7;border-radius:3px;padding:1px';
+    tb.textContent='TABLEAU';
+    wrap.appendChild(tb);
+
+  } else if(P.layoutId==='ilots' && typeof ILOT_MAP!=='undefined'){
+    body.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
+    Object.entries(ILOT_MAP).forEach(([eq, idxs])=>{
+      const box=document.createElement('div');
+      box.style.cssText='border:1px solid var(--brd);border-radius:6px;padding:3px;background:var(--bg);'
+        +'flex:1 1 46%;min-width:0';
+      const lb=document.createElement('div');
+      lb.style.cssText='font-size:8px;font-weight:800;color:var(--tx3);margin-bottom:2px;letter-spacing:.06em';
+      lb.textContent=eq;
+      box.appendChild(lb);
+      const g=document.createElement('div');
+      g.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px';
+      idxs.forEach(i=>g.appendChild(_scprecSeatCell(P.seats[i]||null, K(P.seats[i]), true)));
+      box.appendChild(g);
+      body.appendChild(box);
+    });
+    wrap.appendChild(body);
+    const volIdx=(typeof FLOAT_IDX!=='undefined')?FLOAT_IDX:[];
+    const vol=volIdx.map(i=>P.seats[i]).filter(Boolean);
+    if(vol.length){
+      const vw=document.createElement('div');
+      vw.style.cssText='margin-top:5px;display:flex;align-items:center;gap:4px;flex-wrap:wrap';
+      const vl=document.createElement('span');
+      vl.style.cssText='font-size:8px;font-weight:800;color:var(--tx3);letter-spacing:.06em';
+      vl.textContent='VOLANTES';
+      vw.appendChild(vl);
+      volIdx.forEach(i=>{ if(P.seats[i]) vw.appendChild(_scprecSeatCell(P.seats[i], K(P.seats[i]), true)); });
+      wrap.appendChild(vw);
+    }
+
+  } else if(P.geometrie && P.geometrie.rows && P.geometrie.cols && Array.isArray(P.geometrie.seats)){
+    // Layout perso : la geometrie a ete RECOPIEE dans l'instantane (lot 2), donc
+    // la seance reste lisible meme si le layout d'origine a ete purge depuis.
+    const R=P.geometrie.rows, C=P.geometrie.cols;
+    body.style.cssText='display:grid;grid-template-columns:repeat('+C+',minmax(0,1fr));gap:2px';
+    const at={};
+    P.geometrie.seats.forEach((p,i)=>{ if(p) at[(p.row||0)+'_'+(p.col||0)]=i; });
+    for(let r=0;r<R;r++) for(let c=0;c<C;c++){
+      const idx=at[r+'_'+c];
+      if(idx===undefined){
+        const gap=document.createElement('div'); gap.style.cssText='min-height:6px'; body.appendChild(gap);
+      } else {
+        body.appendChild(_scprecSeatCell(P.seats[idx]||null, K(P.seats[idx]), true));
+      }
+    }
+    wrap.appendChild(body);
+
+  } else {
+    // Repli assume (fiche §4.2) : geometrie perdue ou inconnue. On affiche la
+    // COMPOSITION EN TEXTE plutot qu'un plan faux — mieux vaut moins que du faux.
+    const note=document.createElement('div');
+    note.style.cssText='font-size:9px;color:var(--tx3);font-style:italic;margin-bottom:4px';
+    note.textContent='Disposition d\'origine non conservée — composition seule :';
+    wrap.appendChild(note);
+    const list=document.createElement('div');
+    list.style.cssText='font-size:10px;line-height:1.5;color:var(--tx2)';
+    const noms=P.seats.filter(Boolean).map(uid=>{
+      const n=(typeof getSeatLabel==='function')?getSeatLabel(uid):String(uid);
+      return (K(uid).indexOf('absent')>=0)?(n+' (abs.)'):n;
+    });
+    list.textContent=noms.length?noms.join(' · '):'(aucun élève placé)';
+    wrap.appendChild(list);
+  }
+  return wrap;
+}
+
+/* Injection APRES rendu du modal : les blocs sont des chaines HTML, on ne peut
+   pas y coller de balise litterale sans faire bouger les invariants. Chaque
+   conteneur de bloc porte donc un attribut data-scprec-slot, pose sur une
+   balise qui existait deja. */
+function _scprecInjectPlans(clsCode){
+  const root=document.getElementById('mbg');
+  if(!root) return;
+  root.querySelectorAll('[data-scprec-slot]').forEach(host=>{
+    if(host.querySelector('.scprec-plan')) return;   // idempotent
+    const sk=host.getAttribute('data-scprec-slot');
+    if(!sk) return;
+    let se=null;
+    try{
+      se=_getSavedSeanceEntriesForClsCode(clsCode).map(x=>x.se).find(s=>s.slotKey===sk)||null;
+    }catch(e){ se=null; }
+    const node=_scprecBuildPlanNode(se);
+    if(node) host.insertBefore(node, host.firstChild);
+  });
+}
+
 function openScPrecModal(clsCode, beforeSlotKey, ev){
   if(!clsCode||!beforeSlotKey){ showModal('Sc.Préc.','Cours introuvable.',null,true); return; }
   const slots=getRecentSavedCourseSlotKeys(clsCode, beforeSlotKey, 3);
@@ -25165,7 +25407,10 @@ function openScPrecModal(clsCode, beforeSlotKey, ev){
       const content=buildCourseSummaryHtml(sk, clsCode, null, {compactForHistory:true});
       // Si single + grpId présent, ajouter un sous-titre discret pour identifier le groupe
       const grpHint=block.grpIds[0] ? `<div style="text-align:center;font-size:11px;color:var(--tx3);font-weight:600;margin:-8px 0 10px">👥 ${escapeHtml(_grpShortLabel(block.grpIds[0]))}</div>` : '';
-      return `<div style="min-width:0;border:1px solid var(--brd);border-radius:14px;background:var(--bg);overflow:hidden"><div style="position:sticky;top:0;z-index:3;background:var(--bg);font-size:20px;font-weight:900;color:var(--acc);text-align:center;letter-spacing:.03em;padding:12px 10px;border-bottom:1px solid var(--brd)">${header}</div><div style="padding:14px 12px">${grpHint}${content}</div></div>`;
+      // V035-V11.3.33 (lot 3) — data-scprec-slot : point d'ancrage du plan de ce
+      // cours, injecté après rendu par _scprecInjectPlans. Attribut posé sur une
+      // balise existante : aucun invariant de balises ne bouge.
+      return `<div style="min-width:0;border:1px solid var(--brd);border-radius:14px;background:var(--bg);overflow:hidden"><div style="position:sticky;top:0;z-index:3;background:var(--bg);font-size:20px;font-weight:900;color:var(--acc);text-align:center;letter-spacing:.03em;padding:12px 10px;border-bottom:1px solid var(--brd)">${header}</div><div data-scprec-slot="${escapeHtml(String(sk))}" style="padding:14px 12px">${grpHint}${content}</div></div>`;
     }
     // type === 'merged' : 2 sous-blocs Gr empilés verticalement
     // Header du bloc : "SEMAINE DU XX [AU YY]" ou date unique si même jour
@@ -25187,7 +25432,7 @@ function openScPrecModal(clsCode, beforeSlotKey, ev){
       const subDate=formatLongFrDateUpper((seance&&seance.date)||subDates[idx]);
       const subContent=buildCourseSummaryHtml(sk, clsCode, null, {compactForHistory:true});
       const grpLbl=_grpShortLabel(subGrps[idx]);
-      return `<div style="border-top:${idx>0?'1px dashed var(--brd)':'none'};padding-top:${idx>0?'10px':'0'};margin-top:${idx>0?'10px':'0'}">
+      return `<div data-scprec-slot="${escapeHtml(String(sk))}" style="border-top:${idx>0?'1px dashed var(--brd)':'none'};padding-top:${idx>0?'10px':'0'};margin-top:${idx>0?'10px':'0'}">
         <div style="font-size:12px;font-weight:700;color:var(--tx2);margin-bottom:6px;display:flex;align-items:center;gap:6px">
           <span style="background:var(--acc);color:#fff;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;letter-spacing:.05em">${escapeHtml(grpLbl)}</span>
           <span style="color:var(--tx3);font-size:11px;font-weight:500">— ${escapeHtml(subDate)}</span>
@@ -25208,6 +25453,9 @@ function openScPrecModal(clsCode, beforeSlotKey, ev){
   const bandeau=_scprecBuildBandeau(clsCode, beforeSlotKey, oldestShown, 'normal');
   const wrapper=`${bandeau}<div style="display:grid;grid-template-columns:repeat(${ncol},minmax(0,1fr));gap:14px">${cols}</div>`;
   showModal('Sc.Préc. · '+_scopeLabel(clsCode), wrapper, null, true, true);
+  // V035-V11.3.33 (lot 3) — plans des séances réorganisées, en lecture seule.
+  // APRÈS showModal : le contenu n'existe dans le DOM qu'à partir d'ici.
+  try{ _scprecInjectPlans(clsCode); }catch(e){}
   _attachModalClickOutsideClose();
 }
 
@@ -32661,7 +32909,7 @@ function readStatutsCours(slotKey, clsCode, grpId){
  */
 function readSeanceCoches(slotKey, clsCode, grpId, date){
   if(!S.seanceCoches) return {};
-  const d=date||_todayStr();
+  const d=date||_slotDateStr(slotKey); // V035-V11.3.35 (Q4) — date du cours
   if(grpId){
     const composite=slotKey+'|'+clsCode+'|'+grpId+'|'+d;
     if(S.seanceCoches[composite]) return S.seanceCoches[composite];
@@ -32967,8 +33215,24 @@ function _todayStr(){ return toDateStr(new Date()); }
  *    grpId!=='' → clé composite 'slot|cls|grp|date'
  *  date='' (ou absente) → _todayStr().
  */
+/** V035-V11.3.35 (Q4) — Date de référence d'une coche : celle DU COURS.
+ *  Historique : les coches étaient ÉCRITES sous `_todayStr()` et LUES tantôt
+ *  sous `_todayStr()`, tantôt sous la date du cours. Tant qu'on saisissait le
+ *  jour même, les deux conventions coïncidaient. Dès qu'on rouvrait un cours un
+ *  autre jour, elles désignaient deux clés différentes : le même TAF pouvait
+ *  être « déjà coché » pour la garde d'enregistrement et « non coché » à
+ *  l'écran. Observé en production (deux buckets pour le même créneau, cf.
+ *  `claude/verdict-tafverif-2026-09-10.md` §3.2). La date du cours est la seule
+ *  stable : une coche appartient au cours, pas au jour où on l'a saisie.
+ *  Repli sur `_todayStr()` si le slotKey est absent ou malformé.
+ */
+function _slotDateStr(slotKey){
+  const d=String(slotKey||'').split('_')[0];
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : _todayStr();
+}
+
 function _cocheKey(slotKey, clsCode, grpId, date){
-  const d=date||_todayStr();
+  const d=date||_slotDateStr(slotKey);
   if(grpId) return slotKey+'|'+clsCode+'|'+grpId+'|'+d;
   return slotKey+'|'+clsCode+'|'+d;
 }
@@ -32987,7 +33251,8 @@ function getCochesForSlot(slotKey, clsCode){
   // Justification (session 11) : sur un slot demi-groupe, la legacy est nécessairement
   // un reliquat pré-Phase 2c qui appartient au groupe courant du slot.
   if(_grp && !S.seanceCoches[k]){
-    const legacyK=slotKey+'|'+clsCode+'|'+_todayStr();
+    // V035-V11.3.35 (Q4) — même date de référence que la composite ci-dessus.
+    const legacyK=slotKey+'|'+clsCode+'|'+_slotDateStr(slotKey);
     const legacyMap=S.seanceCoches[legacyK];
     if(legacyMap && Object.keys(legacyMap).length){
       S.seanceCoches[k]=JSON.parse(JSON.stringify(legacyMap));
@@ -33103,6 +33368,135 @@ function deleteCochesForSlot(slotKey, clsCode, grpId, date){
   if(!S.seanceCoches) return;
   const k=_cocheKey(slotKey, clsCode, grpId, date);
   delete S.seanceCoches[k];
+}
+
+/** V035-V11.3.35 (Q4) — Migration one-shot des coches existantes.
+ *  Toutes les clés `slot|cls[|grp]|<date>` écrites sous une date différente de
+ *  celle du cours sont fusionnées dans la clé du cours. Les buckets sont
+ *  appliqués par date CROISSANTE : en cas de conflit sur un même item, la coche
+ *  la plus RÉCENTE gagne — c'est le dernier geste de l'enseignante.
+ *  Une clé dont le slot ou la date ne sont pas reconnaissables est conservée
+ *  telle quelle (on ne jette rien qu'on ne comprend pas).
+ *  Idempotente : le drapeau `S._cocheDateMigrationDone` la neutralise ensuite.
+ *  @returns {number} nombre de clés déplacées
+ */
+function migrateCocheDates(){
+  if(!S || !S.seanceCoches || typeof S.seanceCoches!=='object') return 0;
+  if(S._cocheDateMigrationDone) return 0;
+  const src=S.seanceCoches;
+  const rows=[];
+  Object.keys(src).forEach(k=>{
+    const parts=k.split('|');
+    const d=parts[parts.length-1];
+    const sd=String(parts[0]||'').split('_')[0];
+    const known=(parts.length===3||parts.length===4)
+      && /^\d{4}-\d{2}-\d{2}$/.test(d) && /^\d{4}-\d{2}-\d{2}$/.test(sd);
+    if(!known){ rows.push({k, target:k, date:''}); return; }
+    parts[parts.length-1]=sd;
+    rows.push({k, target:parts.join('|'), date:d});
+  });
+  rows.sort((a,b)=> a.date<b.date ? -1 : (a.date>b.date ? 1 : 0));
+  const out={};
+  let moved=0;
+  rows.forEach(r=>{
+    const map=src[r.k]||{};
+    if(!out[r.target]) out[r.target]={};
+    Object.keys(map).forEach(ik=>{ out[r.target][ik]=map[ik]; });
+    if(r.target!==r.k) moved++;
+  });
+  S.seanceCoches=out;
+  S._cocheDateMigrationDone='v11.3.35';
+  if(typeof saveS==='function') saveS();
+  return moved;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   V035-V11.3.35 (Q1) — Identité d'un TAF : appariement par TEXTE
+   ──────────────────────────────────────────────────────────────────
+   Un TAF est identifié par son RANG (`taf_<idx>`) dans `S.seanceCoches` et
+   `S.tafVerifs`. Éditer la liste réattribue donc les identités : un TAF ajouté
+   après coup hérite de la coche et de la vérification de celui qui occupait son
+   index — et cette coche héritée annule silencieusement la création de SA
+   vérification (garde d'auto-cochage + garde `!readTafVerif`). C'est le bug du
+   dossier TafVérif (cf. `claude/verdict-tafverif-2026-09-10.md`).
+   Correctif d'étape retenu avec l'utilisatrice : à l'enregistrement, on retrouve
+   chaque TAF déjà connu par son LIBELLÉ et on lui rend sa coche et sa
+   vérification à son nouveau rang ; un TAF réellement nouveau repart vierge.
+   Les libellés sont dédoublonnés en amont (`normalizeTafList` /
+   `parseTafTextareaValue` passent par un Set) : l'appariement n'est jamais
+   ambigu. Reste la limite assumée du procédé : REFORMULER un TAF existant le
+   fait passer pour un nouveau. La cible de fond reste un identifiant stable
+   (`tafIds`), chantier à part entière avec sa migration.
+══════════════════════════════════════════════════════════════════ */
+
+/** Plan de réalignement entre la liste ENREGISTRÉE et la liste SAISIE.
+ *  Fonction pure — testable, sans effet de bord.
+ *  @returns {{remap:Object, removed:Array, identity:boolean}}
+ *    remap    : { nouvelIndex: ancienIndex } pour les seuls TAF retrouvés
+ *    removed  : [{idx, label}] des TAF enregistrés absents du champ
+ *    identity : true si rien ne bouge (aucune réécriture nécessaire)
+ */
+function _tafRealignPlan(savedTafs, typedTafs){
+  const saved=Array.isArray(savedTafs)?savedTafs:[];
+  const typed=Array.isArray(typedTafs)?typedTafs:[];
+  const remap={}, used={};
+  typed.forEach((t,ni)=>{
+    const oi=saved.indexOf(t);
+    if(oi>=0 && !used[oi]){ remap[ni]=oi; used[oi]=true; }
+  });
+  const removed=[];
+  saved.forEach((t,oi)=>{ if(!used[oi]) removed.push({idx:oi, label:t}); });
+  const identity = typed.length===saved.length && typed.every((t,i)=>remap[i]===i);
+  return {remap, removed, identity};
+}
+
+/** Applique le plan : réécrit les entrées `taf_*` du bucket de coches et les
+ *  entrées `S.tafVerifs` du créneau d'origine, en suivant `remap`.
+ *  Les TAF supprimés ne sont pas reportés : leur coche ET leur vérification
+ *  disparaissent avec eux (c'est la cascade validée à l'arbitrage Q2 — plus
+ *  aucune vérification orpheline « à vérifier » sans objet).
+ *  ⚠️ Écrit directement dans les stores puis `saveS()` : ne JAMAIS passer par
+ *  `writeTafVerif` / `deleteTafVerif` ici (ils rappellent `renderVoletDroit`).
+ *  Les clés qui ne sont pas des `taf_<n>` (docs, modeOp, freeItems…) ne sont
+ *  jamais touchées.
+ *  @returns {boolean} true si quelque chose a été réécrit
+ */
+function _applyTafRemap(slotKey, clsCode, grpId, plan, newLen){
+  if(!plan || plan.identity) return false;
+  const remap=plan.remap||{};
+  const grp=grpId||'';
+  if(!S.seanceCoches) S.seanceCoches={};
+  const ck=_cocheKey(slotKey, clsCode, grp);
+  const bucket=S.seanceCoches[ck];
+  if(bucket){
+    const old={};
+    Object.keys(bucket).forEach(k=>{
+      if(/^taf_\d+$/.test(k)){ old[k]=bucket[k]; delete bucket[k]; }
+    });
+    for(let ni=0; ni<newLen; ni++){
+      const oi=remap[ni];
+      if(oi===undefined) continue;
+      if(old['taf_'+oi]!==undefined) bucket['taf_'+ni]=old['taf_'+oi];
+    }
+  }
+  if(S.tafVerifs){
+    const oldTv={};
+    Object.keys(S.tafVerifs).forEach(k=>{
+      const parts=k.split('|');
+      if(parts.length!==4) return;
+      if(parts[0]!==slotKey || parts[1]!==clsCode || parts[2]!==grp) return;
+      oldTv[parts[3]]=S.tafVerifs[k];
+      delete S.tafVerifs[k];
+    });
+    for(let ni=0; ni<newLen; ni++){
+      const oi=remap[ni];
+      if(oi===undefined) continue;
+      const tv=oldTv[String(oi)];
+      if(tv) S.tafVerifs[_tafVerifKey(slotKey, clsCode, grp, ni)]=tv;
+    }
+  }
+  if(typeof saveS==='function') saveS();
+  return true;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -36848,6 +37242,11 @@ function rotatePlaces(applyClassic, applyIlot){
   // Session 8 — Check contraintes post-rotation (classique uniquement pour l'instant).
   // Si on a modifié la vue classique et qu'il y a des contraintes violées, on liste.
   // Décalé en setTimeout pour ne pas superposer avec la notice volantes.
+  // V035-V11.3.34 (lot 5) — PAS de garde `_tempPlanKey()` ici, volontairement :
+  // `rotatePlaces` commence par `if(_tempBlock(...)) return;` (lot 1), la rotation
+  // est donc impossible en plan temporaire et cette modale est inatteignable.
+  // Ajouter une garde ici serait du code mort. ⚠️ Si un jour le blocage de la
+  // rotation est levé, il faudra en poser une, comme dans _doRandomPlace.
   if(applyClassic){
     setTimeout(()=>{
       const violations=_getContrainteViolations(cls.seatsClassic||[], 'classic', {separerSpacing:1});
@@ -38072,7 +38471,15 @@ function _doRandomPlaceCustom(cls, ld, con, separerSpacing, mixOptions){
   renderApp();
   if(wantFG) _postRpArmDismissOnClick();
 
-  if(!satisfied && finalViolations.length){
+  // V035-V11.3.34 (lot 5) — En PLAN TEMPORAIRE, on libere les contraintes :
+  // « l'enseignant sait ce qu'il fait » (decision utilisateur). Un plan de
+  // travail de groupe viole VOLONTAIREMENT les contraintes du plan permanent —
+  // le signaler serait du bruit, et laisserait croire a une erreur.
+  // Portee decidee : on n'IMPOSE plus l'information, on ne la RETIRE pas. Le
+  // bouton « Verifier les contraintes » du menu ⋯ reste actif, et l'algorithme
+  // ci-dessus continue de chercher a satisfaire les contraintes : il echoue
+  // simplement en silence au lieu d'ouvrir une modale.
+  if(!satisfied && finalViolations.length && !_tempPlanKey()){
     _showContrainteViolationsModal(finalViolations,
       'Placement partiel (meilleure tentative sur '+MAX_TRIES+')');
   }
@@ -38433,7 +38840,15 @@ function _doRandomPlace(cls, con, separerSpacing, mixOptions){
     _postRpArmDismissOnClick();
   }
 
-  if(!satisfied && finalViolations.length){
+  // V035-V11.3.34 (lot 5) — En PLAN TEMPORAIRE, on libere les contraintes :
+  // « l'enseignant sait ce qu'il fait » (decision utilisateur). Un plan de
+  // travail de groupe viole VOLONTAIREMENT les contraintes du plan permanent —
+  // le signaler serait du bruit, et laisserait croire a une erreur.
+  // Portee decidee : on n'IMPOSE plus l'information, on ne la RETIRE pas. Le
+  // bouton « Verifier les contraintes » du menu ⋯ reste actif, et l'algorithme
+  // ci-dessus continue de chercher a satisfaire les contraintes : il echoue
+  // simplement en silence au lieu d'ouvrir une modale.
+  if(!satisfied && finalViolations.length && !_tempPlanKey()){
     _showContrainteViolationsModal(finalViolations,
       'Placement partiel (meilleure tentative sur '+MAX_TRIES+')');
   }
@@ -39974,8 +40389,12 @@ function openSaveSeance(){
   // on prélève la valeur depuis le brouillon ; sinon fallback sur les valeurs habituelles.
   const _contentDraftKey = curCls+'|'+slotKey;
   const _contentDraft = (S.seanceContentDraft && S.seanceContentDraft[_contentDraftKey]) || {};
-  const _initContenu = (typeof _contentDraft.contenu === 'string') ? _contentDraft.contenu : existingContenu;
-  const _initTaf     = (typeof _contentDraft.taf === 'string')     ? _contentDraft.taf     : existingTafLines;
+  // V035-V11.3.35 (Q3) — mais un brouillon VIDE ne masque JAMAIS une donnée
+  // enregistrée : cf. _draftOrSaved.
+  const _dContenu = _draftOrSaved(_contentDraft.contenu, existingContenu);
+  const _dTaf     = _draftOrSaved(_contentDraft.taf,     existingTafLines);
+  const _initContenu = _dContenu.value;
+  const _initTaf     = _dTaf.value;
 
   const contenuWrap=mkTa('Contenu','📋',_initContenu,'contenu');
   const tafWrap=mkTa('TAF (un par ligne)','📌',_initTaf,'taf');
@@ -39983,8 +40402,9 @@ function openSaveSeance(){
   const tafTa=tafWrap._ta;
   // V020-v181.4.15 — Si la valeur vient du brouillon utilisateur, marquer fromChap='0' pour
   // empêcher le pré-remplissage chapitre (seqSel/seanSel.onchange) de l'écraser.
-  if(typeof _contentDraft.contenu === 'string') contenuTa.dataset.fromChap='0';
-  if(typeof _contentDraft.taf === 'string')     tafTa.dataset.fromChap='0';
+  // V035-V11.3.35 (Q3) — seulement si le brouillon est RÉELLEMENT retenu.
+  if(_dContenu.fromDraft) contenuTa.dataset.fromChap='0';
+  if(_dTaf.fromDraft)     tafTa.dataset.fromChap='0';
   // V020-v181.4.15 — Listener supplémentaire (addEventListener, ne supplante pas le oninput
   // qui pose dataset.fromChap='0'). Persistance du brouillon, debouncée 300ms.
   contenuTa.addEventListener('input', ()=>_persistSeanceContentDraft(curCls, slotKey, 'contenu', contenuTa.value));
@@ -40000,9 +40420,9 @@ function openSaveSeance(){
   commLbl.textContent='💬 Commentaire sur la séance';
   const commTa=document.createElement('textarea');
   // V020-v181.4.15 — Brouillon utilisateur prime sur le commentaire enregistré.
-  const _initComm = (typeof _contentDraft.commentaire === 'string')
-    ? _contentDraft.commentaire
-    : (existing && existing.commentaire || '');
+  // V035-V11.3.35 (Q3) — idem : un brouillon vide ne masque pas l'enregistré.
+  const _initComm = _draftOrSaved(_contentDraft.commentaire,
+    (existing && existing.commentaire) || '').value;
   commTa.rows=2; commTa.value=_initComm;
   commTa.placeholder='Observations, déroulement, points à revoir…';
   commTa.style.cssText='width:100%;padding:5px 8px;border:1px solid var(--brd);border-radius:var(--r1);font-size:11px;line-height:1.4;background:var(--bg);color:var(--tx);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box';
@@ -41400,6 +41820,21 @@ function openSaveSeance(){
 
   // Patch doSave to include contenu, taf, seqId, seanId + COURS1 décisions
   const _origDoSave=doSave;
+  // V035-V11.3.35 — Revenir au modal Séance sans rien perdre.
+  // `#mbg` est UNIQUE et son bouton OK exécute `mcb()` puis ferme TOUJOURS
+  // (`finally{ closeModal(); }`) — or `closeModal()` remet `mcb` à null. Rouvrir
+  // le modal sans réarmer `mcb` laisse donc un formulaire dont le bouton OK
+  // n'enregistre plus RIEN : un clic et la saisie part en silence. On rouvre au
+  // tick suivant (après le closeModal du finally) ET on réarme le callback. Le
+  // DOM du modal est intact : closeModal ne retire que la classe 'open'.
+  const _reopenSeanceModal=()=>{
+    setTimeout(()=>{
+      const _mbg=document.getElementById('mbg');
+      if(_mbg) _mbg.classList.add('open');
+      mcb=()=>{ confirmUncheckedThenSave(doSaveFull); };
+    },0);
+  };
+
   const doSaveFull=()=>{
     const contenu=contenuTa.value.trim();
     const tafs=parseTafTextareaValue(tafTa.value);
@@ -41407,6 +41842,34 @@ function openSaveSeance(){
     const commentaire=extra._commTa?extra._commTa.value.trim():'';
     const seqId=extra._seqSel?extra._seqSel.value:'';
     const seanId=extra._seanSel?extra._seanSel.value:'';
+
+    // ══ V035-V11.3.35 (Q1+Q2) — TAF : plus de perte silencieuse ═══════════════
+    // `setTafArray` REMPLACE la liste enregistrée par le contenu du champ, sans
+    // fusion ni avertissement : un TAF enregistré absent du textarea disparaît,
+    // et sa vérification reste « à faire » au cours suivant sans plus rien
+    // désigner. On relit la liste réellement enregistrée (pas `existing`, figé à
+    // l'ouverture du modal) et on compare par LIBELLÉ.
+    // ⚠️ Ce bloc doit rester le PREMIER de doSaveFull à toucher quoi que ce soit :
+    // en cas de refus, on sort sans avoir rien modifié, le champ reste intact.
+    const _tafSavedSeance=(typeof _readSeancesScoped==='function')
+      ? (_readSeancesScoped().find(s=>s.slotKey===slotKey)||null) : null;
+    const _tafSavedList=(_tafSavedSeance && typeof getTafArray==='function')
+      ? getTafArray(_tafSavedSeance) : [];
+    const _tafPlan=_tafRealignPlan(_tafSavedList, tafs);
+    if(_tafPlan.removed.length){
+      const _nS=_tafSavedList.length, _nC=tafs.length, _nR=_tafPlan.removed.length;
+      const _msg=
+        _nS+(_nS>1?' travaux à faire sont enregistrés':' travail à faire est enregistré')+' pour ce cours, '
+        +(_nC===0?'le champ est vide.':'le champ n\'en contient plus que '+_nC+'.')
+        +'\n\nEnregistrer va supprimer '+(_nR>1?'ces '+_nR+' TAF':'ce TAF')+' :\n'
+        +_tafPlan.removed.map(r=>'  • '+r.label).join('\n')
+        +'\n\nainsi que '+(_nR>1?'les vérifications programmées':'la vérification programmée')+' qui '+(_nR>1?'vont':'va')+' avec.'
+        +(tafs.length>Object.keys(_tafPlan.remap).length
+            ? '\n\n(Un TAF REFORMULÉ compte pour un TAF supprimé et un nouveau : sa vérification sera reprogrammée.)'
+            : '')
+        +'\n\nOK pour supprimer · Annuler pour revenir au champ sans rien enregistrer.';
+      if(!confirm(_msg)){ _reopenSeanceModal(); return; }
+    }
 
     // État mode opératoire
     const modeOpDone=[];
@@ -41576,6 +42039,19 @@ function openSaveSeance(){
       });
     }
     const seance={date:effectiveDateStr,debut,fin,slotKey,statuts,competences,observations,contenu,commentaire,seqId,seanId};
+    // V035-V11.3.35 (Q1) — Réalignement des identités AVANT d'écrire la séance et
+    // AVANT l'auto-cochage : chaque TAF déjà enregistré retrouve sa coche et sa
+    // vérification à son nouveau rang (appariement par libellé), les TAF
+    // supprimés emportent les leurs, et un TAF réellement nouveau repart vierge.
+    // Sans cela, ce TAF nouveau hérite de la coche de son prédécesseur, la garde
+    // d'auto-cochage ci-dessous le tient pour « déjà donné » et sa vérification
+    // n'est jamais créée. Ne rien faire quand la séance n'a encore aucun TAF
+    // enregistré : il n'y a pas d'identité à préserver, et le bucket de coches
+    // peut légitimement porter des `taf_*` venus de la progression.
+    if(_tafSavedList.length){
+      const _tafGrpAlign=(typeof getCurrentGrpId==='function')?getCurrentGrpId(curCls, slotKey):'';
+      _applyTafRemap(slotKey, curCls, _tafGrpAlign, _tafPlan, tafs.length);
+    }
     setTafArray(seance, tafs);
     // S27 patch 7 — un TAF saisi par l'enseignant dans le textarea ET non encore coché
     // est considéré comme donné aux élèves (logique : on tape un TAF parce qu'on est en train de le donner).
@@ -41608,6 +42084,12 @@ function openSaveSeance(){
     // Guard : s'assurer que S.seances est bien un objet (une réinitialisation
     // sélective ou une migration ancienne peut laisser S.seances undefined)
     if(!S.seances||typeof S.seances!=='object') S.seances={};
+    // V035-V11.3.32 (lot 2) — Instantané du plan temporaire. Doit être posé
+    // AVANT _writeSeanceScoped, sinon il ne part pas dans la séance persistée.
+    // Rend null si aucun plan temporaire n'est actif sur ce créneau : une
+    // séance ordinaire ne porte pas de planTemp (décision utilisateur).
+    const _snapTemp=(typeof _buildPlanTempSnapshot==='function')?_buildPlanTempSnapshot():null;
+    if(_snapTemp) seance.planTemp=_snapTemp;
     // V035-v181.15.27 (v5c-2a-1) : écriture scopée — bucket groupe inter-classes
     // ('grp:<gid>') si curGrpInter, sinon writeSeanceForSlot (legacy/composite cls|grp).
     _writeSeanceScoped(slotKey, seance);
@@ -41895,6 +42377,22 @@ function openSaveSeance(){
         saveS();
       }
     }
+    // V035-V11.3.32 (lot 2) — Le plan temporaire a rempli son office : il est
+    // dans la séance ET dans la trace TXT. On le purge, et le plan habituel
+    // redevient le plan actif IMMÉDIATEMENT (fiche §5.1).
+    //
+    // ⚠️ ORDRE — NE PAS REMONTER CE BLOC. _buildPlanJourForTrace (plus haut,
+    // pour le fichier .txt) LIT encore le plan temporaire. Purger avant lui
+    // ferait écrire le plan habituel dans le fichier, sans erreur ni trace —
+    // exactement la faute décrite au mémo V18 §2 (« ne jamais lire une donnée
+    // qu'on est en train d'écrire », et son symétrique : ne jamais effacer une
+    // donnée qu'un appelant plus bas doit encore lire).
+    if(_snapTemp){
+      _tempClearAll();
+      try{ renderApp(); }catch(e){}
+      if(typeof showDropToast==='function') showDropToast('🕘 Plan temporaire enregistré avec la séance — retour au plan habituel');
+    }
+
     // V020-v181.4.15 — Push Dropbox immédiat post-enregistrement séance (fire-and-forget).
     // Placé en sortie de doSaveFull pour englober toutes les branches de saveS conditionnelles.
     _pushDbxImmediate();
@@ -41927,7 +42425,9 @@ function openSaveSeance(){
     const btnRow=document.createElement('div'); btnRow.style.cssText='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap';
     const btnRetour=document.createElement('button'); btnRetour.style.cssText='padding:8px 16px;border:1px solid var(--brd);border-radius:8px;background:#fff;cursor:pointer;font-size:12px;font-weight:600';
     btnRetour.textContent='Non, revenir au modal';
-    btnRetour.onclick=()=>{ document.body.removeChild(overlay); document.getElementById('mbg').classList.add('open'); };
+    // V035-V11.3.35 — passe par _reopenSeanceModal : réarme aussi mcb (sinon le
+    // bouton OK du modal rouvert n'enregistrait plus rien, en silence).
+    btnRetour.onclick=()=>{ document.body.removeChild(overlay); _reopenSeanceModal(); };
     const btnOui=document.createElement('button'); btnOui.style.cssText='padding:8px 18px;border:none;border-radius:8px;background:#166534;color:#fff;cursor:pointer;font-size:12px;font-weight:700';
     btnOui.textContent='Oui, reporter et enregistrer';
     btnOui.onclick=()=>{
@@ -55796,6 +56296,7 @@ applyFontSize(currentFontSize);
 
 migrateSeatKeys(); // Migration seats display→clé (one-time, idempotent)
 migrateModeOpDurees(); // Migration durées décalées par tâches vides
+migrateCocheDates(); // V11.3.35 (Q4) — coches réunies sous la date DU COURS (one-time, idempotente)
 
 /* ═══════════════════════════════════════════════════════════════
    MODE CONTRAINTES — Mes Plans de classe uniquement
