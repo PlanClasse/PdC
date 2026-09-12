@@ -3879,7 +3879,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.35';
+const APP_VERSION = 'v11.3.36';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -56982,8 +56982,51 @@ function _playClip(name, opts){
     const a = new Audio(src);
     a.volume = 0.9;
     const p = a.play();
-    if(p && typeof p.catch === 'function') p.catch(()=>{ /* autoplay bloqué */ });
-  } catch(e){ /* silence */ }
+    // V035-V11.3.36 — Repli sur la voix de synthèse quand la lecture est REFUSÉE.
+    // Avant, le rejet était avalé en silence : si Chrome bloquait l'autoplay
+    // (application ouverte et jamais cliquée depuis le chargement, pas
+    // d'engagement média sur le domaine), l'annonce disparaissait sans un mot —
+    // et `fallbackText` ne servait QUE si le clip était inconnu, jamais en cas
+    // d'échec de lecture. La voix, elle, passe souvent là où l'audio est bloqué.
+    if(p && typeof p.catch === 'function') p.catch((err)=>{
+      if(typeof _eocLog === 'function') _eocLog('lecture du clip refusée ('+(err && err.name || 'erreur')+') → repli voix');
+      if(opts.fallbackText) _speakNotice(opts.fallbackText, {force: !!opts.force});
+    });
+  } catch(e){
+    if(opts.fallbackText) _speakNotice(opts.fallbackText, {force: !!opts.force});
+  }
+}
+
+/* V035-V11.3.36 — Déverrouillage de l'audio au premier geste de l'utilisatrice.
+   Les navigateurs n'autorisent la lecture sonore qu'après une interaction (ou un
+   engagement média suffisant sur le domaine). Une application ouverte le matin
+   et laissée intacte peut donc voir TOUTES ses annonces refusées. On joue une
+   fois le clip à volume nul au premier clic ou à la première touche : la
+   permission est acquise pour la session, sans rien faire entendre.
+   Idempotent, silencieux, et sans effet si le navigateur refuse quand même. */
+let _eocAudioUnlocked = false;
+function _eocUnlockAudio(){
+  if(_eocAudioUnlocked) return;
+  _eocAudioUnlocked = true;
+  try{
+    const src = _CLIPS && _CLIPS.finCours5;
+    if(src){
+      const a = new Audio(src);
+      a.volume = 0;
+      const p = a.play();
+      if(p && typeof p.then === 'function'){
+        p.then(()=>{ try{ a.pause(); a.currentTime = 0; }catch(e){} })
+         .catch(()=>{ _eocAudioUnlocked = false; /* on retentera au geste suivant */ });
+      }
+    }
+    // Web Speech : sur iOS/Safari la première prise de parole doit naître d'un
+    // geste. Une chaîne vide suffit à ouvrir le canal.
+    if('speechSynthesis' in window){
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0; u.lang = 'fr-FR';
+      window.speechSynthesis.speak(u);
+    }
+  }catch(e){ _eocAudioUnlocked = false; }
 }
 
 /* V030-v181.10.4 — Voix de synthèse pour les rappels (fin de cours notamment).
@@ -57053,6 +57096,7 @@ function _speakNotice(text, opts){
    ════════════════════════════════════════════════════════════════════ */
 
 let _endOfClassTimer = null;
+let _eocVisibilityHooked = false; // V035-V11.3.36 — écouteurs posés une seule fois
 const _endOfClassLastTriggered = new Set();
 
 /* Construit une clé stable pour un event, pour le cache anti-répétition.
@@ -57181,24 +57225,76 @@ function _endOfClassTick(){
   const {event: ev, dateStr, resolvedEndMin} = found;
   const nowMin = _eocMinutesOfDay(now);
   const deltaMin = resolvedEndMin - nowMin;
-  // Fenêtre de déclenchement : on a franchi T-5 dans les 3 dernières secondes
-  // (deltaMin entre 4.95 et 5.00, soit 4:57 → 5:00 restantes)
-  if(deltaMin <= 5 && deltaMin > 5 - (3/60)){
+  // V035-V11.3.36 — Fenêtre de déclenchement ÉLARGIE : 5:00 → 3:00 restantes.
+  //
+  // Avant : 3 secondes (deltaMin entre 4.95 et 5.00). Cette fenêtre supposait
+  // que le tick à 3 s programmé juste avant s'exécute à l'heure. Or Chrome
+  // BRIDE les timers d'un onglet qui n'est pas au premier plan : ≥ 1 s dès que
+  // l'onglet est caché, puis une fois par MINUTE après ~5 min d'arrière-plan
+  // (« intensive throttling » ; une fenêtre minimisée ou recouverte compte comme
+  // cachée). Avec un tick par minute, la probabilité de tomber dans 3 secondes
+  // est de 3/60 — d'où le symptôme signalé : « parfois parfaitement, parfois
+  // rien », corrélé au fait que l'application n'est pas au premier plan.
+  //
+  // Le `Set` _endOfClassLastTriggered garantit déjà l'unicité par cours : on
+  // peut donc déclencher au PREMIER tick qui voit moins de 5 minutes, sans
+  // risque de répétition. Au pire, l'annonce part à T-4:00 au lieu de T-5:00.
+  // Plancher à 3 min : en dessous, annoncer « dans cinq minutes » serait faux
+  // (cas d'un onglet gelé ou d'une machine réveillée de veille) — on saute,
+  // comme avant.
+  const EOC_WINDOW_HIGH = 5, EOC_WINDOW_LOW = 3;
+  if(deltaMin <= EOC_WINDOW_HIGH && deltaMin > EOC_WINDOW_LOW){
     const key = _eocEventKey(dateStr, ev);
     if(!_endOfClassLastTriggered.has(key)){
       _endOfClassLastTriggered.add(key);
+      _eocLog('déclenchement à T-'+deltaMin.toFixed(2)+' min — '+key);
       if(mode === 'voice'){
         _playClip('finCours5', {fallbackText: 'Fin du cours dans cinq minutes'});
       }
     }
+  } else if(deltaMin <= EOC_WINDOW_LOW && deltaMin > 0){
+    // Trace du RATÉ : sans elle, une annonce manquée ne laisse aucune trace.
+    const key = _eocEventKey(dateStr, ev);
+    if(!_endOfClassLastTriggered.has(key)){
+      _endOfClassLastTriggered.add(key);
+      _eocLog('RATÉ (réveil tardif à T-'+deltaMin.toFixed(2)+' min, sous le plancher) — '+key);
+    }
   }
 
-  // Choix du prochain délai selon la distance à T-5
-  if(deltaMin > 10)        return 60000;  // 60 s
-  if(deltaMin > 5 + 0.5)   return 20000;  // 20 s (jusqu'à T-5:30)
-  if(deltaMin > 5)         return 3000;   // 3 s (fenêtre critique T-5:30 → T-5:00)
-  // deltaMin <= 5 : déjà déclenché (ou raté), on attend la fin du cours en mode lent
-  return 60000;
+  // Choix du prochain délai selon la distance à T-5.
+  // V035-V11.3.36 — On ne dort JAMAIS au-delà de T-5:00 : le délai est plafonné
+  // au temps qui reste avant la cible (+0,5 s). Au premier plan, le tick tombe
+  // ainsi juste après T-5 au lieu de dépendre d'une cadence qui peut dériver.
+  const _capMs = (deltaMin > EOC_WINDOW_HIGH)
+    ? Math.max(1000, Math.round((deltaMin - EOC_WINDOW_HIGH) * 60000) + 500)
+    : Infinity;
+  let _delay;
+  if(deltaMin > 10)          _delay = 60000;  // 60 s
+  else if(deltaMin > 5 + 0.5) _delay = 20000;  // 20 s (jusqu'à T-5:30)
+  else if(deltaMin > 5)       _delay = 3000;   // 3 s (fenêtre critique)
+  else                        _delay = 60000;  // déjà déclenché : on attend la fin
+  return Math.min(_delay, _capMs);
+}
+
+/* V035-V11.3.36 — Journal volatile de la détection fin-de-cours.
+   Une annonce manquée ne laisse aucune trace : impossible à diagnostiquer après
+   coup. On garde les 20 dernières décisions en mémoire (perdu au rechargement,
+   jamais persisté dans S) + une ligne de console. Sur le terrain, taper
+   `_eocJournal` dans la console du navigateur affiche l'historique.
+   ⚠️ Le tableau s'appelle `_eocJournal` et NON `_eocLog` : une `function _eocLog`
+   de haut niveau est déjà une propriété de window, donc `window._eocLog` serait
+   la fonction elle-même — `if(!window._eocLog)` resterait faux et le `.push`
+   lèverait, avalé par le try. Le journal serait resté vide en silence (attrapé
+   par la sonde navigateur, jamais par les tests vm qui bouchonnent _eocLog). */
+const _EOC_LOG_MAX = 20;
+function _eocLog(msg){
+  try{
+    if(!Array.isArray(window._eocJournal)) window._eocJournal = [];
+    const stamp = new Date().toLocaleTimeString('fr-FR');
+    window._eocJournal.push(stamp+' · '+msg);
+    if(window._eocJournal.length > _EOC_LOG_MAX) window._eocJournal.shift();
+    console.info('[fin-de-cours] '+msg);
+  }catch(e){ /* jamais bloquant */ }
 }
 
 /* Programme le prochain tick. Annule un éventuel timer en attente. */
@@ -57214,6 +57310,24 @@ function _endOfClassScheduleNext(){
    plusieurs fois, repart proprement. */
 function _endOfClassStart(){
   if(_endOfClassTimer){ clearTimeout(_endOfClassTimer); _endOfClassTimer = null; }
+  // V035-V11.3.36 — Reprise immédiate au retour au premier plan. Un onglet caché
+  // voit ses timers bridés à un tick par minute ; en revenant dessus, on ne veut
+  // pas attendre la fin de ce tick long pour réévaluer. `_endOfClassScheduleNext`
+  // annule le timer en attente avant d'en poser un nouveau : pas d'empilement,
+  // même si l'événement se répète.
+  if(!_eocVisibilityHooked && typeof document.addEventListener === 'function'){
+    _eocVisibilityHooked = true;
+    document.addEventListener('visibilitychange', ()=>{
+      if(!document.hidden){
+        _eocLog('retour au premier plan → réévaluation immédiate');
+        _endOfClassScheduleNext();
+      }
+    });
+    // Déverrouillage audio au premier geste (cf. _eocUnlockAudio).
+    ['pointerdown','keydown'].forEach(evt=>{
+      document.addEventListener(evt, _eocUnlockAudio, {once:false, passive:true});
+    });
+  }
   // Premier tick légèrement différé pour laisser le boot finir
   _endOfClassTimer = setTimeout(_endOfClassScheduleNext, 2000);
 }
