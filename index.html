@@ -3879,7 +3879,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.36';
+const APP_VERSION = 'v11.3.37';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -5062,7 +5062,19 @@ function loadS(){
           });
         }
       });
-      parsed.cl['6e2']=defaultClsData('6e',2);
+      // ⛔ NE JAMAIS RÉÉCRIRE UNE CLASSE EN DUR ICI — V035-V11.3.37
+      // Il y avait à cet endroit, sans condition ni commentaire :
+      //     parsed.cl['6e2'] = defaultClsData('6e', 2);
+      // Vestige d'une session de mise au point, exécuté à CHAQUE chargement,
+      // chez TOUS les utilisateurs : la 6e2 était remise à zéro — élèves, plan
+      // de classe, statuts — à chaque ouverture de l'application. Une collègue
+      // l'a vécu pendant des semaines (« la 6e2 n'est jamais peuplée ») :
+      // l'import se passait bien, elle replaçait ses élèves, et tout
+      // disparaissait au rechargement suivant. Silencieux, reproductible,
+      // présent au moins depuis v11.3.34.
+      // Le chargement de l'état NORMALISE (champs manquants, formes héritées) ;
+      // il n'écrase jamais des données. Un test de source (§91) et une sonde
+      // navigateur montent désormais la garde.
       if(!parsed.nickNames) parsed.nickNames={};
       if(!parsed.studentData) parsed.studentData={};
       if(!parsed.edtEvents) parsed.edtEvents=[];
@@ -7146,7 +7158,17 @@ function migrateSeatKeys(){
   });
 
   if(changed){
-    delete S.seanceTaskStateCache[_seanceDraftKey];
+    // V035-V11.3.37 — Il y avait ici `delete S.seanceTaskStateCache[_seanceDraftKey];`
+    // or `_seanceDraftKey` est une CONSTANTE LOCALE du modal Séance : elle n'existe
+    // pas dans cette fonction. La ligne levait donc une ReferenceError chaque fois
+    // que la migration avait quelque chose à migrer — c'est-à-dire précisément
+    // quand elle servait. Conséquences mesurées : le `saveS()` ci-dessous n'était
+    // jamais atteint (la migration recommençait à chaque ouverture), et comme
+    // l'appel est au premier niveau du bloc script, TOUT ce qui suit dans le
+    // fichier restait inexécuté — migration des coches, démarrage du rappel de
+    // fin de cours, écouteurs… Une application à moitié initialisée, pour une
+    // seule ligne dans la console. Supprimée : purger un brouillon de décisions
+    // n'a aucun sens dans une migration de clés de sièges.
     saveS();
     console.log('[migration] ✅ migration complète. Legacy→uid:', Object.keys(legacyToUid).length, 'élèves');
   } else {
@@ -37158,35 +37180,92 @@ function removeSt_selected(){
     hlStudent=null;
   });
 }
+/* V035-V11.3.37 — Ouvrir un modal DEPUIS le callback d'un autre modal.
+   `#mbg` est unique et son bouton OK fait `try{ mcb() } finally{ closeModal() }` :
+   un `showModal` appelé dans le callback est donc ouvert puis refermé dans la
+   même fraction de seconde. L'utilisateur ne voit RIEN — ni le succès, ni
+   l'échec. C'est ce qui rendait « ↺ Rétablir » totalement muet : il a pu
+   fonctionner sans jamais le dire, ou échouer sans jamais le dire non plus.
+   Différer d'un tick suffit : le `finally` a alors déjà fermé le précédent. */
+function showModalLater(titre, corps, onOk, okOnly, isHtml){
+  setTimeout(()=>{ try{ showModal(titre, corps, onOk, okOnly, isHtml); }catch(e){} }, 0);
+}
+
+/* V035-V11.3.37 — Réintègre dans une classe les élèves de son dernier import.
+   N'enlève jamais personne : on complète, on ne remplace pas. Les placements
+   existants ne sont pas touchés. Renvoie le nombre d'élèves réintégrés.
+   Source 1 : l'instantané d'import. Source 2 (repli) : studentData.cls. */
+function _restoreClassFromSnapshot(cls){
+  const c=S.cl[cls]; if(!c) return 0;
+  if(!Array.isArray(c.students)) c.students=[];
+  let originalIds=(S._importSnapshot&&S._importSnapshot[cls])||null;
+  if(!originalIds||!originalIds.length){
+    originalIds=Object.entries(S.studentData||{})
+      .filter(([,s])=>s&&s.cls===cls)
+      .map(([key])=>key);
+  }
+  if(!originalIds||!originalIds.length) return 0;
+  const missing=originalIds.filter(id=>!c.students.includes(id));
+  missing.forEach(id=>c.students.push(id));
+  return missing.length;
+}
+
 // Rétablir la liste depuis le snapshot d'import (ou depuis studentData.cls)
 function restoreStList(){
   showModal('Rétablir la liste ?',
     'Remet la liste d\'élèves de '+curCls.toUpperCase()+' telle qu\'elle était lors du dernier import. Les placements actuels sont conservés.',
     ()=>{
       const c=S.cl[curCls]; if(!c) return;
-      // Source 1 : snapshot d'import
-      let originalIds=(S._importSnapshot&&S._importSnapshot[curCls])||null;
-      // Source 2 : reconstruire depuis studentData (chaque entrée a un champ cls)
-      if(!originalIds){
-        originalIds=Object.entries(S.studentData||{})
-          .filter(([,s])=>s&&s.cls===curCls)
-          .map(([key])=>key);
-      }
-      if(!originalIds||!originalIds.length){
-        showModal('Aucune liste de référence','Aucun import trouvé pour '+curCls.toUpperCase()+'. Importez d\'abord la base élèves.',null,true);
+      const dispo=((S._importSnapshot&&S._importSnapshot[curCls])||[]).length
+        || Object.values(S.studentData||{}).filter(s=>s&&s.cls===curCls).length;
+      if(!dispo){
+        // V035-V11.3.37 — showModalLater : sans cela ce message d'ÉCHEC était
+        // ouvert puis refermé aussitôt, et le bouton paraissait ne rien faire.
+        showModalLater('Aucune liste de référence','Aucun import trouvé pour '+curCls.toUpperCase()+'. Importez d\'abord la base élèves.',null,true);
         return;
       }
-      // Remettre les élèves manquants, sans toucher aux placements existants
-      const missing=originalIds.filter(id=>!c.students.includes(id));
-      missing.forEach(id=>c.students.push(id));
-      // Retirer les élèves qui n\'étaient pas dans l\'import original (ajoutés manuellement)
-      // Non — on ne retire pas, on ajoute seulement les manquants
-      const added=missing.length;
+      const added=_restoreClassFromSnapshot(curCls);
       saveS(); renderApp();
-      if(added>0) showModal('Liste rétablie',added+' élève(s) réintégré(s) dans '+curCls.toUpperCase()+'.',null,true);
-      else showModal('Liste déjà complète','Aucun élève manquant dans '+curCls.toUpperCase()+'.',null,true);
+      if(added>0) showModalLater('Liste rétablie',added+' élève(s) réintégré(s) dans '+curCls.toUpperCase()+'.',null,true);
+      else showModalLater('Liste déjà complète','Aucun élève manquant dans '+curCls.toUpperCase()+'.',null,true);
     }
   );
+}
+
+/* V035-V11.3.37 — Contrôle au démarrage : une classe vide alors que son dernier
+   import contient des élèves est une PERTE SILENCIEUSE. C'est exactement ce que
+   produisait la réécriture en dur de la 6e2 (cf. le commentaire au chargement de
+   l'état) : l'application affichait une classe vide sans rien dire, et
+   l'enseignante croyait avoir raté une manipulation. Le filet reste utile après
+   correction : il attrapera la prochaine cause, quelle qu'elle soit. */
+function _auditClassesVides(){
+  const out=[];
+  Object.keys(S.cl||{}).forEach(cls=>{
+    const c=S.cl[cls]; if(!c) return;
+    if((c.students||[]).length) return;
+    const snap=(S._importSnapshot||{})[cls];
+    if(Array.isArray(snap) && snap.length) out.push({cls, n:snap.length});
+  });
+  return out;
+}
+
+function _signalerClassesVides(){
+  const anomalies=_auditClassesVides();
+  if(!anomalies.length) return 0;
+  const mbg=document.getElementById('mbg');
+  if(mbg && mbg.classList.contains('open')) return anomalies.length; // un modal est déjà ouvert : on ne s'impose pas
+  const liste=anomalies.map(a=>a.cls.toUpperCase()+' ('+a.n+')').join(', ');
+  showModal('Liste d\'élèves vide',
+    'Aucun élève dans : '+liste+'. Le dernier import de ces classes en contient pourtant. '
+    +'Cliquez sur OK pour les rétablir — les placements existants sont conservés.',
+    ()=>{
+      let total=0;
+      anomalies.forEach(a=>{ total+=_restoreClassFromSnapshot(a.cls); });
+      saveS();
+      if(typeof renderApp==='function') renderApp();
+      showModalLater('Listes rétablies', total+' élève(s) réintégré(s).', null, true);
+    });
+  return anomalies.length;
 }
 function removeSeatSlot(idx){getCls().seats[idx]=null; saveS(); renderApp();}
 /* ── Rotation des équipes ──────────────────────────────────────────────────
@@ -39931,6 +40010,11 @@ window.addEventListener('load',()=>{
 
   // V031-v181.11.0 — Démarrage de la détection automatique fin-de-cours
   try { if(typeof _endOfClassStart === 'function') _endOfClassStart(); } catch(e){}
+
+  // V035-V11.3.37 — Contrôle : une classe vide alors qu'un import la peuple.
+  // Différé : on laisse le premier rendu et les éventuels modaux de démarrage
+  // se poser avant de s'adresser à l'utilisatrice.
+  setTimeout(()=>{ try { if(typeof _signalerClassesVides === 'function') _signalerClassesVides(); } catch(e){} }, 2500);
 });
 
 /* ============================================================
@@ -40296,7 +40380,10 @@ function openSaveSeance(){
           if(typeof curSlotKey!=='undefined' && curSlotKey){
             const _grpFor=(typeof getCurrentGrpId==='function')?(getCurrentGrpId(curCls, curSlotKey)||''):'';
             const _coches=(typeof readSeanceCoches==='function')
-              ? (readSeanceCoches(curSlotKey, curCls, _grpFor)||{})  // sans 4e arg : aligne sur toggleCoche qui écrit avec _todayStr()
+              // V035-V11.3.35 : sans 4e argument = date DU COURS, comme l'écriture.
+              // (Le commentaire précédent disait « aligne sur _todayStr() » : il datait
+              //  de la double convention de date, supprimée depuis. Cf. leçon n°2.)
+              ? (readSeanceCoches(curSlotKey, curCls, _grpFor)||{})
               : {};
             const _decState=(S.seanceTaskStateCache&&S.seanceTaskStateCache[curCls+'|'+curSlotKey])||{};
             const _decisions=_decState.tacheDecisions||{};
@@ -40305,6 +40392,10 @@ function openSaveSeance(){
               const dec=_decisions[itemKey]||'';
               return checked || dec==='partiel';
             };
+            // V035-V11.3.37 — Une tâche COMMENCÉE était copiée à l'identique d'une
+            // tâche faite : le cahier de texte annonçait terminé ce qui ne l'était
+            // pas. Libellé validé par l'utilisatrice.
+            const _suffixe=(itemKey)=>(_decisions[itemKey]==='partiel' ? ' (à poursuivre au prochain cours)' : '');
 
             // 1. Reporters du slot
             if(typeof getMapEntry==='function'){
@@ -40315,7 +40406,7 @@ function openSaveSeance(){
                   const lbl=String(fi.label||'').trim();
                   if(!lbl) return;
                   const k='fi_'+fi.id;
-                  if(_isKept(k)) taskList.push(lbl);
+                  if(_isKept(k)) taskList.push(lbl+_suffixe(k));
                 });
               }
             }
@@ -40325,7 +40416,7 @@ function openSaveSeance(){
                 const tt=String(t||'').trim();
                 if(!tt) return;
                 const k='mo_'+idx;
-                if(_isKept(k)) taskList.push(tt);
+                if(_isKept(k)) taskList.push(tt+_suffixe(k));
               });
             }
           }
