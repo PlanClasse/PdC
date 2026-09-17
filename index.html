@@ -2605,7 +2605,27 @@ body.is-touch .v169-source{
 .cdt-cls{font-size:12px;font-weight:800;color:#fff;background:var(--acc);padding:1px 8px;border-radius:20px}
 .cdt-l2{font-size:11px;color:var(--tx3);margin-top:3px}
 .cdt-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;background:#FFFBEB;color:#B45309;border:1px solid #FDE68A;margin-left:6px}
-.cdt-txt{margin:0;padding:9px 11px;background:var(--sur2);border:1px solid var(--brd);border-radius:var(--r1);font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;color:var(--tx);overflow-x:auto}
+.cdt-txt{margin:0;padding:9px 11px;background:var(--sur2);border:1px solid var(--brd);border-radius:var(--r1);font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--tx);overflow-x:auto}
+/* V11.3.42 — le texte est composé : lignes DÉRIVÉES en lecture seule (.cdt-fixe)
+   et le CONTENU de la séance, seul champ libre, éditable sur place (.cdt-edit).
+   Éditer ici écrit dans seance.contenu : même source que le modal Séance. */
+.cdt-fixe{white-space:pre-wrap}
+.cdt-edit{display:block;width:100%;box-sizing:border-box;margin:5px 0;padding:6px 8px;background:var(--sur);border:1.5px dashed var(--brd);border-radius:var(--r1);font:inherit;color:var(--tx);resize:vertical;min-height:40px;overflow:hidden}
+.cdt-edit:hover{border-color:var(--tx3)}
+.cdt-edit:focus{outline:none;border-style:solid;border-color:var(--acc);background:var(--sur)}
+.cdt-edit:disabled{background:transparent;color:var(--tx3);cursor:not-allowed}
+.cdt-note{font-family:inherit;font-size:10.5px;font-style:italic;color:var(--tx3);margin-top:3px}
+.cdt-note-top{margin:0 0 9px 2px;font-size:11px}
+/* Bloc observations / commentaire : consultable pendant la saisie Pronote,
+   JAMAIS copié (le texte copié vient de buildCahierTexteSeance, qui les ignore). */
+.cdt-obs{margin-top:8px}
+.cdt-obs-tog{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border:1px solid var(--brd);background:var(--sur2);color:var(--tx2);border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+.cdt-obs-tog:hover{background:var(--sur);color:var(--tx)}
+.cdt-obs-hint{font-size:10.5px;font-style:italic;color:var(--tx3);margin-left:8px}
+.cdt-obs-body{display:none;margin-top:6px;padding:8px 10px;background:#FFF8E8;border:1px solid #E7D8AA;border-radius:var(--r1);font-size:12px;line-height:1.55;color:var(--tx)}
+.cdt-obs.open .cdt-obs-body{display:block}
+.cdt-obs-li{margin-bottom:3px}
+.cdt-obs-comm{margin-top:6px;padding-top:6px;border-top:1px dashed #E7D8AA;font-style:italic;color:var(--tx2)}
 .cdt-vide-txt{font-family:inherit;font-style:italic;color:var(--tx3)}
 .cdt-empty{padding:26px 12px;text-align:center;color:var(--tx3);font-size:13px}
 @media(max-width:1000px){ .cdt-cols{grid-template-columns:1fr} }
@@ -3934,7 +3954,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.41';
+const APP_VERSION = 'v11.3.42';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -27627,20 +27647,22 @@ function _cdtEntete(seance, clsCode){
   return out;
 }
 
-/** Construit le texte à copier pour UNE séance enregistrée.
- *  Fonction quasi-pure : elle lit S (progression) mais n'écrit rien.
- *  Renvoie '' si la séance ne contient rien de copiable. */
-function buildCahierTexteSeance(seance, clsCode){
-  if(!seance) return '';
-  const lignes=[];
+/** V11.3.42 — Découpe le texte d'une séance en ses TROIS natures :
+ *   • `avant`   : l'en-tête, DÉRIVÉ de la progression (seqId/seanId) ;
+ *   • `contenu` : le seul champ LIBRE, propriété de la séance enregistrée ;
+ *   • `apres`   : les puces (rendu des décisions de `taskRows`, qui ont déjà
+ *                 produit des effets ailleurs — report au cours suivant) et les
+ *                 documents distribués, DÉRIVÉS du prévu de la progression.
+ *  Seul `contenu` est éditable sans mentir : c'est la règle de cohérence de
+ *  toute la page. `avant` et `apres` restent en lecture seule.
+ *  Quasi-pure : lit S (progression), n'écrit rien. */
+function _cdtParts(seance, clsCode){
+  const out={avant:[], contenu:'', apres:[], sean:null};
+  if(!seance) return out;
   const ent=_cdtEntete(seance, clsCode);
-  ent.lignes.forEach(l=>lignes.push(l));
-
-  const contenu=String(seance.contenu||'').trim();
-  if(contenu){
-    if(lignes.length) lignes.push('');
-    lignes.push(contenu);
-  }
+  out.avant=ent.lignes.slice();
+  out.sean=ent.sean;
+  out.contenu=String(seance.contenu||'').trim();
 
   // Tâches : on ne garde que ce qui a VRAIMENT été fait — « Faite » ou
   // « Commencée / partielle ». Reportées, annulées et non cochées sont
@@ -27655,18 +27677,110 @@ function buildCahierTexteSeance(seance, clsCode){
     if(tr.stateLabel==='Faite') faites.push('• '+lbl);
     else if(tr.stateLabel==='Commencée / partielle') faites.push('• '+lbl+CDT_SUFFIXE_PARTIEL);
   });
-  if(faites.length){ lignes.push(''); faites.forEach(l=>lignes.push(l)); }
+  if(faites.length){ out.apres.push(''); faites.forEach(l=>out.apres.push(l)); }
 
   // Documents distribués : prévus par la séance de progression (du prévu, donc
   // jamais filtré par un état).
   const docs=(ent.sean && Array.isArray(ent.sean.docs))
     ? ent.sean.docs.map(d=>String(d||'').trim()).filter(Boolean) : [];
   if(docs.length){
-    lignes.push('');
-    lignes.push('Documents distribués :');
-    docs.forEach(d=>lignes.push('• '+d));
+    out.apres.push('');
+    out.apres.push('Documents distribués :');
+    docs.forEach(d=>out.apres.push('• '+d));
   }
+  return out;
+}
+
+/** Recolle les trois morceaux dans l'ordre du texte copié. Pure. */
+function _cdtAssemble(parts){
+  if(!parts) return '';
+  const lignes=(Array.isArray(parts.avant)?parts.avant:[]).slice();
+  const contenu=String(parts.contenu||'').trim();
+  if(contenu){
+    if(lignes.length) lignes.push('');
+    lignes.push(contenu);
+  }
+  (Array.isArray(parts.apres)?parts.apres:[]).forEach(l=>lignes.push(l));
   return lignes.join('\n').trim();
+}
+
+/** Construit le texte à copier pour UNE séance enregistrée.
+ *  Fonction quasi-pure : elle lit S (progression) mais n'écrit rien.
+ *  Renvoie '' si la séance ne contient rien de copiable. */
+function buildCahierTexteSeance(seance, clsCode){
+  if(!seance) return '';
+  return _cdtAssemble(_cdtParts(seance, clsCode));
+}
+
+/** Observations (une par élève) et commentaire de séance. Ils sont
+ *  DÉLIBÉRÉMENT hors du texte copié : le cahier de texte part dans Pronote, où
+ *  les familles le lisent — une observation nominative n'y a pas sa place.
+ *  Cette fonction ne sert QUE au bloc dépliant de consultation. */
+function _cdtObservations(seance){
+  const out={obs:[], commentaire:''};
+  if(!seance) return out;
+  const map=(seance.observations && typeof seance.observations==='object') ? seance.observations : {};
+  Object.keys(map).forEach(uid=>{
+    const txt=String(map[uid]||'').trim();
+    if(!txt) return;
+    let nom=uid;
+    try{ if(typeof studentName==='function') nom=studentName(uid)||uid; }catch(e){}
+    out.obs.push({nom, txt});
+  });
+  out.obs.sort((a,b)=>String(a.nom).localeCompare(String(b.nom),'fr'));
+  out.commentaire=String(seance.commentaire||'').trim();
+  return out;
+}
+
+/** Une séance ABSENTE ne peut être créée depuis le cahier de texte que si le
+ *  bucket d'écriture est certain. `getCurrentGrpId` dépend de `curGroupeId`,
+ *  un état d'interface qui n'a aucun sens depuis l'accueil : pour une classe à
+ *  demi-groupes on refuse donc de deviner, et on renvoie vers le plan de classe.
+ *  Une classe sans demi-groupes va toujours dans le bucket legacy S.seances[cls]. */
+function _cdtPeutCreer(clsCode){
+  if(!clsCode) return false;
+  try{ if(typeof clsHasGroupes==='function' && clsHasGroupes(clsCode)) return false; }
+  catch(e){ return false; }
+  return true;
+}
+
+/** Écrit le contenu saisi depuis le cahier de texte dans la séance ENREGISTRÉE.
+ *  Une seule source de vérité : c'est le même champ que le modal Séance.
+ *  – séance existante → on écrit dans la référence vive (aucun doute de bucket) ;
+ *  – séance absente   → création d'un enregistrement minimal, si et seulement si
+ *    `_cdtPeutCreer`. writeSeanceForSlot route vers le bon bucket.
+ *  ⚠ Le brouillon `S.seanceContentDraft[cls|slot].contenu` est SUPPRIMÉ : un
+ *  brouillon non vide l'emporte sur la valeur sauvée (`_draftOrSaved`), donc le
+ *  laisser en place ferait réapparaître l'ancien texte à l'ouverture du modal.
+ *  Renvoie {ok, cree}. */
+function _cdtEcrireContenu(c, val){
+  const res={ok:false, cree:false};
+  if(!c || !c.slotKey) return res;
+  const txt=String(val==null?'':val);
+  if(!c.seance){
+    if(!_cdtPeutCreer(c.cls)) return res;
+    if(!txt.trim()) return res;                 // ne pas créer une séance vide
+    const neuve={date:c.dateStr||'', debut:c.debut||'', fin:c.fin||'', slotKey:c.slotKey,
+                 statuts:{}, competences:{}, observations:{}, taskRows:[],
+                 contenu:'', commentaire:'', seqId:'', seanId:''};
+    try{
+      const ps=(typeof _homeProgSeanceFromMapping==='function')
+        ? _homeProgSeanceFromMapping(c.slotKey, c.cls) : null;
+      if(ps && ps.seq && ps.seq.id) neuve.seqId=ps.seq.id;
+      if(ps && ps.sean && ps.sean.id) neuve.seanId=ps.sean.id;
+    }catch(e){}
+    try{ writeSeanceForSlot(c.cls, c.slotKey, neuve); }catch(e){ return res; }
+    c.seance=neuve; res.cree=true;
+  }
+  c.seance.contenu=txt;
+  try{
+    const k=c.cls+'|'+c.slotKey;
+    if(S.seanceContentDraft && S.seanceContentDraft[k]) delete S.seanceContentDraft[k].contenu;
+  }catch(e){}
+  try{ saveS(); }catch(e){}
+  c.texte=buildCahierTexteSeance(c.seance, c.cls);
+  res.ok=true;
+  return res;
 }
 
 /** Les cours d'une journée, dans l'ordre, avec leur séance enregistrée et leur
@@ -27689,7 +27803,7 @@ function _cdtCoursDuJour(dateStr){
         seance=readAllSeancesForClass(cls).find(s=>s&&s.slotKey===slotKey)||null;
       }
       const fin=ev.end?((typeof formatHHMM==='function')?formatHHMM(new Date(ev.end)):''):'';
-      out.push({ev, cls, slotKey, debut:hh, fin, seance,
+      out.push({ev, cls, slotKey, dateStr, debut:hh, fin, seance,
                 texte: seance?buildCahierTexteSeance(seance, cls):''});
     });
   return out;
@@ -27759,9 +27873,7 @@ function openCahierTexte(dateStr){
   head.appendChild(mkNav('▶','Jour suivant',1));
 
   const cours=_cdtCoursDuJour(jour);
-  const saisis=cours.filter(c=>c.texte);
   const cnt=document.createElement('span'); cnt.className='cdt-count';
-  cnt.textContent=cours.length ? (cours.length+' cours · '+saisis.length+' saisi'+(saisis.length>1?'s':'')) : '';
   head.appendChild(cnt);
 
   const btnAuj=document.createElement('button'); btnAuj.className='cdt-nav'; btnAuj.style.width='auto';
@@ -27772,8 +27884,15 @@ function openCahierTexte(dateStr){
 
   const btnAll=document.createElement('button'); btnAll.className='cdt-copy';
   btnAll.textContent='📋 Tout copier';
-  btnAll.disabled=!saisis.length;
-  btnAll.onclick=()=>_cdtCopier(saisis.map(c=>c.texte).join('\n\n———\n\n'), btnAll);
+  // V11.3.42 — le contenu étant éditable, le compteur et « Tout copier » sont
+  // recalculés après chaque saisie : on ne fige jamais la liste des saisis.
+  const majEntete=()=>{
+    const s=cours.filter(x=>x.texte);
+    cnt.textContent=cours.length ? (cours.length+' cours · '+s.length+' saisi'+(s.length>1?'s':'')) : '';
+    btnAll.disabled=!s.length;
+  };
+  btnAll.onclick=()=>_cdtCopier(cours.filter(x=>x.texte).map(x=>x.texte).join('\n\n———\n\n'), btnAll);
+  majEntete();
   head.appendChild(btnAll);
 
   const btnX=document.createElement('button'); btnX.className='cdt-nav'; btnX.textContent='✕'; btnX.title='Fermer';
@@ -27811,17 +27930,94 @@ function openCahierTexte(dateStr){
 
       const main=document.createElement('div'); main.className='cdt-main';
       const l2=document.createElement('div'); l2.className='cdt-l2';
-      const ent=c.seance?_cdtEntete(c.seance, c.cls):{lignes:[]};
-      l2.textContent=ent.lignes.length ? ent.lignes.join(' · ')
-                    : (c.seance ? 'Séance enregistrée (hors progression)' : 'Séance non enregistrée');
-      if(!c.texte){ const bd=document.createElement('span'); bd.className='cdt-badge'; bd.textContent='rien à copier'; l2.appendChild(bd); }
+      const badge=document.createElement('span'); badge.className='cdt-badge'; badge.textContent='rien à copier';
+      const majL2=()=>{
+        const ent=c.seance?_cdtEntete(c.seance, c.cls):{lignes:[]};
+        l2.textContent=ent.lignes.length ? ent.lignes.join(' · ')
+                      : (c.seance ? 'Séance enregistrée (hors progression)' : 'Séance non enregistrée');
+        if(!c.texte) l2.appendChild(badge);
+      };
+      majL2();
       main.appendChild(l2);
 
+      // Le texte, composé : lignes dérivées en lecture seule, contenu éditable.
+      const parts=c.seance?_cdtParts(c.seance, c.cls):{avant:[], contenu:'', apres:[]};
       const tx=document.createElement('div'); tx.className='cdt-txt';
-      if(c.texte) tx.textContent=c.texte;
-      else { const e=document.createElement('span'); e.className='cdt-vide-txt'; e.textContent='Aucun contenu enregistré pour ce cours.'; tx.appendChild(e); }
+      const avant=document.createElement('div'); avant.className='cdt-fixe';
+      const apres=document.createElement('div'); apres.className='cdt-fixe';
+      const majFixes=()=>{
+        const p=c.seance?_cdtParts(c.seance, c.cls):{avant:[], contenu:'', apres:[]};
+        avant.textContent=p.avant.join('\n');
+        avant.style.display=p.avant.length?'':'none';
+        apres.textContent=p.apres.join('\n').replace(/^\n+/,'');
+        apres.style.display=p.apres.length?'':'none';
+      };
+      tx.appendChild(avant);
+
+      const ta=document.createElement('textarea'); ta.className='cdt-edit';
+      ta.value=parts.contenu;
+      ta.spellcheck=true;
+      const creable=_cdtPeutCreer(c.cls);
+      if(!c.seance && !creable){
+        ta.disabled=true;
+        ta.placeholder='Cours en demi-groupes non enregistré — à saisir depuis le plan de classe.';
+      } else {
+        ta.placeholder='Ce qui a été fait pendant ce cours…';
+      }
+      const autoH=()=>{ ta.style.height='auto'; ta.style.height=Math.max(40, ta.scrollHeight+2)+'px'; };
+      tx.appendChild(ta);
+      tx.appendChild(apres);
+      majFixes();
       main.appendChild(tx);
+
+      // Enregistrement différé (et au départ du champ), puis remise à jour de
+      // tout ce qui dépend du texte : bouton, badge, en-tête, compteur.
+      let tSave=null;
+      const commit=()=>{
+        if(tSave){ clearTimeout(tSave); tSave=null; }
+        const r=_cdtEcrireContenu(c, ta.value);
+        if(!r.ok && !c.seance) return;           // rien à écrire (champ vide, pas de séance)
+        cp.disabled=!c.texte;
+        card.className='cdt-card'+(c.texte?'':' vide');
+        majFixes(); majL2();
+        if(typeof majEntete==='function') majEntete();
+      };
+      ta.addEventListener('input', ()=>{ autoH(); if(tSave) clearTimeout(tSave); tSave=setTimeout(commit, 500); });
+      ta.addEventListener('blur', commit);
+
+      // Observations et commentaire : consultables, jamais copiés.
+      const O=_cdtObservations(c.seance);
+      if(O.obs.length || O.commentaire){
+        const box=document.createElement('div'); box.className='cdt-obs';
+        const tog=document.createElement('button'); tog.className='cdt-obs-tog';
+        const bouts=[];
+        if(O.obs.length) bouts.push('👁 '+O.obs.length+' observation'+(O.obs.length>1?'s':''));
+        if(O.commentaire) bouts.push('💬 commentaire');
+        tog.textContent=bouts.join(' · ');
+        tog.onclick=()=>box.classList.toggle('open');
+        box.appendChild(tog);
+        const hint=document.createElement('span'); hint.className='cdt-obs-hint';
+        hint.textContent='jamais copié';
+        box.appendChild(hint);
+        const bd=document.createElement('div'); bd.className='cdt-obs-body';
+        O.obs.forEach(o=>{
+          const li=document.createElement('div'); li.className='cdt-obs-li';
+          const nm=document.createElement('b'); nm.textContent=o.nom;
+          li.appendChild(nm);
+          li.appendChild(document.createTextNode(' — '+o.txt));
+          bd.appendChild(li);
+        });
+        if(O.commentaire){
+          const cm=document.createElement('div'); cm.className='cdt-obs-comm';
+          cm.textContent='💬 '+O.commentaire;
+          bd.appendChild(cm);
+        }
+        box.appendChild(bd);
+        main.appendChild(box);
+      }
+
       card.appendChild(main);
+      setTimeout(autoH, 0);
       return card;
     };
     const am=cours.filter(c=>+String(c.debut).slice(0,2)<13);
@@ -27838,6 +28034,9 @@ function openCahierTexte(dateStr){
       }
       return col;
     };
+    const note=document.createElement('div'); note.className='cdt-note cdt-note-top';
+    note.textContent='Le contenu encadré est modifiable : il s\'écrit dans la séance enregistrée, comme dans le modal Séance. L\'en-tête, les tâches et les documents sont calculés.';
+    body.appendChild(note);
     const cols=document.createElement('div'); cols.className='cdt-cols';
     cols.appendChild(mkCol('☀ Matin', am));
     cols.appendChild(mkCol('🌤 Après-midi', pm));
