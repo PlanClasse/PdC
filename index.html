@@ -2564,6 +2564,46 @@ body.is-touch .v169-source{
   50%      { box-shadow: 0 0 22px rgba(245, 158, 11, .85); }
 }
 
+
+/* ══ V035-V11.3.39 — Cahier de texte du jour ══════════════════════════════
+   Page d'agrégat : un cours par carte, le bouton 📋 devant chacune, et le texte
+   exactement tel qu'il partira dans le presse-papier. Même contenu que le
+   bouton « Copier » du modal Séance, mais lu dans la SÉANCE ENREGISTRÉE.
+   Aucune balise ajoutée au fichier : tout le DOM est construit en createElement
+   (invariants de balises inchangés). */
+.cdt-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;z-index:600;padding:34px 14px;overflow-y:auto;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.cdt-bg.open{display:flex}
+.cdt-panel{background:var(--bg);border-radius:var(--r3);box-shadow:var(--sh2);width:min(900px,100%);max-height:calc(100vh - 68px);display:flex;flex-direction:column;overflow:hidden}
+.cdt-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:11px 14px;background:var(--sur);border-bottom:1px solid var(--brd);flex-shrink:0}
+.cdt-nav{width:31px;height:31px;border:1px solid var(--brd);background:var(--sur);color:var(--tx2);border-radius:var(--r1);cursor:pointer;font-size:13px;line-height:1;flex-shrink:0;font-family:inherit}
+.cdt-nav:hover{background:var(--sur2);color:var(--tx)}
+.cdt-date{font-size:17px;font-weight:800;flex:1;min-width:150px;letter-spacing:-.01em;color:var(--tx)}
+.cdt-count{font-size:11px;font-weight:600;color:var(--tx3);white-space:nowrap}
+.cdt-body{padding:12px 14px 18px;overflow-y:auto}
+.cdt-sec{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--tx3);margin:14px 0 7px 2px}
+.cdt-sec:first-child{margin-top:2px}
+.cdt-card{background:var(--sur);border:1px solid var(--brd);border-radius:var(--r2);margin-bottom:9px;overflow:hidden}
+.cdt-card.vide{background:var(--sur2);border-style:dashed}
+.cdt-card-head{display:flex;align-items:flex-start;gap:11px;padding:10px 12px}
+.cdt-copy{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border:1.5px solid var(--brd);background:var(--sur);color:var(--tx2);border-radius:var(--r1);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap}
+.cdt-copy:hover{background:var(--acc-l);border-color:#BFDBFE;color:var(--acc)}
+.cdt-copy.done{background:#DCFCE7;border-color:#22C55E;color:#15803D}
+.cdt-copy:disabled{opacity:.4;cursor:not-allowed}
+.cdt-copy:disabled:hover{background:var(--sur);border-color:var(--brd);color:var(--tx2)}
+.cdt-id{flex:1;min-width:0}
+.cdt-l1{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.cdt-h{font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--tx)}
+.cdt-cls{font-size:12px;font-weight:800;color:#fff;background:var(--acc);padding:1px 8px;border-radius:20px}
+.cdt-l2{font-size:11px;color:var(--tx3);margin-top:3px}
+.cdt-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;background:#FFFBEB;color:#B45309;border:1px solid #FDE68A;margin-left:6px}
+.cdt-txt{margin:0 12px 11px;padding:9px 11px;background:var(--sur2);border:1px solid var(--brd);border-radius:var(--r1);font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;color:var(--tx);overflow-x:auto}
+.cdt-vide-txt{font-family:inherit;font-style:italic;color:var(--tx3)}
+.cdt-empty{padding:26px 12px;text-align:center;color:var(--tx3);font-size:13px}
+@media(max-width:560px){
+  .cdt-card-head{flex-wrap:wrap}
+  .cdt-copy{order:2;width:100%;justify-content:center}
+  .cdt-id{order:1;width:100%}
+}
 </style>
 </head>
 <body>
@@ -3879,7 +3919,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.38';
+const APP_VERSION = 'v11.3.39';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -27513,6 +27553,295 @@ function closeFicheDuJour(){
   if(bg) bg.classList.remove('open');
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   V035-V11.3.39 — CAHIER DE TEXTE DU JOUR
+   ──────────────────────────────────────────────────────────────────────────
+   Une page d'agrégat : tous les cours d'une journée, un bouton 📋 devant
+   chacun, et le texte tel qu'il partira dans le presse-papier — le MÊME
+   contenu que le bouton « Copier » du modal Séance (en-tête SEQ/Séance,
+   contenu, tâches réellement faites, documents distribués).
+
+   Deux différences assumées avec le bouton du modal, arbitrées avec
+   l'utilisateur :
+   - La source est la SÉANCE ENREGISTRÉE (`S.seances`), pas le champ affiché.
+     Le modal copie ce qu'on a sous les yeux, brouillon compris ; cette page se
+     consulte après coup, pour recopier sa journée — c'est l'enregistré qui fait
+     foi. Les états de tâches viennent donc de `seance.taskRows` (« Faite »,
+     « Commencée / partielle »…) et non des cases cochées en direct.
+   - Les TAF sont exclus (décision utilisateur) : dans Pronote, le travail à
+     faire a son propre champ.
+
+   Tout le DOM est construit en createElement : aucune balise ajoutée au
+   fichier, invariants inchangés.
+══════════════════════════════════════════════════════════════════════════ */
+
+const CDT_SUFFIXE_PARTIEL=' (à poursuivre au prochain cours)';
+let _cdtDateStr=null;   // jour affiché ; null → aujourd'hui à l'ouverture
+
+/** Décale une date ISO de n jours. Pure. */
+function _cdtShiftDate(dateStr, n){
+  const d=new Date(String(dateStr||'')+'T12:00:00');
+  if(isNaN(d.getTime())) return dateStr;
+  d.setDate(d.getDate()+n);
+  return toDateStr(d);
+}
+
+/** Les lignes d'en-tête « SEQ<n> … » / « Séance <n> : … » d'une séance
+ *  enregistrée, plus la séance de progression correspondante (pour ses docs).
+ *  Reproduit la numérotation du bouton Copier du modal : rang dans la
+ *  progression, pas identifiant. */
+function _cdtEntete(seance, clsCode){
+  const out={lignes:[], sean:null};
+  if(!seance || !seance.seqId) return out;
+  try{
+    const lv=(typeof _scopeLevelOf==='function')?_scopeLevelOf(clsCode):String(clsCode||'').replace(/\d+$/,'');
+    const prog=(typeof getProgression==='function')?(getProgression(lv)||[]):[];
+    const si=prog.findIndex(s=>s&&s.id===seance.seqId);
+    if(si<0) return out;
+    const seq=prog[si];
+    out.lignes.push('SEQ'+(si+1)+(seq.titre?' '+seq.titre:''));
+    if(seance.seanId && Array.isArray(seq.seances)){
+      const ni=seq.seances.findIndex(s=>s&&s.id===seance.seanId);
+      if(ni>=0){
+        out.sean=seq.seances[ni];
+        out.lignes.push('Séance '+(ni+1)+(out.sean.titre?' : '+out.sean.titre:''));
+      }
+    }
+  }catch(e){ /* progression illisible : on se contente du contenu */ }
+  return out;
+}
+
+/** Construit le texte à copier pour UNE séance enregistrée.
+ *  Fonction quasi-pure : elle lit S (progression) mais n'écrit rien.
+ *  Renvoie '' si la séance ne contient rien de copiable. */
+function buildCahierTexteSeance(seance, clsCode){
+  if(!seance) return '';
+  const lignes=[];
+  const ent=_cdtEntete(seance, clsCode);
+  ent.lignes.forEach(l=>lignes.push(l));
+
+  const contenu=String(seance.contenu||'').trim();
+  if(contenu){
+    if(lignes.length) lignes.push('');
+    lignes.push(contenu);
+  }
+
+  // Tâches : on ne garde que ce qui a VRAIMENT été fait — « Faite » ou
+  // « Commencée / partielle ». Reportées, annulées et non cochées sont
+  // exclues, comme dans le modal. Les TAF et les évaluations aussi.
+  const faites=[];
+  (Array.isArray(seance.taskRows)?seance.taskRows:[]).forEach(tr=>{
+    if(!tr) return;
+    const src=String(tr.sourceLabel||'');
+    if(src!=='modeOp' && src!=='reporter') return;
+    const lbl=String(tr.label||'').trim();
+    if(!lbl) return;
+    if(tr.stateLabel==='Faite') faites.push('• '+lbl);
+    else if(tr.stateLabel==='Commencée / partielle') faites.push('• '+lbl+CDT_SUFFIXE_PARTIEL);
+  });
+  if(faites.length){ lignes.push(''); faites.forEach(l=>lignes.push(l)); }
+
+  // Documents distribués : prévus par la séance de progression (du prévu, donc
+  // jamais filtré par un état).
+  const docs=(ent.sean && Array.isArray(ent.sean.docs))
+    ? ent.sean.docs.map(d=>String(d||'').trim()).filter(Boolean) : [];
+  if(docs.length){
+    lignes.push('');
+    lignes.push('Documents distribués :');
+    docs.forEach(d=>lignes.push('• '+d));
+  }
+  return lignes.join('\n').trim();
+}
+
+/** Les cours d'une journée, dans l'ordre, avec leur séance enregistrée et leur
+ *  texte. Les cours annulés sont écartés (ils ne vont pas au cahier de texte). */
+function _cdtCoursDuJour(dateStr){
+  const out=[];
+  let r=null;
+  try{ r=(typeof resolveDay==='function')?resolveDay(dateStr):null; }catch(e){ return out; }
+  if(!r || r.isVacance || !Array.isArray(r.events)) return out;
+  r.events.filter(ev=>ev && !ev.cancelled && ev.start).slice()
+    .sort((a,b)=>new Date(a.start).getTime()-new Date(b.start).getTime())
+    .forEach(ev=>{
+      const cls=(typeof extractClassCode==='function')?(extractClassCode(ev.summary||'')||''):'';
+      const d=new Date(ev.start);
+      const hh=(typeof formatHHMM==='function')?formatHHMM(d)
+        :(String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));
+      const slotKey=dateStr+'_'+hh;
+      let seance=null;
+      if(cls && typeof readAllSeancesForClass==='function'){
+        seance=readAllSeancesForClass(cls).find(s=>s&&s.slotKey===slotKey)||null;
+      }
+      const fin=ev.end?((typeof formatHHMM==='function')?formatHHMM(new Date(ev.end)):''):'';
+      out.push({ev, cls, slotKey, debut:hh, fin, seance,
+                texte: seance?buildCahierTexteSeance(seance, cls):''});
+    });
+  return out;
+}
+
+function closeCahierTexte(){
+  const bg=document.getElementById('cdt-bg');
+  if(bg) bg.classList.remove('open');
+}
+
+function _cdtFlash(btn, txt){
+  const old=btn.textContent;
+  btn.textContent=txt; btn.classList.add('done');
+  setTimeout(()=>{ btn.textContent=old; btn.classList.remove('done'); }, 1400);
+}
+
+function _cdtCopier(texte, btn){
+  if(!texte){ _cdtFlash(btn,'∅ Vide'); return; }
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(texte)
+        .then(()=>_cdtFlash(btn,'✓ Copié'))
+        .catch(()=>_cdtFlash(btn,'✗ Échec'));
+      return;
+    }
+  }catch(e){ /* repli ci-dessous */ }
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=texte; ta.style.cssText='position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+    _cdtFlash(btn,'✓ Copié');
+  }catch(e){ _cdtFlash(btn,'✗ Échec'); }
+}
+
+function openCahierTexte(dateStr){
+  const jour=dateStr || _cdtDateStr || toDateStr((typeof _appNow==='function')?_appNow():new Date());
+  _cdtDateStr=jour;
+
+  let bg=document.getElementById('cdt-bg');
+  if(!bg){
+    bg=document.createElement('div');
+    bg.id='cdt-bg'; bg.className='cdt-bg';
+    bg.onclick=(e)=>{ if(e.target===bg) closeCahierTexte(); };
+    document.body.appendChild(bg);
+  }
+  bg.innerHTML='';
+
+  const panel=document.createElement('div'); panel.className='cdt-panel';
+
+  // ── En-tête : navigation par jour ──
+  const head=document.createElement('div'); head.className='cdt-head';
+  const mkNav=(txt, title, delta)=>{
+    const b=document.createElement('button'); b.className='cdt-nav'; b.textContent=txt; b.title=title;
+    b.onclick=()=>openCahierTexte(_cdtShiftDate(_cdtDateStr, delta));
+    return b;
+  };
+  head.appendChild(mkNav('◀','Jour précédent',-1));
+  const titre=document.createElement('div'); titre.className='cdt-date';
+  let libelle=jour;
+  try{
+    libelle=new Date(jour+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+    libelle=libelle.charAt(0).toUpperCase()+libelle.slice(1);
+  }catch(e){}
+  titre.textContent=libelle;
+  head.appendChild(titre);
+  head.appendChild(mkNav('▶','Jour suivant',1));
+
+  const cours=_cdtCoursDuJour(jour);
+  const saisis=cours.filter(c=>c.texte);
+  const cnt=document.createElement('span'); cnt.className='cdt-count';
+  cnt.textContent=cours.length ? (cours.length+' cours · '+saisis.length+' saisi'+(saisis.length>1?'s':'')) : '';
+  head.appendChild(cnt);
+
+  const btnAuj=document.createElement('button'); btnAuj.className='cdt-nav'; btnAuj.style.width='auto';
+  btnAuj.style.padding='0 10px'; btnAuj.style.fontSize='11.5px'; btnAuj.style.fontWeight='600';
+  btnAuj.textContent="Aujourd'hui";
+  btnAuj.onclick=()=>openCahierTexte(toDateStr((typeof _appNow==='function')?_appNow():new Date()));
+  head.appendChild(btnAuj);
+
+  const btnAll=document.createElement('button'); btnAll.className='cdt-copy';
+  btnAll.textContent='📋 Tout copier';
+  btnAll.disabled=!saisis.length;
+  btnAll.onclick=()=>_cdtCopier(saisis.map(c=>c.texte).join('\n\n———\n\n'), btnAll);
+  head.appendChild(btnAll);
+
+  const btnX=document.createElement('button'); btnX.className='cdt-nav'; btnX.textContent='✕'; btnX.title='Fermer';
+  btnX.onclick=closeCahierTexte;
+  head.appendChild(btnX);
+  panel.appendChild(head);
+
+  // ── Corps : une carte par cours, matin puis après-midi ──
+  const body=document.createElement('div'); body.className='cdt-body';
+  if(!cours.length){
+    const vide=document.createElement('div'); vide.className='cdt-empty';
+    vide.textContent='Aucun cours ce jour-là.';
+    body.appendChild(vide);
+  } else {
+    const mkCarte=(c)=>{
+      const card=document.createElement('div');
+      card.className='cdt-card'+(c.texte?'':' vide');
+      const ch=document.createElement('div'); ch.className='cdt-card-head';
+
+      const cp=document.createElement('button'); cp.className='cdt-copy'; cp.textContent='📋 Copier';
+      cp.disabled=!c.texte;
+      cp.onclick=()=>_cdtCopier(c.texte, cp);
+      ch.appendChild(cp);
+
+      const id=document.createElement('div'); id.className='cdt-id';
+      const l1=document.createElement('div'); l1.className='cdt-l1';
+      const h=document.createElement('span'); h.className='cdt-h';
+      h.textContent=c.debut+(c.fin?' – '+c.fin:'');
+      l1.appendChild(h);
+      if(c.cls){ const cl=document.createElement('span'); cl.className='cdt-cls'; cl.textContent=c.cls.toUpperCase(); l1.appendChild(cl); }
+      id.appendChild(l1);
+
+      const l2=document.createElement('div'); l2.className='cdt-l2';
+      const ent=c.seance?_cdtEntete(c.seance, c.cls):{lignes:[]};
+      l2.textContent=ent.lignes.length ? ent.lignes.join(' · ')
+                    : (c.seance ? 'Séance enregistrée (hors progression)' : 'Séance non enregistrée');
+      if(!c.texte){ const bd=document.createElement('span'); bd.className='cdt-badge'; bd.textContent='rien à copier'; l2.appendChild(bd); }
+      id.appendChild(l2);
+      ch.appendChild(id);
+      card.appendChild(ch);
+
+      const tx=document.createElement('div'); tx.className='cdt-txt';
+      if(c.texte) tx.textContent=c.texte;
+      else { const e=document.createElement('span'); e.className='cdt-vide-txt'; e.textContent='Aucun contenu enregistré pour ce cours.'; tx.appendChild(e); }
+      card.appendChild(tx);
+      return card;
+    };
+    const am=cours.filter(c=>+String(c.debut).slice(0,2)<13);
+    const pm=cours.filter(c=>+String(c.debut).slice(0,2)>=13);
+    if(am.length){
+      const t=document.createElement('div'); t.className='cdt-sec'; t.textContent='☀ Matin'; body.appendChild(t);
+      am.forEach(c=>body.appendChild(mkCarte(c)));
+    }
+    if(pm.length){
+      const t=document.createElement('div'); t.className='cdt-sec'; t.textContent='🌤 Après-midi'; body.appendChild(t);
+      pm.forEach(c=>body.appendChild(mkCarte(c)));
+    }
+  }
+  panel.appendChild(body);
+  bg.appendChild(panel);
+  bg.classList.add('open');
+}
+
+/* Bouton d'entrée dans l'en-tête de la bande EDT de l'accueil, à côté du 📅.
+   Injecté en createElement (pas de balise ajoutée au fichier) et idempotent. */
+function _ensureCahierTexteButton(){
+  try{
+    if(document.getElementById('cdt-open-btn')) return true;
+    const head=document.querySelector('#edt-strip .home-edt-head');
+    if(!head) return false;
+    const b=document.createElement('button');
+    b.id='cdt-open-btn'; b.className='edt-all-btn';
+    b.title='Cahier de texte du jour — copier chaque cours';
+    b.style.marginLeft='2px';
+    b.textContent='📋';
+    b.onclick=()=>openCahierTexte(null);
+    const ref=head.querySelector('button[onclick="openFicheDuJourManual()"]');
+    if(ref && ref.nextSibling) head.insertBefore(b, ref.nextSibling);
+    else head.appendChild(b);
+    return true;
+  }catch(e){ return false; }
+}
+
 // Bouton dans le header EDT (appelé manuellement par l'utilisateur)
 function openFicheDuJourManual(){
   // Reset l'onglet par défaut au matin à chaque ouverture manuelle
@@ -40038,6 +40367,9 @@ window.addEventListener('load',()=>{
 
   // V031-v181.11.0 — Démarrage de la détection automatique fin-de-cours
   try { if(typeof _endOfClassStart === 'function') _endOfClassStart(); } catch(e){}
+
+  // V035-V11.3.39 — Bouton « Cahier de texte du jour » dans l'en-tête EDT.
+  try { if(typeof _ensureCahierTexteButton === 'function') _ensureCahierTexteButton(); } catch(e){}
 
   // V035-V11.3.37 — Contrôle : une classe vide alors qu'un import la peuple.
   // Différé : on laisse le premier rendu et les éventuels modaux de démarrage
