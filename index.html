@@ -2573,19 +2573,28 @@ body.is-touch .v169-source{
    (invariants de balises inchangés). */
 .cdt-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;z-index:600;padding:34px 14px;overflow-y:auto;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
 .cdt-bg.open{display:flex}
-.cdt-panel{background:var(--bg);border-radius:var(--r3);box-shadow:var(--sh2);width:min(900px,100%);max-height:calc(100vh - 68px);display:flex;flex-direction:column;overflow:hidden}
+.cdt-panel{background:var(--bg);border-radius:var(--r3);box-shadow:var(--sh2);width:min(1480px,100%);max-height:calc(100vh - 68px);display:flex;flex-direction:column;overflow:hidden}
 .cdt-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:11px 14px;background:var(--sur);border-bottom:1px solid var(--brd);flex-shrink:0}
 .cdt-nav{width:31px;height:31px;border:1px solid var(--brd);background:var(--sur);color:var(--tx2);border-radius:var(--r1);cursor:pointer;font-size:13px;line-height:1;flex-shrink:0;font-family:inherit}
 .cdt-nav:hover{background:var(--sur2);color:var(--tx)}
 .cdt-date{font-size:17px;font-weight:800;flex:1;min-width:150px;letter-spacing:-.01em;color:var(--tx)}
 .cdt-count{font-size:11px;font-weight:600;color:var(--tx3);white-space:nowrap}
 .cdt-body{padding:12px 14px 18px;overflow-y:auto}
-.cdt-sec{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--tx3);margin:14px 0 7px 2px}
-.cdt-sec:first-child{margin-top:2px}
-.cdt-card{background:var(--sur);border:1px solid var(--brd);border-radius:var(--r2);margin-bottom:9px;overflow:hidden}
+.cdt-sec{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--tx3);margin:0 0 7px 2px}
+/* V11.3.41 — deux colonnes : matin | après-midi. Repli en une colonne sous 1000px. */
+.cdt-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.cdt-col{min-width:0}
+.cdt-col-vide{padding:14px 12px;text-align:center;color:var(--tx3);font-size:12px;background:var(--sur2);border:1px dashed var(--brd);border-radius:var(--r2)}
+.cdt-card{background:var(--sur);border:1px solid var(--brd);border-radius:var(--r2);margin-bottom:9px;overflow:hidden;display:flex;align-items:stretch}
 .cdt-card.vide{background:var(--sur2);border-style:dashed}
-.cdt-card-head{display:flex;align-items:flex-start;gap:11px;padding:10px 12px}
+/* Rail de gauche : la classe en gros, l'horaire dessous, le bouton copier sous les deux. */
+.cdt-rail{flex-shrink:0;width:104px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:5px;padding:10px 8px;background:var(--sur2);border-right:1px solid var(--brd)}
+.cdt-card.vide .cdt-rail{background:transparent}
+.cdt-cls-big{font-size:21px;font-weight:800;letter-spacing:-.02em;color:var(--tx);line-height:1.05;text-align:center;word-break:break-word}
+.cdt-rail .cdt-h{font-size:11px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums;text-align:center;line-height:1.2}
+.cdt-main{flex:1;min-width:0;padding:9px 11px 10px}
 .cdt-copy{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border:1.5px solid var(--brd);background:var(--sur);color:var(--tx2);border-radius:var(--r1);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap}
+.cdt-rail .cdt-copy{margin-top:2px;width:100%;justify-content:center;padding:6px 4px}
 .cdt-copy:hover{background:var(--acc-l);border-color:#BFDBFE;color:var(--acc)}
 .cdt-copy.done{background:#DCFCE7;border-color:#22C55E;color:#15803D}
 .cdt-copy:disabled{opacity:.4;cursor:not-allowed}
@@ -2596,13 +2605,14 @@ body.is-touch .v169-source{
 .cdt-cls{font-size:12px;font-weight:800;color:#fff;background:var(--acc);padding:1px 8px;border-radius:20px}
 .cdt-l2{font-size:11px;color:var(--tx3);margin-top:3px}
 .cdt-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;background:#FFFBEB;color:#B45309;border:1px solid #FDE68A;margin-left:6px}
-.cdt-txt{margin:0 12px 11px;padding:9px 11px;background:var(--sur2);border:1px solid var(--brd);border-radius:var(--r1);font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;color:var(--tx);overflow-x:auto}
+.cdt-txt{margin:0;padding:9px 11px;background:var(--sur2);border:1px solid var(--brd);border-radius:var(--r1);font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;color:var(--tx);overflow-x:auto}
 .cdt-vide-txt{font-family:inherit;font-style:italic;color:var(--tx3)}
 .cdt-empty{padding:26px 12px;text-align:center;color:var(--tx3);font-size:13px}
+@media(max-width:1000px){ .cdt-cols{grid-template-columns:1fr} }
 @media(max-width:560px){
-  .cdt-card-head{flex-wrap:wrap}
-  .cdt-copy{order:2;width:100%;justify-content:center}
-  .cdt-id{order:1;width:100%}
+  .cdt-card{flex-direction:column}
+  .cdt-rail{width:100%;flex-direction:row;justify-content:flex-start;gap:10px;border-right:none;border-bottom:1px solid var(--brd)}
+  .cdt-rail .cdt-copy{width:auto;margin-top:0;margin-left:auto}
 }
 
 /* V035-V11.3.40 — Numéro de cours dans l'EDT de l'accueil : pastille bleue,
@@ -3924,7 +3934,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.40';
+const APP_VERSION = 'v11.3.41';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -27778,49 +27788,60 @@ function openCahierTexte(dateStr){
     vide.textContent='Aucun cours ce jour-là.';
     body.appendChild(vide);
   } else {
+    // V11.3.41 — la carte est en deux blocs : un rail à gauche (classe en gros,
+    // horaire, bouton copier) et le contenu à droite.
     const mkCarte=(c)=>{
       const card=document.createElement('div');
       card.className='cdt-card'+(c.texte?'':' vide');
-      const ch=document.createElement('div'); ch.className='cdt-card-head';
+
+      const rail=document.createElement('div'); rail.className='cdt-rail';
+      const big=document.createElement('div'); big.className='cdt-cls-big';
+      big.textContent=c.cls?c.cls.toUpperCase():'—';
+      rail.appendChild(big);
+
+      const h=document.createElement('div'); h.className='cdt-h';
+      h.textContent=c.debut+(c.fin?' – '+c.fin:'');
+      rail.appendChild(h);
 
       const cp=document.createElement('button'); cp.className='cdt-copy'; cp.textContent='📋 Copier';
       cp.disabled=!c.texte;
       cp.onclick=()=>_cdtCopier(c.texte, cp);
-      ch.appendChild(cp);
+      rail.appendChild(cp);
+      card.appendChild(rail);
 
-      const id=document.createElement('div'); id.className='cdt-id';
-      const l1=document.createElement('div'); l1.className='cdt-l1';
-      const h=document.createElement('span'); h.className='cdt-h';
-      h.textContent=c.debut+(c.fin?' – '+c.fin:'');
-      l1.appendChild(h);
-      if(c.cls){ const cl=document.createElement('span'); cl.className='cdt-cls'; cl.textContent=c.cls.toUpperCase(); l1.appendChild(cl); }
-      id.appendChild(l1);
-
+      const main=document.createElement('div'); main.className='cdt-main';
       const l2=document.createElement('div'); l2.className='cdt-l2';
       const ent=c.seance?_cdtEntete(c.seance, c.cls):{lignes:[]};
       l2.textContent=ent.lignes.length ? ent.lignes.join(' · ')
                     : (c.seance ? 'Séance enregistrée (hors progression)' : 'Séance non enregistrée');
       if(!c.texte){ const bd=document.createElement('span'); bd.className='cdt-badge'; bd.textContent='rien à copier'; l2.appendChild(bd); }
-      id.appendChild(l2);
-      ch.appendChild(id);
-      card.appendChild(ch);
+      main.appendChild(l2);
 
       const tx=document.createElement('div'); tx.className='cdt-txt';
       if(c.texte) tx.textContent=c.texte;
       else { const e=document.createElement('span'); e.className='cdt-vide-txt'; e.textContent='Aucun contenu enregistré pour ce cours.'; tx.appendChild(e); }
-      card.appendChild(tx);
+      main.appendChild(tx);
+      card.appendChild(main);
       return card;
     };
     const am=cours.filter(c=>+String(c.debut).slice(0,2)<13);
     const pm=cours.filter(c=>+String(c.debut).slice(0,2)>=13);
-    if(am.length){
-      const t=document.createElement('div'); t.className='cdt-sec'; t.textContent='☀ Matin'; body.appendChild(t);
-      am.forEach(c=>body.appendChild(mkCarte(c)));
-    }
-    if(pm.length){
-      const t=document.createElement('div'); t.className='cdt-sec'; t.textContent='🌤 Après-midi'; body.appendChild(t);
-      pm.forEach(c=>body.appendChild(mkCarte(c)));
-    }
+    const mkCol=(titre, liste)=>{
+      const col=document.createElement('div'); col.className='cdt-col';
+      const t=document.createElement('div'); t.className='cdt-sec'; t.textContent=titre;
+      col.appendChild(t);
+      if(liste.length) liste.forEach(c=>col.appendChild(mkCarte(c)));
+      else {
+        const v=document.createElement('div'); v.className='cdt-col-vide';
+        v.textContent='Aucun cours';
+        col.appendChild(v);
+      }
+      return col;
+    };
+    const cols=document.createElement('div'); cols.className='cdt-cols';
+    cols.appendChild(mkCol('☀ Matin', am));
+    cols.appendChild(mkCol('🌤 Après-midi', pm));
+    body.appendChild(cols);
   }
   panel.appendChild(body);
   bg.appendChild(panel);
