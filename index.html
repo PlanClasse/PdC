@@ -2604,6 +2604,11 @@ body.is-touch .v169-source{
   .cdt-copy{order:2;width:100%;justify-content:center}
   .cdt-id{order:1;width:100%}
 }
+
+/* V035-V11.3.40 — Numéro de cours dans l'EDT de l'accueil : pastille bleue,
+   le nombre seul, à droite du nom de la classe. Compte les cours NON ANNULÉS
+   de l'année pour cette classe ; un cours annulé n'en porte pas. */
+.edt-num{display:inline-block;font-size:10.5px;font-weight:800;color:#fff;background:var(--acc);border-radius:20px;padding:1px 7px;margin-left:6px;flex-shrink:0;font-variant-numeric:tabular-nums;vertical-align:1px;letter-spacing:.02em}
 </style>
 </head>
 <body>
@@ -3919,7 +3924,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.39';
+const APP_VERSION = 'v11.3.40';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28011,7 +28016,47 @@ if(typeof window !== 'undefined'){
   window.addEventListener('load', () => setTimeout(()=>showWelcomePopup(false), 3000));
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   V035-V11.3.40 — Numéro de cours (EDT de l'accueil)
+   ──────────────────────────────────────────────────────────────────────────
+   « Combien de fois ai-je vu cette classe cette année, ce cours compris ? »
+   Trois décisions prises avec l'utilisateur :
+   - PRÉVISIONNEL : on compte les créneaux de l'emploi du temps, pas les
+     séances enregistrées. Un cours à venir porte donc son numéro d'avance ;
+     annuler un cours d'ici là décale les suivants, c'est assumé.
+   - Les cours ANNULÉS ne comptent pas et n'affichent aucun numéro (leur en
+     donner un serait précisément l'ambiguïté à éviter).
+   - Un créneau en DEMI-GROUPES compte pour UN cours : `buildYearSlots` fusionne
+     déjà les deux groupes d'un même créneau (« same slotKey = same logical
+     course, even if 2 groups »), on s'appuie dessus sans rien changer.
+
+   Mémo par rendu (`_numCoursMemo`), remis à zéro au début de `renderEdtList` :
+   `_yearSlotsCacheVersion` ne bouge PAS quand on annule un cours, donc un cache
+   qui survivrait au rendu afficherait des numéros périmés après une annulation.
+══════════════════════════════════════════════════════════════════════════ */
+let _numCoursMemo=null;
+
+function _edtNumeroCours(clsCode, slotKey){
+  if(!clsCode || !slotKey) return 0;
+  if(typeof buildYearSlots!=='function') return 0;
+  let table=_numCoursMemo && _numCoursMemo[clsCode];
+  if(!table){
+    table={};
+    let n=0;
+    try{
+      (buildYearSlots(clsCode)||[]).forEach(sl=>{
+        if(!sl || !sl.slotKey) return;
+        if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, clsCode)) return;
+        n++; table[sl.slotKey]=n;
+      });
+    }catch(e){ return 0; }
+    if(_numCoursMemo) _numCoursMemo[clsCode]=table;
+  }
+  return table[slotKey]||0;
+}
+
 function renderEdtList(){
+  _numCoursMemo={};   // V11.3.40 — numéros de cours recalculés à chaque rendu
   const amEl=document.getElementById('edt-list-am');
   const pmEl=document.getElementById('edt-list-pm');
   const dateEl=document.getElementById('edt-strip-date');
@@ -28137,6 +28182,21 @@ function renderEdtList(){
     const MAX_SUMMARY=26;
     clsEl.textContent=dispSummary.length>MAX_SUMMARY ? dispSummary.slice(0,MAX_SUMMARY)+'…' : dispSummary;
     clsEl.title=dispSummary;
+
+    // V035-V11.3.40 — Numéro de cours, à droite du nom de la classe.
+    // createElement (comme la pastille ⊕ ci-dessous) : aucune balise ajoutée au
+    // fichier, invariants inchangés. Rien sur un cours annulé : _edtNumeroCours
+    // ne lui attribue aucun numéro.
+    if(clsCode && !isCancelledSlot){
+      const _nc=_edtNumeroCours(clsCode, slotKey);
+      if(_nc>0){
+        const numEl=document.createElement('span');
+        numEl.className='edt-num';
+        numEl.textContent=String(_nc);
+        numEl.title=_nc+'ᵉ cours de l\'année avec '+String(clsCode).toUpperCase()+' · cours annulés non comptés';
+        clsEl.appendChild(numEl);
+      }
+    }
 
     // Indicateur + si contenu planifié
     // V020-v181.4.10 — Bug E : étendre la condition aux slots qui ne sont
