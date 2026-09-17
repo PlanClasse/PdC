@@ -3954,7 +3954,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.42';
+const APP_VERSION = 'v11.3.43';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -27723,8 +27723,16 @@ function _cdtObservations(seance){
   Object.keys(map).forEach(uid=>{
     const txt=String(map[uid]||'').trim();
     if(!txt) return;
-    let nom=uid;
-    try{ if(typeof studentName==='function') nom=studentName(uid)||uid; }catch(e){}
+    // ⚠ V11.3.43 — NE PAS écrire `studentName(uid)` : `studentName` n'est PAS
+    // une fonction globale, c'est un `const` LOCAL déclaré dans deux fonctions
+    // de rendu (résumé de séance, Sc.Préc.). Au niveau global,
+    // `typeof studentName==='function'` est faux et on retombait sur le code
+    // élève brut (« e_40 »). Le vrai helper global est
+    // `formatSummaryStudentName`, celui-là même qu'utilise Sc.Préc.
+    let nom='';
+    try{ if(typeof formatSummaryStudentName==='function') nom=String(formatSummaryStudentName(uid)||'').trim(); }catch(e){}
+    if(!nom){ try{ if(typeof getFullName==='function') nom=String(getFullName(uid)||'').trim(); }catch(e){} }
+    if(!nom) nom=uid;
     out.obs.push({nom, txt});
   });
   out.obs.sort((a,b)=>String(a.nom).localeCompare(String(b.nom),'fr'));
@@ -27732,16 +27740,36 @@ function _cdtObservations(seance){
   return out;
 }
 
+/** V11.3.43 — Dans quel bucket écrire la séance d'un créneau, vu depuis
+ *  l'accueil (donc SANS s'appuyer sur `curGroupeId`, un état d'interface du
+ *  plan de classe qui n'a aucun sens ici) ?
+ *    ''   → bucket legacy S.seances[cls]  (classe sans demi-groupes, ou
+ *           créneau classe entière) ;
+ *    gid  → bucket composite S.seances[cls|gid] (créneau demi-groupe qui
+ *           désigne UN groupe) ;
+ *    null → indéterminable : on ne devine pas.
+ *  On reproduit exactement la résolution que `buildYearSlots` applique pour
+ *  choisir `slot.saved` — ce qu'on écrit est donc ce qu'il relira. Le seul cas
+ *  refusé est le créneau demi-groupe portant 0 ou 2+ groupes : là, écrire en
+ *  legacy rendrait la séance invisible au modal, qui lit le composite d'abord. */
+function _cdtGrpPourSlot(clsCode, slotKey){
+  if(!clsCode || !slotKey) return null;
+  try{
+    if(typeof clsHasGroupes!=='function' || !clsHasGroupes(clsCode)) return '';
+    const slots=(typeof buildYearSlots==='function')?(buildYearSlots(clsCode)||[]):[];
+    const slot=slots.find(s=>s&&s.slotKey===slotKey);
+    if(!slot) return null;
+    if(!(typeof isDemiClsSlot==='function' && isDemiClsSlot(slot))) return '';
+    const gids=(typeof getSlotGroupes==='function')?getSlotGroupes(slot):[];
+    if(gids.length===1) return gids[0];
+    return null;
+  }catch(e){ return null; }
+}
+
 /** Une séance ABSENTE ne peut être créée depuis le cahier de texte que si le
- *  bucket d'écriture est certain. `getCurrentGrpId` dépend de `curGroupeId`,
- *  un état d'interface qui n'a aucun sens depuis l'accueil : pour une classe à
- *  demi-groupes on refuse donc de deviner, et on renvoie vers le plan de classe.
- *  Une classe sans demi-groupes va toujours dans le bucket legacy S.seances[cls]. */
-function _cdtPeutCreer(clsCode){
-  if(!clsCode) return false;
-  try{ if(typeof clsHasGroupes==='function' && clsHasGroupes(clsCode)) return false; }
-  catch(e){ return false; }
-  return true;
+ *  bucket d'écriture est certain. */
+function _cdtPeutCreer(clsCode, slotKey){
+  return _cdtGrpPourSlot(clsCode, slotKey)!==null;
 }
 
 /** Écrit le contenu saisi depuis le cahier de texte dans la séance ENREGISTRÉE.
@@ -27758,7 +27786,7 @@ function _cdtEcrireContenu(c, val){
   if(!c || !c.slotKey) return res;
   const txt=String(val==null?'':val);
   if(!c.seance){
-    if(!_cdtPeutCreer(c.cls)) return res;
+    if(!_cdtPeutCreer(c.cls, c.slotKey)) return res;
     if(!txt.trim()) return res;                 // ne pas créer une séance vide
     const neuve={date:c.dateStr||'', debut:c.debut||'', fin:c.fin||'', slotKey:c.slotKey,
                  statuts:{}, competences:{}, observations:{}, taskRows:[],
@@ -27769,7 +27797,16 @@ function _cdtEcrireContenu(c, val){
       if(ps && ps.seq && ps.seq.id) neuve.seqId=ps.seq.id;
       if(ps && ps.sean && ps.sean.id) neuve.seanId=ps.sean.id;
     }catch(e){}
-    try{ writeSeanceForSlot(c.cls, c.slotKey, neuve); }catch(e){ return res; }
+    // `writeSeanceForSlot` route le bucket via `getCurrentGrpId`, qui consulte
+    // d'abord `curGroupeId`. Depuis l'accueil, cette variable traîne l'état du
+    // dernier plan de classe ouvert : on la neutralise le temps de l'écriture
+    // pour que la résolution vienne UNIQUEMENT du créneau — c'est-à-dire
+    // exactement ce que `_cdtGrpPourSlot` a validé plus haut.
+    let _grpSauve=null, _aRestaurer=false;
+    try{ if(typeof curGroupeId!=='undefined'){ _grpSauve=curGroupeId; curGroupeId=null; _aRestaurer=true; } }catch(e){}
+    try{ writeSeanceForSlot(c.cls, c.slotKey, neuve); }
+    catch(e){ return res; }
+    finally{ if(_aRestaurer){ try{ curGroupeId=_grpSauve; }catch(e){} } }
     c.seance=neuve; res.cree=true;
   }
   c.seance.contenu=txt;
@@ -27957,10 +27994,12 @@ function openCahierTexte(dateStr){
       const ta=document.createElement('textarea'); ta.className='cdt-edit';
       ta.value=parts.contenu;
       ta.spellcheck=true;
-      const creable=_cdtPeutCreer(c.cls);
+      const creable=_cdtPeutCreer(c.cls, c.slotKey);
       if(!c.seance && !creable){
         ta.disabled=true;
-        ta.placeholder='Cours en demi-groupes non enregistré — à saisir depuis le plan de classe.';
+        ta.placeholder=c.cls
+          ? 'Créneau en demi-groupes sans groupe identifié — à saisir depuis le plan de classe.'
+          : 'Cours sans classe identifiée — à saisir depuis le plan de classe.';
       } else {
         ta.placeholder='Ce qui a été fait pendant ce cours…';
       }
