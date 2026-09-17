@@ -3879,7 +3879,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.37';
+const APP_VERSION = 'v11.3.38';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -26773,11 +26773,15 @@ function _fdjShouldAutoShow(){
     // 2. Y a-t-il un cours aujourd'hui ?
     const firstStart = _fdjGetFirstCourseStart(todayStr);
     if(!firstStart) return false;
-    // 3. Est-on dans la fenêtre [T-15min, T+infini[ ?
-    //    On affiche si maintenant >= T-15min (avant ou après le début du cours, peu importe)
-    //    "ne s'affiche pas s'il reste un cours dans plus de 15 minutes" → on respecte cette règle.
-    const T_MINUS_15 = new Date(firstStart.getTime() - 15*60*1000);
-    if(now < T_MINUS_15) return false;
+    // 3. V035-V11.3.38 — Plus de fenêtre de 15 minutes.
+    //    Il y avait ici : n'afficher que si le premier cours de la journée
+    //    commence dans moins de 15 minutes. Or cette règle n'empêchait JAMAIS un
+    //    affichage tardif — ouvrir l'application à 22h un jour de cours la
+    //    déclenchait, puisqu'on est largement après T-15 — elle n'empêchait que
+    //    l'affichage EN AVANCE, c'est-à-dire au moment où la fiche sert le plus :
+    //    préparer sa journée avant qu'elle commence. Le point 1 (une seule fois
+    //    par jour) suffit à éviter la répétition. Arbitré avec l'utilisateur.
+    //    `now` reste lu plus haut : il sert au calcul de `todayStr`.
     return true;
   } catch(e){
     console.warn('[fdj] auto-show check failed', e);
@@ -29312,6 +29316,20 @@ function togglePopupSection(id){
 
 
 
+/** V035-V11.3.38 — Répartit les incidents sur les deux colonnes de la popup.
+ *  Fonction PURE : elle ne lit ni n'écrit `S`, ne change pas `col`, et préserve
+ *  l'ordre d'affichage (statuts intégrés dans leur ordre de déclaration, puis
+ *  les personnalisés dans leur ordre de création). La colonne de gauche reçoit
+ *  la moitié arrondie au supérieur, ce qui laisse la configuration par défaut
+ *  (4 + 4) strictement inchangée.
+ *  @returns {{gauche:Array, droite:Array}}
+ */
+function _stpSplitIncidents(statuts){
+  const neg=(statuts||[]).filter(s=>s && (s.col==='neg-l' || s.col==='neg-r'));
+  const moitie=Math.ceil(neg.length/2);
+  return { gauche: neg.slice(0, moitie), droite: neg.slice(moitie) };
+}
+
 function openStatusPopup(name, seatEl, evt, keepPos=false){
   if(evt && evt.stopPropagation) evt.stopPropagation();
   popupCurrentName=name;
@@ -29329,11 +29347,21 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
   _refreshStPinIcon();
   const activeKeys=getStatutKeys(name);
 
-  // — Statuts négatifs : 2 colonnes —
+  // — Statuts négatifs : 2 colonnes ÉQUILIBRÉES (V035-V11.3.38) —
+  // Avant, chaque colonne affichait les statuts portant `col:'neg-l'` ou
+  // `col:'neg-r'`. Or le bouton « + Incident » des réglages crée TOUJOURS avec
+  // `col:'neg-r'` : tous les incidents ajoutés s'empilaient donc à droite
+  // (signalé : 12 incidents → 4 à gauche, 8 à droite). Les deux colonnes n'ont
+  // aucun titre — elles ne portent aucune sémantique visible — donc la seule
+  // lecture juste est de les équilibrer. Répartition à l'affichage UNIQUEMENT :
+  // `col` reste intact dans les données, et continue de fixer la couleur des
+  // statuts personnalisés. Avec la configuration par défaut (4 + 4), le
+  // résultat est identique à l'ancien.
   const negEl=document.getElementById('stp-neg');
   negEl.innerHTML='';
-  const negLeft=getStatuts().filter(s=>s.col==='neg-l');
-  const negRight=getStatuts().filter(s=>s.col==='neg-r');
+  const negCols=_stpSplitIncidents(getStatuts());
+  const negLeft=negCols.gauche;
+  const negRight=negCols.droite;
 
   const makeCol=(statuts,title)=>{
     const col=document.createElement('div'); col.className='stp-neg-col';
