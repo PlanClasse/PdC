@@ -3967,7 +3967,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.44';
+const APP_VERSION = 'v11.3.46';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20283,6 +20283,9 @@ function renderParamsStockage(){
       };
       dbxBtns.appendChild(btnSync);
 
+      // V11.3.46 — sens explicite, toujours accessible (plus seulement en conflit)
+      if(typeof _pcSyncAppendDirBtns==='function') _pcSyncAppendDirBtns(dbxBtns);
+
       const btnDisconnect=document.createElement('button');
       btnDisconnect.className='bs';
       btnDisconnect.style.cssText='font-size:12px;padding:6px 14px';
@@ -20346,6 +20349,8 @@ function renderParamsStockage(){
       gdS.textContent='🔄 Synchroniser maintenant';
       gdS.onclick=async()=>{ try{ await window.syncNowSmart(); renderParamsStockage(); }catch(e){ if(typeof showModal==='function') showModal('Erreur synchro','Échec : '+(e.message||e),null,true); } };
       gdBtns.appendChild(gdS);
+      // V11.3.46 — sens explicite, toujours accessible (plus seulement en conflit)
+      if(typeof _pcSyncAppendDirBtns==='function') _pcSyncAppendDirBtns(gdBtns);
       var gdD=document.createElement('button');
       gdD.className='bs'; gdD.style.cssText='font-size:12px;padding:6px 14px';
       gdD.textContent='🔌 Déconnecter';
@@ -40784,6 +40789,17 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Cahier de texte du jour (bouton 📋 dans l\u2019en-tête de l\u2019emploi du temps de l\u2019accueil) : tous les cours d\u2019une journée sur une page, en deux colonnes matin / après-midi, avec un bouton Copier devant chaque cours pour remplir Pronote. Navigation d\u2019un jour à l\u2019autre pour rattraper les saisies en retard.',
+    'Le contenu de chaque cours se modifie directement depuis cette page : il s\u2019écrit dans la séance enregistrée, exactement comme dans le modal Séance. Un cours oublié peut y être saisi après coup. L\u2019en-tête, les tâches faites et les documents distribués restent calculés — ils ne s\u2019inventent pas.',
+    'Observations et commentaire de séance consultables à côté de chaque cours, dans un dépliant : ils vous aident à remplir Pronote mais ne sont jamais copiés — un cahier de texte est lu par les familles.',
+    'Une observation par cours dans la popup élève : à chaque cours, un champ vierge. Les observations précédentes restent consultables, datées, sous « 🕒 n précédentes », et la note permanente de l\u2019élève a désormais son propre champ, clairement séparé.',
+    'Numéro de cours dans l\u2019emploi du temps de l\u2019accueil : une pastille à droite du nom de la classe donne le rang du cours dans l\u2019année. Les cours annulés n\u2019en consomment pas, et les deux demi-groupes d\u2019un même créneau comptent pour un seul cours.',
+    'Vérification des TAF fiabilisée : une coche suit désormais la date du cours, et modifier la liste des TAF d\u2019une séance ne décale plus les vérifications déjà programmées — chaque TAF retrouve la sienne par son libellé, et toute suppression est annoncée avant d\u2019être appliquée.',
+    'Rappel « 5 minutes avant la sonnerie » nettement plus fiable quand l\u2019application n\u2019est pas au premier plan : la fenêtre d\u2019annonce a été élargie et le rappel reprend dès le retour sur l\u2019onglet.',
+    'Deux pertes de données silencieuses corrigées : une classe pouvait se vider de ses élèves au chargement, et un plan de classe disparaître après un changement de semaine. Un contrôle au démarrage signale maintenant toute classe vidée et propose de la rétablir depuis la dernière sauvegarde.',
+    'Popup statuts : les incidents se répartissent équitablement sur les deux colonnes, quel que soit le nombre d\u2019incidents personnalisés ajoutés.',
+    'Fiche du jour : elle s\u2019affiche à la première ouverture de l\u2019application dans la journée, et non plus seulement dans les quinze minutes qui entourent un cours. Le bouton 📅 la rouvre à tout moment.',
+    'Le bouton Copier de l\u2019enregistrement de séance ajoute « (à poursuivre au prochain cours) » aux tâches commencées mais non terminées.',
     'Impression PDF du plan de classe rempli (menu Plus → 🖨️ Imprimer / PDF) : une classe par page, prête à afficher en salle — prénom, initiale du nom, n° d’ordre alphabétique et mentions PPS/PAP/PPRE/ULIS. Disponible sur les plans classique et îlots, et désormais aussi sur tout layout personnalisé du mode universel.',
     'Layouts personnalisés réutilisables entre classes : chaque disposition que vous créez est désormais gardée en mémoire (« 📁 Mes layouts enregistrés ») et proposée directement au moment d’en créer une nouvelle sur une autre classe — plus besoin de reconstruire à la main le même plan de salle pour chaque classe qui l’occupe.',
     'Synchronisation multi-cloud : en plus de Dropbox, vous pouvez désormais synchroniser avec Google Drive. Chaque collègue connecte son propre compte ; un seul cloud actif à la fois (mode universel).',
@@ -61799,6 +61815,10 @@ function analyseCopy(){
       const localRaw = JSON.stringify(S);
       const lastSeen = await getLastSeenRemoteStamp();
 
+      if(!remoteText && opts.force === 'pull'){
+        throw new Error('Aucune donnée sur Dropbox : il n\'y a rien à récupérer.');
+      }
+
       if(!remoteText){
         // Distant vide ou inexistant → pousse local
         await dbxUpload('/data.json', localRaw);
@@ -61816,6 +61836,39 @@ function analyseCopy(){
       }
 
       const remoteStamp = (remoteData && remoteData.syncMeta && remoteData.syncMeta.updatedAt) || 0;
+
+      // V11.3.46 — Un SENS EXPLICITE l'emporte toujours (boutons « Envoyer » /
+      // « Récupérer » des réglages, et boutons des modales conflit/1re synchro).
+      // Mêmes règles que _pcSyncDecide, dupliquées ici parce que le moteur
+      // Dropbox natif est volontairement resté indépendant. §98 vérifie que les
+      // deux moteurs décident pareil.
+      if(opts.force === 'push'){
+        await dbxUpload('/data.json', localRaw);
+        await setLastSeenRemoteStamp(localStamp);
+        _dbxLastSync = {at: Date.now(), status: 'ok', message: 'Données locales imposées'};
+        updateSyncIndicator();
+        return {action:'pushed-force', message:'Vos données locales ont été envoyées vers Dropbox.'};
+      }
+      if(opts.force === 'pull'){
+        applyRemoteState(remoteData);
+        await setLastSeenRemoteStamp(remoteStamp);
+        _dbxLastSync = {at: Date.now(), status: 'ok', message: 'Version Dropbox importée'};
+        updateSyncIndicator();
+        return {action:'pulled-force', message:'La version Dropbox a été importée sur cet appareil.'};
+      }
+
+      // V11.3.46 — GARDE-FOU « PREMIÈRE SYNCHRO DE CET APPAREIL » (cf. le long
+      // commentaire de _pcSyncDecide). Sans repère, on ne tranche plus tout seul.
+      if(!lastSeen && localStamp !== remoteStamp){
+        _dbxLastSync = {at: Date.now(), status: 'ok', message: 'Première synchro : choix requis'};
+        updateSyncIndicator();
+        return {
+          action: 'first-sync',
+          localStamp, remoteStamp, lastSeen: 0,
+          remoteData,
+          message: 'Première synchronisation de cet appareil.'
+        };
+      }
 
       // V020-v175 — Détection de conflit
       // On ne peut détecter qu'à partir de la 2ème sync (lastSeen > 0).
@@ -62431,15 +62484,29 @@ function analyseCopy(){
   // Décision de sync PURE — miroir exact de syncNowDbx (v175).
   function _pcSyncDecide(st){
     var localStamp = st.localStamp || 0, remoteStamp = st.remoteStamp || 0, lastSeen = st.lastSeen || 0;
+
+    // V11.3.46 — un SENS EXPLICITE l'emporte toujours. Avant, `force` n'était
+    // honoré qu'à l'intérieur de la branche conflit : les boutons « Envoyer » /
+    // « Récupérer » n'auraient rien fait hors conflit.
+    if(st.force === 'pull') return st.hasRemote ? { action: 'pulled-force' } : { action: 'no-remote' };
     if(!st.hasRemote) return { action: 'pushed-first' };
-    var localChanged  = (lastSeen > 0) && (localStamp  > lastSeen);
-    var remoteChanged = (lastSeen > 0) && (remoteStamp > lastSeen);
-    if(localChanged && remoteChanged && localStamp !== remoteStamp){
-      if(st.force === 'push') return { action: 'pushed-force' };
-      if(st.force === 'pull') return { action: 'pulled-force' };
-      return { action: 'conflict' };
-    }
+    if(st.force === 'push') return { action: 'pushed-force' };
+
     if(localStamp === remoteStamp) return { action: 'in-sync' };
+
+    // V11.3.46 — GARDE-FOU « PREMIÈRE SYNCHRO DE CET APPAREIL ».
+    // Sans repère (`lastSeen`), aucune détection de conflit n'est possible :
+    // l'ancienne règle « l'horodatage le plus récent gagne » écrasait alors
+    // l'autre côté SANS RIEN DEMANDER. C'est ce qui a effacé une base complète
+    // le 18/09/2026 (un iPad fraîchement connecté a poussé sur le cloud).
+    // Désormais on ne tranche plus à la place de l'utilisateur : on remonte
+    // 'first-sync', et l'appelant lui montre les deux côtés.
+    if(!lastSeen) return { action: 'first-sync' };
+
+    var localChanged  = localStamp  > lastSeen;
+    var remoteChanged = remoteStamp > lastSeen;
+    if(localChanged && remoteChanged) return { action: 'conflict' };
+
     if(localStamp > remoteStamp)   return { action: 'pushed' };
     if(st.confirmImport === false)  return { action: 'remote-newer' };
     return { action: 'pulled' };
@@ -62492,6 +62559,8 @@ function analyseCopy(){
     if(d.action === 'pushed-first'){ await prov.upload('data.json', localRaw); _setLastSeen(pid, localStamp); return { action: 'pushed-first', message: 'Données locales copiées vers le cloud.' }; }
     if(d.action === 'pushed-force'){ await prov.upload('data.json', localRaw); _setLastSeen(pid, localStamp); return { action: 'pushed-force', message: 'Vos modifications locales ont écrasé le distant.' }; }
     if(d.action === 'pulled-force'){ _applyRemote(remoteData); _setLastSeen(pid, remoteStamp); return { action: 'pulled-force', message: 'Les modifications distantes ont écrasé le local.' }; }
+    if(d.action === 'no-remote'){ throw new Error('Aucune donnée sur le cloud : il n\'y a rien à récupérer.'); }
+    if(d.action === 'first-sync'){ return { action: 'first-sync', localStamp: localStamp, remoteStamp: remoteStamp, lastSeen: 0, remoteData: remoteData, provider: pid, message: 'Première synchronisation de cet appareil.' }; }
     if(d.action === 'conflict'){ return { action: 'conflict', localStamp: localStamp, remoteStamp: remoteStamp, lastSeen: lastSeen, remoteData: remoteData, provider: pid, message: 'Conflit : votre appareil et le cloud ont divergé depuis la dernière synchronisation.' }; }
     if(d.action === 'in-sync'){ _setLastSeen(pid, remoteStamp); return { action: 'in-sync', message: 'Tout est à jour.' }; }
     if(d.action === 'pushed'){ await prov.upload('data.json', localRaw); _setLastSeen(pid, localStamp); return { action: 'pushed', message: 'Vos modifications locales ont été envoyées vers le cloud.' }; }
@@ -62525,6 +62594,11 @@ window.syncNowSmart = async function(){
     if(window.PCDropbox && window.PCDropbox.isConnected()){
       try {
         const result = await window.PCDropbox.syncNow();
+        // V11.3.46 — Première synchro de cet appareil : on montre les deux côtés
+        if(result && result.action === 'first-sync'){
+          await _showFirstSyncModal(result);
+          return;
+        }
         // V020-v175 — Conflit détecté : modal 3 boutons
         if(result && result.action === 'conflict'){
           await _showConflictResolutionModal(result);
@@ -62551,6 +62625,10 @@ window.syncNowSmart = async function(){
   if(prov && prov.isConnected()){
     try {
       const result = await window.PCSync.syncNow();
+      if(result && result.action === 'first-sync'){
+        await _showFirstSyncModal(result);
+        return;
+      }
       if(result && result.action === 'conflict'){
         await _showConflictResolutionModal(result);
         return;
@@ -62577,6 +62655,216 @@ window.syncNowSmart = async function(){
 //   ⬆ Imposer mes modifications locales (push, écrase distant)
 //   ⬇ Importer la version Dropbox (pull, écrase local)
 //   ✕ Annuler (ne rien faire, laisse l'état tel quel)
+/* ═══════════════════════════════════════════════════════════════════════════
+   V11.3.46 — SENS EXPLICITE DE SYNCHRONISATION
+   ---------------------------------------------------------------------------
+   Incident du 18/09/2026 : un iPad fraîchement connecté à Dropbox a écrasé la
+   base complète du poste. Deux causes, corrigées ici :
+     1. la PREMIÈRE synchro d'un appareil n'a aucun repère, donc aucune
+        détection de conflit — l'ancienne règle « horodatage le plus récent
+        gagne » décidait seule, en silence (cf. `_pcSyncDecide`) ;
+     2. les seuls boutons directionnels (⬆ / ⬇) vivaient DANS la modale de
+        conflit : hors conflit, il n'existait aucun moyen de « tirer ».
+   D'où, ci-dessous : un résumé lisible des deux côtés, une modale de premier
+   échange, et deux actions permanentes exposées dans les réglages.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Chiffres parlants d'un état PlanClasse, pour que l'utilisateur reconnaisse
+ *  SA base sans avoir à lire un horodatage. Pure, sans exception. */
+function _pcSyncResume(data, raw){
+  const out={classes:0, eleves:0, seances:0, stamp:0, ko:0};
+  if(!data || typeof data!=='object') return out;
+  try{ out.classes=Object.keys(data.cl||{}).length; }catch(e){}
+  try{ out.eleves=Object.keys(data.studentData||{}).length; }catch(e){}
+  try{
+    Object.keys(data.seances||{}).forEach(k=>{
+      const arr=data.seances[k];
+      if(Array.isArray(arr)) out.seances+=arr.length;
+    });
+  }catch(e){}
+  try{ out.stamp=(data.syncMeta&&data.syncMeta.updatedAt)||0; }catch(e){}
+  try{ out.ko=Math.round((raw!=null?String(raw):JSON.stringify(data)).length/1024); }catch(e){}
+  return out;
+}
+
+/** « 24 classes · 612 élèves · 148 séances · 1240 Ko ». Pure. */
+function _pcSyncResumeTxt(r){
+  if(!r) return '';
+  const p=(n,s,pl)=>n+' '+(n>1?(pl||(s+'s')):s);
+  return [p(r.classes,'classe'), p(r.eleves,'élève'), p(r.seances,'séance'), r.ko+' Ko'].join(' · ');
+}
+
+/** Horodatage lisible. Pure. */
+function _pcSyncDateTxt(ms){
+  if(!ms) return 'date inconnue';
+  try{
+    return new Date(ms).toLocaleString('fr-FR',
+      {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  }catch(e){ return 'date inconnue'; }
+}
+
+/** Le cloud actif, et par quel moteur lui parler. Le chemin Dropbox reste le
+ *  moteur natif historique ; les autres passent par PCSync. */
+function _pcSyncEngine(){
+  const prov=(window.PCSync && typeof window.PCSync.active==='function') ? window.PCSync.active() : null;
+  const pid=prov?prov.id:'dropbox';
+  if(pid==='dropbox'){
+    return {id:'dropbox', label:'Dropbox', icon:'☁️',
+            connected:()=>!!(window.PCDropbox && window.PCDropbox.isConnected()),
+            run:(o)=>window.PCDropbox.syncNow(o)};
+  }
+  return {id:pid, label:(prov&&prov.label)||'cloud', icon:(prov&&prov.icon)||'☁️',
+          connected:()=>!!(prov && prov.isConnected()),
+          run:(o)=>window.PCSync.syncNow(o)};
+}
+
+/** Exécute une synchronisation À SENS IMPOSÉ, après confirmation explicite
+ *  nommant ce qui va être remplacé. `sens` : 'push' | 'pull'. */
+function _pcSyncForce(sens){
+  const eng=_pcSyncEngine();
+  if(!eng.connected()){
+    showModal('Cloud non connecté',
+      'Connectez d\'abord '+eng.label+' dans cette même section, puis réessayez.', null, true);
+    return;
+  }
+  const moi=_pcSyncResume(S, null);
+  const titre = sens==='push' ? ('⬆ Envoyer vers '+eng.label) : ('⬇ Récupérer depuis '+eng.label);
+  const corps = sens==='push'
+    ? ('Cet appareil contient actuellement :\n'+_pcSyncResumeTxt(moi)+'\n\n'
+      +'Ces données vont REMPLACER celles qui se trouvent sur '+eng.label+'. '
+      +'Un instantané de sécurité est déposé avant l\'envoi dans le dossier backups.')
+    : ('Les données de '+eng.label+' vont REMPLACER celles de cet appareil, qui contient :\n'
+      +_pcSyncResumeTxt(moi)+'\n\n'
+      +'Un instantané de sécurité est déposé avant l\'import dans le dossier backups.');
+  showModal(titre, corps, async()=>{
+    try{
+      const r=await eng.run({force:sens, skipBackup:false});
+      showModal('Synchronisation '+eng.label, (r&&r.message)||'Terminé.', null, true);
+    }catch(e){
+      showModal('Erreur de synchronisation', 'Échec : '+((e&&e.message)||e), null, true);
+    }
+  }, false);
+}
+
+/** Ajoute les deux actions PERMANENTES de sens explicite à un conteneur de
+ *  boutons. Avant v11.3.46 les seuls boutons ⬆/⬇ vivaient dans la modale de
+ *  conflit : hors conflit, il n'existait aucun moyen de « tirer » depuis le
+ *  cloud, ce qui a rendu un écrasement accidentel très difficile à réparer. */
+function _pcSyncAppendDirBtns(container){
+  if(!container) return;
+  const eng=_pcSyncEngine();
+  const mk=(txt, titre, sens)=>{
+    const b=document.createElement('button');
+    b.className='bs';
+    b.style.cssText='font-size:12px;padding:6px 14px';
+    b.textContent=txt;
+    b.title=titre;
+    b.onclick=()=>_pcSyncForce(sens);
+    return b;
+  };
+  container.appendChild(mk('⬆ Envoyer vers '+eng.label,
+    'Remplace la version du cloud par celle de cet appareil', 'push'));
+  container.appendChild(mk('⬇ Récupérer depuis '+eng.label,
+    'Remplace les données de cet appareil par celles du cloud', 'pull'));
+}
+
+/** Modale du PREMIER échange entre cet appareil et le cloud. Aucun conflit
+ *  n'est détectable à ce stade : on montre les deux côtés et on laisse
+ *  l'utilisateur choisir. Construite en createElement (aucune balise ajoutée
+ *  au fichier, invariants inchangés). */
+async function _showFirstSyncModal(info){
+  if(typeof showModal!=='function') return;
+  const eng=_pcSyncEngine();
+  const provLabel=(info&&info.provider&&info.provider!=='dropbox')?eng.label:'Dropbox';
+  const provIcon =(info&&info.provider&&info.provider!=='dropbox')?eng.icon :'☁️';
+  const moi=_pcSyncResume(S, null);
+  const lui=_pcSyncResume(info&&info.remoteData, null);
+
+  showModal('🔀 Première synchronisation de cet appareil', '', null, false, true);
+  const mb=document.getElementById('mb'); if(mb) mb.textContent='';
+  const ex=document.getElementById('modal-extra'); if(!ex) return;
+  ex.innerHTML='';
+
+  const root=document.createElement('div'); root.style.cssText='text-align:left;max-width:560px';
+  const intro=document.createElement('div');
+  intro.style.cssText='font-size:13px;color:var(--tx2);line-height:1.5;margin-bottom:14px';
+  intro.textContent='Cet appareil n\'a encore jamais échangé avec '+provLabel+', donc PlanClasse ne peut pas '
+    +'savoir laquelle des deux versions est la bonne. Choisissez — l\'autre sera remplacée.';
+  root.appendChild(intro);
+
+  const grille=document.createElement('div'); grille.className='conf-modal-grid';
+  // Les deux cartes sont STRICTEMENT équivalentes à l'œil : mettre l'une en
+  // avant (sur la taille, par exemple) reviendrait à recommander un côté sur un
+  // indice faible — et c'est exactement ce genre d'automatisme qui a coûté une
+  // base. L'utilisateur lit les chiffres et tranche.
+  const carte=(icone, titre, r)=>{
+    const c=document.createElement('div');
+    c.style.cssText='padding:10px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur)';
+    const h=document.createElement('div');
+    h.style.cssText='font-size:12px;font-weight:700;color:var(--tx);margin-bottom:6px';
+    h.textContent=icone+' '+titre; c.appendChild(h);
+    const d=document.createElement('div');
+    d.style.cssText='font-size:11px;color:var(--tx2)';
+    d.textContent='Modifié : '+_pcSyncDateTxt(r.stamp); c.appendChild(d);
+    const q=document.createElement('div');
+    q.style.cssText='font-size:11px;color:var(--tx3);margin-top:2px';
+    q.textContent=_pcSyncResumeTxt(r); c.appendChild(q);
+    return c;
+  };
+  grille.appendChild(carte('💻','Cet appareil', moi));
+  grille.appendChild(carte(provIcon, provLabel, lui));
+  root.appendChild(grille);
+
+  const avert=document.createElement('div');
+  avert.style.cssText='font-size:11.5px;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;'
+    +'border-radius:var(--r1);padding:8px 10px;margin:12px 0;line-height:1.5';
+  avert.textContent='Dans le doute, choisissez la version qui vous paraît la plus fournie. '
+    +'Un instantané de l\'autre côté est déposé dans le dossier backups avant tout remplacement.';
+  root.appendChild(avert);
+
+  // Le shell showModal est partagé : ce qu'on masque ici doit être rendu à la
+  // modale suivante, sinon elle s'ouvre sans bouton de fermeture.
+  const _restaurer=()=>{
+    const m=document.getElementById('mok'); if(m) m.style.display='';
+    const f=document.querySelector('#mbg .modal-acts .bs'); if(f) f.style.display='';
+  };
+  const btns=document.createElement('div'); btns.className='conf-modal-btns';
+  const mkBtn=(cls, ligne1, ligne2, sens)=>{
+    const b=document.createElement('button'); b.className=cls;
+    const t=document.createElement('b'); t.textContent=ligne1; b.appendChild(t);
+    const sub=document.createElement('div');
+    // .bp a un fond foncé : var(--tx2) y serait illisible.
+    sub.style.cssText='font-size:11px;font-weight:400;margin-top:2px;color:'
+      +(/\bbp\b/.test(cls)?'rgba(255,255,255,.8)':'var(--tx2)');
+    sub.textContent=ligne2; b.appendChild(sub);
+    b.onclick=async()=>{
+      closeModal(); _restaurer();
+      try{
+        const r=await eng.run({force:sens, skipBackup:false});
+        showModalLater('Synchronisation '+provLabel, (r&&r.message)||'Terminé.', null, true);
+      }catch(e){
+        showModalLater('Erreur', 'Échec : '+((e&&e.message)||e), null, true);
+      }
+    };
+    return b;
+  };
+  btns.appendChild(mkBtn('bp conf-btn', '⬆ Envoyer mes données vers '+provLabel,
+    'La version qui est sur '+provLabel+' sera remplacée.', 'push'));
+  btns.appendChild(mkBtn('bs conf-btn conf-btn-remote', '⬇ Récupérer la version de '+provLabel,
+    'Les données de cet appareil seront remplacées.', 'pull'));
+  const annul=document.createElement('button');
+  annul.className='bs conf-btn-cancel';
+  annul.textContent='✕ Annuler (ne rien faire)';
+  annul.onclick=()=>{ closeModal(); _restaurer(); };
+  btns.appendChild(annul);
+  root.appendChild(btns);
+  ex.appendChild(root);
+
+  const mok=document.getElementById('mok'); if(mok) mok.style.display='none';
+  const fermer=document.querySelector('#mbg .modal-acts .bs');
+  if(fermer) fermer.style.display='none';
+}
+
 async function _showConflictResolutionModal(conflict){
   if(typeof showModal !== 'function') return;
   // V035-V11.3.6 (Lot C2) — provider-aware : nomme le cloud réellement actif
