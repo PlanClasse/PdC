@@ -1659,6 +1659,19 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .stp-lvl.sel-4{background:#8B5CF6;color:#fff;border-color:#8B5CF6}
 .stp-obs{width:100%;padding:5px 7px;border:1px solid var(--brd);border-radius:var(--r1);font-size:11px;background:var(--bg);color:var(--tx);outline:none;resize:none;font-family:'DM Sans',sans-serif}
 .stp-obs:focus{border-color:var(--acc)}
+/* V11.3.44 — observation du cours : étiquette du créneau, historique replié,
+   note permanente repliée. Tout est construit en createElement. */
+.stp-obs-lbl{font-size:9px;font-weight:600;color:var(--tx3);margin:-1px 0 3px;line-height:1.3}
+.stp-obs-extra{margin-top:4px;display:flex;flex-direction:column;gap:3px}
+.stp-obs-tog{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border:1px solid var(--brd);background:var(--sur);color:var(--tx2);border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;line-height:1.5}
+.stp-obs-tog:hover{border-color:var(--acc);color:var(--acc)}
+.stp-obs-pt{width:5px;height:5px;border-radius:50%;background:var(--acc);display:inline-block;flex-shrink:0}
+.stp-obs-box{display:none;padding:5px 7px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r1);font-size:10.5px;line-height:1.45;color:var(--tx)}
+.stp-obs-box.open{display:block}
+.stp-obs-it{margin-bottom:4px}
+.stp-obs-it:last-child{margin-bottom:0}
+.stp-obs-dt{color:var(--tx3);font-weight:700;font-size:9.5px;margin-right:4px}
+.stp-obs-vide{color:var(--tx3);font-style:italic}
 .stp-clear{width:100%;padding:4px;background:transparent;border:1px solid var(--brd);border-radius:var(--r1);font-size:10px;color:var(--tx3);cursor:pointer;transition:all .12s;margin-top:.4rem}
 
 /* ── RRUPN dans popup élève (VUE3) ── */
@@ -3886,7 +3899,7 @@ window._simHandleDisable = _simHandleDisable;
   <div id="stp-num-wrap" style="display:none">
     <div class="stp-num-grid" id="stp-num-grid"></div>
   </div>
-  <button class="stp-clear" id="stp-clear">Effacer statuts et compétences</button>
+  <button class="stp-clear" id="stp-clear">Effacer les saisies de ce cours</button>
 </div>
 
 <!-- Sub-popup: contraintes rapides (V018-v146) — affiché uniquement en EDT -->
@@ -3954,7 +3967,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.43';
+const APP_VERSION = 'v11.3.44';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -4136,6 +4149,10 @@ function defaultState(){
     tachesLibres: [], // [{id, label, type:'modeOp'|'doc'|'ressource'}] — tâches hors progression
     suiviProg: {}, // { 'lv|seqId|clsCode' : {done:bool, seances:{seanId:bool}, eval:bool, corr:bool} }
     statutsCours: {}, // { 'slotKey|clsCode' : { studentName: [keys] } } — statuts éphémères par cours
+    // V11.3.44 — observation libre PAR COURS : { 'slotKey|clsCode'(|grp) : { uid: texte } }.
+    // Magasin vivant calqué sur statutsCours. À ne pas confondre avec `observations`,
+    // qui est la note PERMANENTE de l'élève (clé 'clsCode|uid', sans créneau).
+    obsCours: {},
     absences: [], // [ {id, dateDebut, dateFin, demiJournee:null|'am'|'pm', label} ] — absences prof
     competences:[], // legacy
     uidCounter: 0, // Compteur global pour générer des IDs élèves opaques stables
@@ -11636,8 +11653,13 @@ function getPendingSeances(){
       const hasStatuts = Object.values(_slotStatMap).some(v=>v&&v.length);
       const hasComps   = Object.keys(S.liveComps||{}).some(k=>
         k.startsWith(clsCode+'|') && Object.values(S.liveComps[k]).some(v=>v>0));
-      const hasObs     = Object.keys(S.observations||{}).some(k=>
-        k.startsWith(clsCode+'|') && (S.observations[k]||'').trim());
+      // V11.3.44 — on interroge le magasin VIVANT du cours, pas le profil élève.
+      // Le profil n'est jamais vidé : une seule note permanente rendait ce test
+      // vrai pour toujours, et le rappel ne s'éteignait plus pour cette classe.
+      const _obsKeyCls=(k)=>{ const pr=String(k).split('|'); return pr.length>=2?pr[1]:''; };
+      const hasObs     = Object.keys(S.obsCours||{}).some(k=>
+        _obsKeyCls(k)===clsCode
+        && Object.values(S.obsCours[k]||{}).some(v=>String(v||'').trim()));
       if(!hasStatuts && !hasComps && !hasObs) continue;
 
       // Find the most recent finished slot where this class actually had a course
@@ -19801,6 +19823,7 @@ function resetCourseRecordsAndPlanning(){
       S.seanceTaskStateCache={};
       S.seanceContentDraft={}; // V020-v181.4.15 — brouillon textareas modal séance
       S.observations={};
+      S.obsCours={};           // V11.3.44 — observations vivantes par cours
       // Nettoyer aussi quelques reliquats potentiels de contexte courant
       curSlotKey=null;
       try{ localStorage.removeItem('planclasse_last_slot'); }catch(e){}
@@ -28819,10 +28842,11 @@ function resetAll(){
       S.besoinsEleves={};
       if(S.nickNames) S.nickNames={};
       if(S.observations) S.observations={};
+      if(S.obsCours) S.obsCours={};   // V11.3.44
       S.uidCounter=0;
     },
     comps:   ()=>{ const d=defaultState(); S.liveComps=d.liveComps; S.evalComps=d.evalComps; S.groupesComps=d.groupesComps; S.seanceCompsAffect=d.seanceCompsAffect; S.evalEcrit=d.evalEcrit; S.slotEvalCompPlans=d.slotEvalCompPlans; S.compsAffectations=d.compsAffectations; S.customComps=d.customComps; S.customConns=d.customConns; S.groupeCompsParCls=d.groupeCompsParCls; },
-    seances: ()=>{ const d=defaultState(); S.seances=d.seances; S.seancesDecisions=d.seancesDecisions; S.statutsCours=d.statutsCours;
+    seances: ()=>{ const d=defaultState(); S.seances=d.seances; S.seancesDecisions=d.seancesDecisions; S.statutsCours=d.statutsCours; S.obsCours=d.obsCours;
       // Fix N : purger aussi les stores satellites liés aux séances pour éviter des données orphelines
       S.seanceCoches={}; S.seanceTaskStateCache={}; S.rappelsTaches=[];
       S.seanceContentDraft={}; // V020-v181.4.15 — brouillon textareas modal séance
@@ -30088,18 +30112,18 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
     if(posWrap && posWrap.parentNode) posWrap.parentNode.insertBefore(appelSec, posWrap.nextSibling);
   }
 
-  // — Observation libre —
+  // — Observation DU COURS (vierge à chaque cours) + note permanente + historique —
+  // V11.3.44 : le champ principal n'écrit plus dans le profil élève mais dans
+  // S.obsCours[<créneau>], le magasin vivant calqué sur S.statutsCours.
   if(!S.observations) S.observations={};
   const obsEl=document.getElementById('stp-obs');
   // V035-v181.15.27 (v5c-2a-1) — clé scopée groupe inter-classes ('grp:<gid>|uid')
-  const obsKey=_obsScopeKey(name);
-  obsEl.value=S.observations[obsKey]||'';
-  obsEl.oninput=()=>{
-    if(!S.observations) S.observations={};
-    if(obsEl.value.trim()) S.observations[obsKey]=obsEl.value;
-    else delete S.observations[obsKey];
-    saveS();
-  };
+  const obsKey=_obsScopeKey(name);                       // ← la NOTE PERMANENTE
+  const _obsGI=_isScopeGrpInter()?curGrpInter:'';
+  const _obsCible=_obsSlotCible(curCls);
+  const _obsGrp=(!_obsGI && _obsCible && typeof getCurrentGrpId==='function')
+    ? (getCurrentGrpId(curCls, _obsCible.slotKey)||'') : '';
+  _renderObsSection(name, obsEl, obsKey, _obsCible, _obsGrp, _obsGI);
   obsEl.onclick=e=>e.stopPropagation();
 
   // — Compétences —
@@ -30161,7 +30185,9 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
     e.stopPropagation();
     clearStatuts(name);
     clearLiveComps(name);
-    if(S.observations) delete S.observations[obsKey];
+    // V11.3.44 — on efface l'observation DU COURS (ce que le champ montre).
+    // La note permanente de l'élève n'est pas touchée : elle a son propre champ.
+    if(_obsCible) writeObsCoursEleve(_obsCible.slotKey, curCls, _obsGrp, _obsGI, name, '');
     obsEl.value=''; saveS();
   };
 
@@ -30632,6 +30658,241 @@ function _partScopeKey(){
 // Hors scope groupe : comportement historique inchangé.
 function _isScopeGrpInter(){ return !!(curGrpInter && S.groupes && S.groupes[curGrpInter]); }
 function _obsScopeKey(uid){ return _isScopeGrpInter() ? ('grp:'+curGrpInter+'|'+uid) : (curCls+'|'+uid); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V11.3.44 — OBSERVATION DU COURS (magasin vivant, une par créneau)
+   ---------------------------------------------------------------------------
+   AVANT : la popup élève écrivait dans `S.observations['<cls>|<uid>']`, une clé
+   SANS créneau — le PROFIL de l'élève. Rien ne la vidait jamais, donc (a) le
+   champ n'était jamais vierge et (b) l'enregistrement de séance réestampillait
+   la même phrase sur TOUS les cours suivants (`seance.observations`).
+
+   MAINTENANT, deux étages nettement séparés :
+     • `S.obsCours['<slotKey>|<cls>'(|<grp>)]` = {uid: texte}
+       La donnée VIVANTE du cours, exactement calquée sur `S.statutsCours` :
+       même forme de clé, même scope (demi-groupe, groupe inter-classes), même
+       cycle de vie (elle survit à l'enregistrement, seul un « effacer » la
+       retire). La clé changeant à chaque cours, le champ est vierge d'office.
+     • `S.observations['<cls>|<uid>']` = la NOTE PERMANENTE de l'élève, inchangée
+       — lue par le filtre Observations de l'Analyse et par le tableau de Suivi.
+
+   L'enregistrement de séance fige `S.obsCours[<slot>]` dans
+   `seance.observations`, là où il figeait le profil. Aucune migration.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Clé du magasin vivant. Mêmes règles que `writeStatutsCours`. Pure. */
+function _obsCoursKey(slotKey, clsCode, grpId, grpInterId){
+  if(!slotKey) return '';
+  if(grpInterId) return slotKey+'|grp:'+grpInterId;
+  if(!clsCode) return '';
+  return grpId ? (slotKey+'|'+clsCode+'|'+grpId) : (slotKey+'|'+clsCode);
+}
+
+/** Lecture rétrocompatible : composite d'abord, legacy ensuite (miroir de
+ *  `readStatutsCours`). Renvoie toujours un objet. */
+function readObsCours(slotKey, clsCode, grpId, grpInterId){
+  if(!S.obsCours || !slotKey) return {};
+  if(grpInterId) return S.obsCours[slotKey+'|grp:'+grpInterId]||{};
+  if(!clsCode) return {};
+  if(grpId){
+    const composite=slotKey+'|'+clsCode+'|'+grpId;
+    if(S.obsCours[composite]) return S.obsCours[composite];
+  }
+  return S.obsCours[slotKey+'|'+clsCode]||{};
+}
+
+/** Écrit (ou retire) l'observation d'UN élève pour CE cours. Ne sauvegarde pas :
+ *  l'appelant décide quand appeler saveS(). Renvoie true si la clé était valide. */
+function writeObsCoursEleve(slotKey, clsCode, grpId, grpInterId, uid, txt){
+  const k=_obsCoursKey(slotKey, clsCode, grpId, grpInterId);
+  if(!k || !uid) return false;
+  if(!S.obsCours) S.obsCours={};
+  const v=String(txt==null?'':txt);
+  if(v.trim()){
+    if(!S.obsCours[k]) S.obsCours[k]={};
+    S.obsCours[k][uid]=v;
+  } else if(S.obsCours[k]){
+    delete S.obsCours[k][uid];
+    if(!Object.keys(S.obsCours[k]).length) delete S.obsCours[k];
+  }
+  return true;
+}
+
+/** À quel cours rattacher la saisie ?
+ *   - un créneau est ouvert (entrée par l'EDT) → celui-là ;
+ *   - sinon (entrée par « Mes plans de classe ») → le DERNIER cours passé de la
+ *     classe, annulations exclues, et on l'annonce dans l'étiquette du champ.
+ *  Renvoie {slotKey, dateStr, debut, retro} ou null si la classe n'a aucun cours. */
+function _obsSlotCible(clsCode){
+  if(typeof curSlotKey!=='undefined' && curSlotKey){
+    return {slotKey:curSlotKey, dateStr:(typeof _slotDateStr==='function'?_slotDateStr(curSlotKey):''),
+            debut:'', retro:false};
+  }
+  if(!clsCode) return null;
+  let slots=[];
+  try{ slots=(typeof buildYearSlots==='function')?(buildYearSlots(clsCode)||[]):[]; }catch(e){ return null; }
+  const today=(typeof _todayStr==='function')?_todayStr():'';
+  let best=null;
+  slots.forEach(sl=>{
+    if(!sl || !sl.dateStr || !sl.slotKey) return;
+    if(today && sl.dateStr>today) return;
+    try{ if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, clsCode)) return; }catch(e){}
+    if(!best || sl.slotKey>best.slotKey) best=sl;
+  });
+  if(!best) return null;
+  return {slotKey:best.slotKey, dateStr:best.dateStr, debut:best.debut||'', retro:true};
+}
+
+/** Les observations PASSÉES d'un élève, les plus récentes d'abord, lues dans les
+ *  séances enregistrées (jamais dans le magasin vivant). Le cours cible est
+ *  exclu : c'est lui qu'on est en train de saisir. Lecture seule. */
+function _obsHistorique(uid, seances, exceptSlotKey, limite){
+  const out=[];
+  if(!uid || !Array.isArray(seances)) return out;
+  seances.forEach(se=>{
+    if(!se || !se.slotKey || se.slotKey===exceptSlotKey) return;
+    const txt=String((se.observations&&se.observations[uid])||'').trim();
+    if(!txt) return;
+    out.push({slotKey:se.slotKey, dateStr:se.date||(typeof _slotDateStr==='function'?_slotDateStr(se.slotKey):''), txt});
+  });
+  out.sort((a,b)=>String(b.slotKey).localeCompare(String(a.slotKey)));
+  return (limite>0)?out.slice(0,limite):out;
+}
+
+/** « 17/09 » à partir d'une date ISO. Pure, sans exception. */
+function _obsDateCourte(dateStr){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr||''));
+  return m ? (m[3]+'/'+m[2]) : String(dateStr||'');
+}
+
+/** Le titre de section au-dessus du champ : on l'adopte au premier passage
+ *  (il n'a pas d'id dans le HTML) pour pouvoir y écrire le cours visé. */
+function _obsTitreEl(obsEl){
+  let t=document.getElementById('stp-obs-title');
+  if(t) return t;
+  const prev=obsEl && obsEl.previousElementSibling;
+  if(prev && prev.classList && prev.classList.contains('stp-section-title')){
+    prev.id='stp-obs-title';
+    return prev;
+  }
+  return null;
+}
+
+/** Crée UNE FOIS les éléments ajoutés sous le champ : historique replié et note
+ *  permanente repliée. Idempotent, entièrement en createElement (aucune balise
+ *  ajoutée au fichier, invariants inchangés). */
+function _ensureObsExtra(obsEl){
+  const deja=document.getElementById('stp-obs-extra');
+  if(deja) return deja;
+  const box=document.createElement('div');
+  box.id='stp-obs-extra'; box.className='stp-obs-extra';
+  const mkTog=(id)=>{
+    const b=document.createElement('button');
+    b.type='button'; b.id=id; b.className='stp-obs-tog';
+    b.onclick=(e)=>{ e.stopPropagation();
+      const t=document.getElementById(id+'-box'); if(t) t.classList.toggle('open'); };
+    return b;
+  };
+  const mkBox=(id)=>{
+    const d=document.createElement('div');
+    d.id=id+'-box'; d.className='stp-obs-box';
+    d.onclick=(e)=>e.stopPropagation();
+    return d;
+  };
+  box.appendChild(mkTog('stp-obs-hist'));
+  box.appendChild(mkBox('stp-obs-hist'));
+  box.appendChild(mkTog('stp-obs-perm'));
+  const pb=mkBox('stp-obs-perm');
+  const ta=document.createElement('textarea');
+  ta.id='stp-obs-perm-ta'; ta.className='stp-obs'; ta.rows=2;
+  ta.placeholder='Note qui suit l\'élève toute l\'année…';
+  ta.onclick=(e)=>e.stopPropagation();
+  pb.appendChild(ta);
+  box.appendChild(pb);
+  if(obsEl && obsEl.parentNode) obsEl.parentNode.insertBefore(box, obsEl.nextSibling);
+  return box;
+}
+
+/** Remplit la section observation de la popup pour un élève :
+ *   • le champ principal = l'observation DE CE COURS (vierge à chaque cours) ;
+ *   • « 🕒 n précédentes » = les observations passées, datées, en LECTURE SEULE,
+ *     lues dans les séances enregistrées ;
+ *   • « 📌 Note permanente » = l'ancien champ, celui que lisent l'Analyse et le
+ *     tableau de Suivi. Un point coloré signale qu'il est rempli. */
+function _renderObsSection(uid, obsEl, obsKeyProfil, cible, grp, grpInter){
+  if(!obsEl) return;
+  const titre=_obsTitreEl(obsEl);
+  if(titre){
+    titre.textContent = cible
+      ? (cible.retro ? ('📝 Observation — cours du '+_obsDateCourte(cible.dateStr))
+                     : '📝 Observation du cours')
+      : '📝 Observation';
+  }
+
+  if(cible){
+    const map=readObsCours(cible.slotKey, curCls, grp, grpInter);
+    obsEl.disabled=false;
+    obsEl.value=String(map[uid]||'');
+    obsEl.placeholder='Observation pour ce cours…';
+    obsEl.oninput=()=>{
+      writeObsCoursEleve(cible.slotKey, curCls, grp, grpInter, uid, obsEl.value);
+      saveS();
+    };
+  } else {
+    obsEl.disabled=true; obsEl.value=''; obsEl.oninput=null;
+    obsEl.placeholder='Aucun cours pour cette classe — voir la note permanente.';
+  }
+
+  _ensureObsExtra(obsEl);
+
+  // — Historique (lecture seule) —
+  let seances=[];
+  try{
+    seances=_isScopeGrpInter() ? readAllSeancesForGroupe(curGrpInter) : readAllSeancesForClass(curCls);
+  }catch(e){ seances=[]; }
+  const hist=_obsHistorique(uid, seances, cible?cible.slotKey:'', 6);
+  const hTog=document.getElementById('stp-obs-hist');
+  const hBox=document.getElementById('stp-obs-hist-box');
+  if(hTog && hBox){
+    hBox.classList.remove('open');
+    hBox.textContent='';
+    if(hist.length){
+      hTog.style.display='';
+      hTog.textContent='🕒 '+hist.length+' précédente'+(hist.length>1?'s':'');
+      hist.forEach(h=>{
+        const it=document.createElement('div'); it.className='stp-obs-it';
+        const dt=document.createElement('span'); dt.className='stp-obs-dt';
+        dt.textContent=_obsDateCourte(h.dateStr);
+        it.appendChild(dt);
+        it.appendChild(document.createTextNode(h.txt));
+        hBox.appendChild(it);
+      });
+    } else {
+      hTog.style.display='none';
+    }
+  }
+
+  // — Note permanente —
+  const pTog=document.getElementById('stp-obs-perm');
+  const pTa=document.getElementById('stp-obs-perm-ta');
+  const pBox=document.getElementById('stp-obs-perm-box');
+  if(pTog && pTa && pBox){
+    const val=String((S.observations&&S.observations[obsKeyProfil])||'');
+    pBox.classList.remove('open');
+    pTa.value=val;
+    pTa.oninput=()=>{
+      if(!S.observations) S.observations={};
+      if(pTa.value.trim()) S.observations[obsKeyProfil]=pTa.value;
+      else delete S.observations[obsKeyProfil];
+      saveS();
+    };
+    pTog.textContent='📌 Note permanente';
+    if(val.trim()){
+      const pt=document.createElement('span'); pt.className='stp-obs-pt';
+      pTog.appendChild(pt);
+    }
+  }
+}
 function _seanceStatutsFrozen(){
   if(!curSlotKey) return {};
   if(_isScopeGrpInter()) return (S.statutsCours&&S.statutsCours[curSlotKey+'|grp:'+curGrpInter])||{};
@@ -40837,11 +41098,15 @@ function openSaveSeance(){
     });
     // Collect observations for all students
     const observations={};
-    if(S.observations){
+    // V11.3.44 — on fige l'observation DU COURS (S.obsCours), plus le profil
+    // élève : celui-ci n'étant jamais vidé, il réestampillait la même phrase
+    // sur chaque séance enregistrée suivante.
+    {
+      const _grpObs=(typeof getCurrentGrpId==='function')?getCurrentGrpId(curCls, slotKey):'';
+      const _mapObs=readObsCours(slotKey, curCls, _grpObs, _isScopeGrpInter()?curGrpInter:'');
       (getCls().students||[]).forEach(id=>{
-        const obsKey=_obsScopeKey(id);
-        const obs=S.observations[obsKey];
-        if(obs&&obs.trim()) observations[id]=obs.trim();
+        const obs=_mapObs[id];
+        if(obs&&String(obs).trim()) observations[id]=String(obs).trim();
       });
     }
     const seance={date:effectiveDateStr,debut,fin,slotKey,statuts,competences,observations};
@@ -42801,11 +43066,15 @@ function openSaveSeance(){
       if(Object.keys(filtered).length) competences[studentId]=filtered;
     });
     const observations={};
-    if(S.observations){
+    // V11.3.44 — on fige l'observation DU COURS (S.obsCours), plus le profil
+    // élève : celui-ci n'étant jamais vidé, il réestampillait la même phrase
+    // sur chaque séance enregistrée suivante.
+    {
+      const _grpObs=(typeof getCurrentGrpId==='function')?getCurrentGrpId(curCls, slotKey):'';
+      const _mapObs=readObsCours(slotKey, curCls, _grpObs, _isScopeGrpInter()?curGrpInter:'');
       (getCls().students||[]).forEach(id=>{
-        const obsKey=_obsScopeKey(id);
-        const obs=S.observations[obsKey];
-        if(obs&&obs.trim()) observations[id]=obs.trim();
+        const obs=_mapObs[id];
+        if(obs&&String(obs).trim()) observations[id]=String(obs).trim();
       });
     }
     const seance={date:effectiveDateStr,debut,fin,slotKey,statuts,competences,observations,contenu,commentaire,seqId,seanId};
