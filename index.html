@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.47';
+const APP_VERSION = 'v11.3.48';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -40856,6 +40856,121 @@ function _aboutBlock(titre, node){
   else w.appendChild(node);
   return w;
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   V11.3.48 — DIAGNOSTIC D'AFFICHAGE
+   ---------------------------------------------------------------------------
+   « L'appli s'ouvre comme avec un zoom très réduit, alors que Chrome est à
+   100 % » (19/09). Impossible à trancher à distance : trois mécanismes
+   différents produisent le même symptôme. Plutôt que de deviner, l'application
+   dit elle-même ce que l'appareil déclare, et en tire une conclusion.
+   Le zoom interne est borné à 80 % (FONT_MIN) : il ne peut PAS, à lui seul,
+   rendre l'interface minuscule. Le suspect n°1 est le mode « Site ordinateur »
+   de Chrome, qui dessine la page sur ~980 px puis la réduit pour tenir sur
+   l'écran — sans jamais toucher au zoom affiché par le navigateur.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Relève ce que l'appareil déclare. Aucune interprétation ici. */
+function _diagAffichage(){
+  const d={screenW:0, screenH:0, innerW:0, innerH:0, dpr:1, echelle:1,
+           zoomApp:100, isPhone:false, isTouch:false, isLandscape:false};
+  try{ d.screenW=(window.screen&&window.screen.width)||0; }catch(e){}
+  try{ d.screenH=(window.screen&&window.screen.height)||0; }catch(e){}
+  try{ d.innerW=window.innerWidth||0; d.innerH=window.innerHeight||0; }catch(e){}
+  try{ d.dpr=window.devicePixelRatio||1; }catch(e){}
+  try{ if(window.visualViewport && window.visualViewport.scale) d.echelle=window.visualViewport.scale; }catch(e){}
+  try{ if(typeof currentFontSize==='number') d.zoomApp=currentFontSize; }catch(e){}
+  try{
+    d.isPhone=document.body.classList.contains('is-phone');
+    d.isLandscape=document.body.classList.contains('is-phone-landscape');
+  }catch(e){}
+  try{ d.isTouch=!!window.IS_TOUCH; }catch(e){}
+  return d;
+}
+
+/** Traduit le relevé en phrases actionnables. Pure : c'est elle qu'on teste.
+ *  Renvoie un tableau de {niveau:'alerte'|'info'|'ok', texte}. */
+function _diagVerdicts(d){
+  const out=[];
+  if(!d) return out;
+  const minEcran=Math.min(d.screenW||0, d.screenH||0);
+  const telephone = minEcran>0 && minEcran<=600;
+
+  // Le cas n°1 : la page est dessinée large puis réduite pour tenir.
+  if(telephone && d.innerW>700){
+    out.push({niveau:'alerte', texte:
+      'Chrome affiche cette page en mode « Site ordinateur » : elle est dessinée sur '
+      +d.innerW+' px de large, puis réduite pour tenir sur un écran de '+minEcran+' px. '
+      +'C\'est exactement l\'effet « tout est minuscule », et le zoom du navigateur '
+      +'reste à 100 % pendant ce temps. Menu ⋮ de Chrome → décocher « Site ordinateur ».'});
+  }
+  if(d.zoomApp<100){
+    out.push({niveau:'info', texte:
+      'Le zoom interne de l\'application est à '+d.zoomApp+' % (bouton + en bas à droite pour le remonter).'});
+  } else if(d.zoomApp>100){
+    out.push({niveau:'info', texte:'Le zoom interne de l\'application est à '+d.zoomApp+' %.'});
+  }
+  if(d.echelle && Math.abs(d.echelle-1)>0.05){
+    out.push({niveau:'info', texte:
+      'La page est zoomée aux doigts (×'+d.echelle.toFixed(2)+') : un double-tap la remet à l\'échelle.'});
+  }
+  if(telephone && !d.isPhone && d.innerW<=700){
+    out.push({niveau:'alerte', texte:
+      'Écran de téléphone mais mode mobile inactif — c\'est anormal, signalez-le.'});
+  }
+  if(!telephone && d.isPhone){
+    out.push({niveau:'info', texte:'Mode mobile actif alors que l\'écran n\'est pas celui d\'un téléphone (fenêtre étroite).'});
+  }
+  if(!out.some(v=>v.niveau==='alerte')){
+    out.push({niveau:'ok', texte:'Rien d\'anormal détecté du côté de l\'affichage.'});
+  }
+  return out;
+}
+
+/** Le bloc « Diagnostic d'affichage » de la fenêtre À propos. createElement. */
+function _diagNode(){
+  const d=_diagAffichage();
+  const wrap=document.createElement('div');
+
+  const grille=document.createElement('div');
+  grille.style.cssText='display:grid;grid-template-columns:auto 1fr;gap:2px 10px;'
+    +'font-size:11.5px;color:var(--tx2);margin-bottom:8px';
+  const ligne=(k,v)=>{
+    const a=document.createElement('div');
+    a.style.cssText='color:var(--tx3);white-space:nowrap'; a.textContent=k;
+    const b=document.createElement('div');
+    b.style.cssText='color:var(--tx);font-variant-numeric:tabular-nums'; b.textContent=v;
+    grille.appendChild(a); grille.appendChild(b);
+  };
+  ligne('Écran de l\'appareil', d.screenW+' × '+d.screenH+' px');
+  ligne('Zone de dessin', d.innerW+' × '+d.innerH+' px');
+  ligne('Densité de pixels', '×'+(Math.round(d.dpr*100)/100));
+  ligne('Échelle de la page', '×'+(Math.round(d.echelle*100)/100));
+  ligne('Zoom de l\'application', d.zoomApp+' %');
+  ligne('Modes actifs', [d.isPhone?'mobile':'', d.isLandscape?'paysage':'',
+                         d.isTouch?'tactile':''].filter(Boolean).join(' · ') || 'aucun');
+  wrap.appendChild(grille);
+
+  _diagVerdicts(d).forEach(v=>{
+    const el=document.createElement('div');
+    const couleurs={alerte:['#FFFBEB','#FDE68A','#92400E'],
+                    info:['var(--sur2)','var(--brd)','var(--tx2)'],
+                    ok:['#F0FDF4','#BBF7D0','#166534']}[v.niveau]||['var(--sur2)','var(--brd)','var(--tx2)'];
+    el.style.cssText='font-size:11.5px;line-height:1.5;padding:7px 9px;margin-top:5px;'
+      +'border-radius:var(--r1);background:'+couleurs[0]+';border:1px solid '+couleurs[1]
+      +';color:'+couleurs[2];
+    el.textContent=(v.niveau==='alerte'?'⚠ ':v.niveau==='ok'?'✓ ':'· ')+v.texte;
+    wrap.appendChild(el);
+  });
+
+  const b=document.createElement('button');
+  b.className='bs';
+  b.style.cssText='margin-top:8px;font-size:11.5px;padding:6px 12px';
+  b.textContent='↺ Remettre le zoom de l\'application à 100 %';
+  b.onclick=()=>{ try{ applyFontSize(100); }catch(e){} showAboutModal(); };
+  wrap.appendChild(b);
+  return wrap;
+}
+
 function showAboutModal(){
   if(typeof showModal!=='function') return;
   showModal('À propos de PlanClasse', '', null, true);
@@ -40872,6 +40987,10 @@ function showAboutModal(){
   ver.style.cssText='font-size:11px;color:var(--tx3);margin-bottom:8px';
   ver.textContent='Version '+((typeof APP_VERSION==='string')?APP_VERSION:'');
   root.appendChild(ver);
+
+  // V11.3.48 — Diagnostic d'affichage, en tête : c'est ce qu'on vient chercher
+  // quand « tout est minuscule », et l'À propos s'ouvre d'un tap sur la version.
+  root.appendChild(_aboutBlock('Diagnostic d\'affichage', _diagNode()));
 
   const info=document.createElement('div');
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
