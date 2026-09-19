@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.48';
+const APP_VERSION = 'v11.3.50';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -32724,9 +32724,143 @@ async function initSyncFileHandle(){
   })().finally(()=>{ syncFileInitPromise=null; });
   return syncFileInitPromise;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V11.3.49 — POURQUOI LE « FICHIER LOCAL » EST INDISPONIBLE, ET QUOI FAIRE
+   ---------------------------------------------------------------------------
+   Signalé en usage le 18/09 : sur iPad, appuyer sur 🔄 sans cloud connecté
+   affichait « Cette fonction nécessite un navigateur compatible (Chrome ou
+   Edge récents) » — à quelqu'un qui était SOUS Chrome.
+
+   Le message n'était pas faux, il était inapplicable : iOS et iPadOS imposent
+   WebKit à TOUS les navigateurs, et la File System Access API n'y existe dans
+   aucun. Suivre le conseil (installer Chrome) ne pouvait mener qu'à revoir le
+   même message, à l'identique.
+
+   Un conseil qu'on ne peut pas suivre coûte plus cher qu'une absence de
+   conseil : il envoie chercher la solution AILLEURS que là où elle est. Or
+   elle existe, elle est dans l'application, et elle marche sur iPad — c'est
+   la branche cloud. Le message la nomme désormais, et y mène d'un bouton.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Relève ce que l'appareil déclare. Aucune interprétation ici (chaque accès
+ *  peut lever : navigator est falsifiable, _pcSyncEngine touche à PCDropbox). */
+function _fsaEnv(){
+  const e={fsaOuvrir:false, fsaEcrire:false, ua:'', tactiles:0,
+           cloudLabel:'Dropbox', cloudConnecte:false};
+  try{ e.fsaOuvrir=(typeof window.showOpenFilePicker==='function'); }catch(x){}
+  try{ e.fsaEcrire=(typeof window.showSaveFilePicker==='function'); }catch(x){}
+  try{ e.ua=(navigator&&navigator.userAgent)||''; }catch(x){}
+  try{ e.tactiles=(navigator&&navigator.maxTouchPoints)||0; }catch(x){}
+  try{ const eng=_pcSyncEngine(); e.cloudLabel=eng.label||'Dropbox';
+       e.cloudConnecte=!!eng.connected(); }catch(x){}
+  return e;
+}
+
+/** Classe l'appareil. PURE.
+ *  'ios' est LE cas qui compte : c'est le seul où changer de navigateur est
+ *  strictement sans effet, le moteur étant imposé par le système. */
+function _fsaPlateforme(env){
+  const ua=String((env&&env.ua)||'');
+  const tact=(env&&env.tactiles)||0;
+  if(/iPad|iPhone|iPod/i.test(ua)) return 'ios';
+  // iPadOS 13+ se présente comme un Mac de bureau ; seul le tactile le trahit.
+  // (Un Mac à trackpad rapporte maxTouchPoints = 0.)
+  if(/Macintosh/i.test(ua) && tact>1) return 'ios';
+  if(/Android/i.test(ua)) return 'android';
+  if(/Firefox\/|FxiOS/i.test(ua)) return 'firefox';
+  if(/Safari\//i.test(ua) && !/Chrom|Edg\//i.test(ua)) return 'safari';
+  return 'autre';
+}
+
+/** Traduit le relevé en un message qu'on peut SUIVRE. Pure : c'est elle qu'on
+ *  teste. Renvoie {plateforme, titre, cause, remede, action, actionTxt} ;
+ *  `action` vaut 'sync' (le cloud est déjà connecté, un bouton suffit) ou
+ *  'connect' (il reste à le configurer). */
+function _fsaVerdict(env){
+  const p=_fsaPlateforme(env);
+  const cloud=(env&&env.cloudLabel)||'Dropbox';
+  const v={plateforme:p, titre:'', cause:'', remede:'', action:'', actionTxt:''};
+
+  if(p==='ios'){
+    v.titre='Sur iPad et iPhone, la synchro passe par '+cloud;
+    v.cause='iOS et iPadOS imposent le moteur d’Apple à TOUS les navigateurs : '
+      +'Chrome, Edge et Firefox y sont des habillages de Safari. Aucun d’eux ne '
+      +'sait relier cette page à un fichier de l’appareil — installer un autre '
+      +'navigateur ne changerait donc rien.';
+  } else if(p==='android'){
+    v.titre='Sur téléphone, la synchro passe par '+cloud;
+    v.cause='Aucun navigateur Android n’autorise une page à écrire dans un '
+      +'fichier que vous désignez. Cette fonction est réservée aux ordinateurs.';
+  } else if(p==='safari'||p==='firefox'){
+    const nav=(p==='safari')?'Safari':'Firefox';
+    v.titre=nav+' ne peut pas relier un fichier local';
+    v.cause=nav+' n’implémente pas l’accès aux fichiers locaux. Sur cet '
+      +'ordinateur, Chrome et Edge récents le permettent — mais '+cloud+' marche '
+      +'dans tous les navigateurs, y compris celui-ci.';
+  } else {
+    v.titre='Ce navigateur ne peut pas relier un fichier local';
+    v.cause='L’accès aux fichiers locaux depuis une page n’est proposé que par '
+      +'Chrome et Edge récents, sur ordinateur. '+cloud+', lui, marche partout.';
+  }
+
+  if(env&&env.cloudConnecte){
+    v.remede=cloud+' est déjà connecté sur cet appareil : la synchronisation est '
+      +'disponible tout de suite, sans rien installer.';
+    v.action='sync'; v.actionTxt='🔄 Synchroniser avec '+cloud;
+  } else {
+    v.remede='Configurez '+cloud+' une fois (Paramètres › 💾 Données › Sauvegardes '
+      +'et synchro) : les mêmes données circuleront ensuite entre tous vos '
+      +'appareils, celui-ci compris.';
+    v.action='connect'; v.actionTxt='☁️ Configurer '+cloud+'…';
+  }
+  return v;
+}
+
+/** Affiche le verdict AVEC le bouton qui mène à la solution. createElement :
+ *  aucune balise ajoutée au fichier, invariants inchangés. */
+function _showFsaIndispo(){
+  if(typeof showModal!=='function') return;
+  const v=_fsaVerdict(_fsaEnv());
+  showModal(v.titre, '', null, false, false);
+  const mb=document.getElementById('mb'); if(mb) mb.textContent='';
+  const ex=document.getElementById('modal-extra'); if(!ex) return;
+  ex.innerHTML='';
+
+  const root=document.createElement('div');
+  root.style.cssText='text-align:left;max-width:520px';
+  [v.cause, v.remede].forEach((t,i)=>{
+    const p=document.createElement('div');
+    p.style.cssText='font-size:13px;line-height:1.55;color:var(--tx2)'+(i?';margin-top:10px':'');
+    p.textContent=t;
+    root.appendChild(p);
+  });
+
+  if(v.action){
+    const b=document.createElement('button');
+    b.className='bp';
+    b.style.cssText='margin-top:14px;font-size:12.5px;padding:7px 14px';
+    b.textContent=v.actionTxt;
+    // On ferme AVANT d'agir, puis on agit au tick suivant : la cible ouvre
+    // elle-même un modal (leçon n°1 — un modal unique ne se réentre pas).
+    b.onclick=()=>{
+      const act=v.action;
+      try{ closeModal(); }catch(e){}
+      setTimeout(()=>{
+        try{
+          if(act==='sync'){ if(typeof window.syncNowSmart==='function') window.syncNowSmart(); }
+          else if(typeof _palDeep==='function'){ _palDeep('donnees','psec-stockage'); }
+        }catch(e){ console.warn('Action de repli synchro impossible',e); }
+      },0);
+    };
+    root.appendChild(b);
+  }
+  ex.appendChild(root);
+}
+
 async function chooseSyncFile(){
   if(!window.showSaveFilePicker){
-    showModal('Synchronisation indisponible','Votre navigateur ne permet pas de lier un fichier JSON partagé depuis ce fichier HTML. Utilisez plutôt Chrome ou Edge pour cette fonction.',null,true);
+    _showFsaIndispo();
     return;
   }
   try{
@@ -32820,7 +32954,10 @@ async function backupRemoteSyncFile(handle,remoteText){
 }
 async function syncNow(){
   if(!window.showOpenFilePicker||!window.showSaveFilePicker){
-    showModal('Synchronisation indisponible','Cette fonction nécessite un navigateur compatible avec l’accès aux fichiers locaux (Chrome ou Edge récents).',null,true);
+    // V11.3.49 — c'est ICI qu'atterrit le 🔄 d'un iPad sans cloud connecté
+    // (syncNowSmart retombe sur ce repli). Le message doit donc reconnaître
+    // l'appareil et renvoyer vers le chemin qui, lui, marche dessus.
+    _showFsaIndispo();
     return;
   }
   try{
@@ -40926,10 +41063,54 @@ function _diagVerdicts(d){
   return out;
 }
 
-/** Le bloc « Diagnostic d'affichage » de la fenêtre À propos. createElement. */
+/* V11.3.49 — le bloc est REPLIÉ par défaut (demandé le 19/09 : une fois le
+   symptôme réglé, il occupait la tête de l'À propos pour rien). Mémoire de la
+   session seulement, volontairement : chaque ouverture de l'application repart
+   replié, mais rouvrir l'À propos après avoir déplié ne referme pas derrière
+   l'utilisateur — c'est le bouton « remettre le zoom à 100 % », qui vit DANS le
+   bloc, qui rouvre la fenêtre. */
+let _diagOuvert=false;
+
+/** Résume les verdicts en UNE ligne. PURE : c'est elle qu'on teste.
+ *  Le bloc étant replié, cette ligne est tout ce que l'utilisateur voit — elle
+ *  doit donc suffire à savoir s'il y a lieu de l'ouvrir. Un diagnostic caché
+ *  derrière un titre neutre ne diagnostique rien. */
+function _diagResume(verdicts){
+  const v=Array.isArray(verdicts)?verdicts:[];
+  const n=v.filter(x=>x&&x.niveau==='alerte').length;
+  if(n>0) return {niveau:'alerte', alertes:n,
+    libelle:'⚠ Diagnostic d’affichage — '+n+' anomalie'+(n>1?'s':'')
+            +' détectée'+(n>1?'s':'')};
+  return {niveau:'ok', alertes:0, libelle:'✓ Diagnostic d’affichage — rien d’anormal'};
+}
+
+/** Le bloc « Diagnostic d'affichage » de la fenêtre À propos. createElement :
+ *  aucune balise littérale ajoutée au fichier, donc invariants details 2/2 et
+ *  summary 4/4 inchangés. */
 function _diagNode(){
   const d=_diagAffichage();
+  const verdicts=_diagVerdicts(d);
+  const res=_diagResume(verdicts);
+
+  // Élément « details » SANS attribut open → replié par défaut. (Écrit sans
+  // chevrons : _invariants_check.js compte les balises littérales PARTOUT,
+  // commentaires compris — un exemple en commentaire casserait le compte.)
+  const det=document.createElement('details');
+  const alerte=(res.niveau==='alerte');
+  det.style.cssText='margin-top:12px;padding:7px 9px;border-radius:var(--r1);'
+    +'border:1px solid '+(alerte?'#FDE68A':'var(--brd)')+';'
+    +'background:'+(alerte?'#FFFBEB':'var(--sur2)');
+  det.open=!!_diagOuvert;
+  det.addEventListener('toggle', ()=>{ _diagOuvert=det.open; });
+
+  const sum=document.createElement('summary');
+  sum.style.cssText='cursor:pointer;font-size:11.5px;font-weight:700;'
+    +'color:'+(alerte?'#92400E':'var(--tx2)');
+  sum.textContent=res.libelle;
+  det.appendChild(sum);
+
   const wrap=document.createElement('div');
+  wrap.style.cssText='margin-top:8px';
 
   const grille=document.createElement('div');
   grille.style.cssText='display:grid;grid-template-columns:auto 1fr;gap:2px 10px;'
@@ -40950,7 +41131,7 @@ function _diagNode(){
                          d.isTouch?'tactile':''].filter(Boolean).join(' · ') || 'aucun');
   wrap.appendChild(grille);
 
-  _diagVerdicts(d).forEach(v=>{
+  verdicts.forEach(v=>{
     const el=document.createElement('div');
     const couleurs={alerte:['#FFFBEB','#FDE68A','#92400E'],
                     info:['var(--sur2)','var(--brd)','var(--tx2)'],
@@ -40968,7 +41149,9 @@ function _diagNode(){
   b.textContent='↺ Remettre le zoom de l\'application à 100 %';
   b.onclick=()=>{ try{ applyFontSize(100); }catch(e){} showAboutModal(); };
   wrap.appendChild(b);
-  return wrap;
+
+  det.appendChild(wrap);
+  return det;
 }
 
 function showAboutModal(){
@@ -40990,12 +41173,17 @@ function showAboutModal(){
 
   // V11.3.48 — Diagnostic d'affichage, en tête : c'est ce qu'on vient chercher
   // quand « tout est minuscule », et l'À propos s'ouvre d'un tap sur la version.
-  root.appendChild(_aboutBlock('Diagnostic d\'affichage', _diagNode()));
+  // V11.3.49 — replié par défaut. Plus de titre _aboutBlock : la ligne « summary »
+  // porte elle-même le titre ET le verdict, sinon la ligne visible dirait deux
+  // fois la même chose sans jamais dire s'il y a quelque chose à voir.
+  root.appendChild(_diagNode());
 
   const info=document.createElement('div');
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Le diagnostic d\u2019affichage de cette fen\u00eatre est d\u00e9sormais repli\u00e9 : sa ligne de titre annonce \u00ab rien d\u2019anormal \u00bb, ou le nombre d\u2019anomalies d\u00e9tect\u00e9es, et il suffit de la toucher pour voir le d\u00e9tail.',
+    'Le message affiché quand la synchronisation par fichier local est impossible reconnaît désormais l’appareil. Sur iPad et iPhone, il ne conseille plus d’installer Chrome — ce qui n’aurait servi à rien, Apple imposant son moteur à tous les navigateurs — mais renvoie vers la synchronisation cloud, qui fonctionne sur ces appareils, avec un bouton pour y aller directement.',
     'Cahier de texte du jour (bouton 📋 dans l\u2019en-tête de l\u2019emploi du temps de l\u2019accueil) : tous les cours d\u2019une journée sur une page, en deux colonnes matin / après-midi, avec un bouton Copier devant chaque cours pour remplir Pronote. Navigation d\u2019un jour à l\u2019autre pour rattraper les saisies en retard.',
     'Le contenu de chaque cours se modifie directement depuis cette page : il s\u2019écrit dans la séance enregistrée, exactement comme dans le modal Séance. Un cours oublié peut y être saisi après coup. L\u2019en-tête, les tâches faites et les documents distribués restent calculés — ils ne s\u2019inventent pas.',
     'Observations et commentaire de séance consultables à côté de chaque cours, dans un dépliant : ils vous aident à remplir Pronote mais ne sont jamais copiés — un cahier de texte est lu par les familles.',
