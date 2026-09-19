@@ -2558,6 +2558,94 @@ body.is-touch .stp-section-title{
 }
 
 /* ════════════════════════════════════════════════════════════════════
+   V11.3.47 — TÉLÉPHONE EN PORTRAIT
+   ──────────────────────────────────────────────────────────────────
+   Jusqu'ici le mobile visait DEUX appareils, et aucun des deux n'était
+   un téléphone tenu en portrait :
+     • v167/v168 — le tactile, pensé pour l'iPad : d'où une popup élève
+       en DIALOGUE CENTRÉ (« le calcul ancré au siège sortirait du
+       viewport sur iPad ») ;
+     • v181.5/v181.6 — le mode `is-phone`, pensé pour le Z Flip 6 en
+       PAYSAGE. Le code le dit : « le portrait est marginal ».
+   Conséquences mesurées sur 412×915 : sièges de 30 px et noms en 13 px
+   (toutes les règles qui remplissent la hauteur sont conditionnées à
+   `.is-phone-landscape`), et une popup de 371×410 flottant au milieu de
+   l'écran — 40 % de la surface, la classe inutilisable derrière.
+   ──────────────────────────────────────────────────────────────────
+   Ces règles viennent APRÈS le bloc `body.is-touch` : à spécificité
+   égale, c'est l'ordre qui tranche. Ne pas les remonter dans le fichier.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* — 1. LISIBILITÉ. Décision utilisateur : on préfère de grands libellés
+     quitte à faire défiler. On agrandit donc sièges et noms sans chercher
+     à faire tenir la classe dans un écran. Portrait uniquement : le
+     paysage garde sa grille 6×6 réglée au pixel près. — */
+body.is-phone:not(.is-phone-landscape) .pcm-seat{
+  min-height:46px;            /* 44 px de cible tactile (Apple HIG) + bordure */
+  padding:8px 8px 9px;
+  display:flex;align-items:center;
+}
+body.is-phone:not(.is-phone-landscape) .pcm-seat-lbl{
+  font-size:15px;line-height:1.25;
+  padding-left:20px;padding-right:26px;
+}
+body.is-phone:not(.is-phone-landscape) .pcm-seat.empty{min-height:46px}
+body.is-phone:not(.is-phone-landscape) .pcm-ilot-hdr{
+  padding:7px 11px;font-size:12.5px;
+}
+body.is-phone:not(.is-phone-landscape) .pcm-ilot-seats{gap:3px;padding:3px}
+body.is-phone:not(.is-phone-landscape) .pcm-body.v-ilots{gap:9px;padding:8px}
+body.is-phone:not(.is-phone-landscape) .pcm-stbadge{font-size:10px;padding:2px 5px}
+/* La vue Liste suit la même règle : on y lit des noms, pas des lignes. */
+body.is-phone:not(.is-phone-landscape) .pcm-row{
+  padding:12px 12px;gap:10px;
+}
+body.is-phone:not(.is-phone-landscape) .pcm-row-name{font-size:15px}
+body.is-phone:not(.is-phone-landscape) .pcm-row-chip{font-size:11px;min-width:32px;padding:3px 7px}
+
+/* — 2. LA POPUP ÉLÈVE DEVIENT UNE FEUILLE ANCRÉE EN BAS.
+     Pleine largeur, remontant du bas, jusqu'à 85 % de hauteur, avec
+     défilement interne : les boutons tombent sous le pouce et la classe
+     reste visible au-dessus. Les `!important` répondent à ceux de la
+     règle iPad (`left:50%`, `top:50%`), qu'il faut neutraliser. — */
+body.is-phone #st-popup{
+  left:0 !important; right:0;
+  top:auto !important; bottom:0;
+  transform:none !important;
+  width:100%; max-width:100%;
+  max-height:85vh;
+  border-radius:18px 18px 0 0;
+  padding:46px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;   /* le scroll de la feuille n'entraîne pas la page */
+  box-shadow:0 -10px 34px rgba(0,0,0,.30);
+  border:none;
+}
+/* Barrette de préhension : signale que c'est une feuille, pas un dialogue. */
+body.is-phone #st-popup::before{
+  content:'';
+  position:absolute;top:9px;left:50%;transform:translateX(-50%);
+  width:40px;height:4px;border-radius:2px;
+  background:var(--brd);
+}
+body.is-phone .stp-close-btn{
+  width:32px;height:32px;top:12px;right:12px;font-size:16px;
+}
+/* Sur une feuille pleine largeur, les grilles de statuts respirent. */
+body.is-phone .stp-neg,
+body.is-phone .stp-pos{gap:9px}
+body.is-phone .stp-btn{min-height:50px;font-size:14.5px}
+body.is-phone .stp-name{font-size:17px}
+/* Le réglage de zoom flotte en z-index 999, donc AU-DESSUS de la feuille
+   (z-index 500) : sur un téléphone il tombe pile sur les boutons du bas.
+   On l'écarte pendant la saisie, et on réserve sa place en bas de la liste
+   pour qu'il ne masque pas le dernier îlot. */
+body.is-phone.stp-open #font-ctrl{display:none}
+body.is-phone #font-ctrl{bottom:.5rem;right:.5rem;opacity:.45}
+body.is-phone:not(.is-phone-landscape) .pcm-body{padding-bottom:48px}
+
+/* ════════════════════════════════════════════════════════════════════
    V020-v169 — Tap-to-place tactile : feedback visuel
    .v169-source = élément choisi comme source d'un déplacement.
    Outline orange marqué + léger pulse, suffisamment visible pour qu'on
@@ -3967,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.46';
+const APP_VERSION = 'v11.3.47';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
