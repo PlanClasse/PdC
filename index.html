@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.50';
+const APP_VERSION = 'v11.3.51';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28401,9 +28401,30 @@ if(typeof window !== 'undefined'){
      annuler un cours d'ici là décale les suivants, c'est assumé.
    - Les cours ANNULÉS ne comptent pas et n'affichent aucun numéro (leur en
      donner un serait précisément l'ambiguïté à éviter).
-   - Un créneau en DEMI-GROUPES compte pour UN cours : `buildYearSlots` fusionne
-     déjà les deux groupes d'un même créneau (« same slotKey = same logical
-     course, even if 2 groups »), on s'appuie dessus sans rien changer.
+   - Un créneau en DEMI-GROUPES compte pour UN cours.
+
+   V035-V11.3.51 — CE QUE « UN COURS » VEUT DIRE EN DEMI-GROUPES
+   ──────────────────────────────────────────────────────────────────────────
+   La v11.3.40 s'appuyait sur `buildYearSlots`, qui fusionne les deux groupes
+   d'un MÊME créneau horaire (« same slotKey = same logical course »). C'était
+   juste, et insuffisant : dans un emploi du temps réel, les deux demi-groupes
+   sont rarement à la même heure. Chez l'utilisateur ils se suivent dans la
+   journée (Gr1 de 8h à 9h, Gr2 de 9h à 10h) ; ailleurs ils peuvent être à deux
+   jours d'écart, ou en alternance de quinzaine. Dans tous ces cas la v11.3.40
+   comptait DEUX cours là où le professeur en fait UN — la même leçon, deux fois.
+
+   Règle retenue (arbitrage utilisateur, 19/09) : **le numéro répond à « combien
+   de fois ce PUBLIC a-t-il eu cours, celui-ci compris ? »**. Chaque demi-groupe
+   a donc son propre compteur, et les deux moitiés d'une même leçon portent le
+   même numéro — qu'elles soient sur le même créneau, à deux heures d'écart ou à
+   une semaine. Un cours en classe entière compte pour les deux groupes et les
+   réaligne. Un créneau où les DEUX groupes sont présents ensemble est traité
+   comme une classe entière : c'est bien un seul cours pour tout le monde.
+
+   ⚠️ Conséquence assumée : si le cours du groupe A est annulé et pas celui du
+   groupe B, les deux compteurs divergent d'un rang — et c'est exact, le groupe A
+   a réellement une leçon de retard. Le numéro n'est pas un rang de créneau, il
+   est un rang de leçon POUR CE PUBLIC.
 
    Mémo par rendu (`_numCoursMemo`), remis à zéro au début de `renderEdtList` :
    `_yearSlotsCacheVersion` ne bouge PAS quand on annule un cours, donc un cache
@@ -28411,23 +28432,81 @@ if(typeof window !== 'undefined'){
 ══════════════════════════════════════════════════════════════════════════ */
 let _numCoursMemo=null;
 
-function _edtNumeroCours(clsCode, slotKey){
-  if(!clsCode || !slotKey) return 0;
-  if(typeof buildYearSlots!=='function') return 0;
+/** Le « public » d'un créneau, pour la numérotation. PURE.
+ *  '' = toute la classe — y compris un créneau où les DEUX demi-groupes sont
+ *  présents en même temps, qui est bien un seul cours pour tout le monde.
+ *  Sinon, l'identifiant du demi-groupe concerné. */
+function _numPublicDuSlot(sl){
+  if(!sl || !sl.isDemi) return '';
+  const g=Array.isArray(sl.grpIds)?sl.grpIds:[];
+  return (g.length===1 && g[0]) ? String(g[0]) : '';
+}
+
+/** Numérote les créneaux d'une classe. PURE : c'est elle qu'on teste.
+ *  `slots` : liste chronologique de {slotKey, isDemi, grpIds, annule}.
+ *  Renvoie {slotKey: {n, gid}} — `gid` sert à dire dans l'info-bulle que le
+ *  numéro est partagé avec l'autre demi-groupe. */
+function _edtNumerotation(slots){
+  const table={};
+  if(!Array.isArray(slots)) return table;
+  let entiere=0;        // dernier numéro attribué en classe entière
+  const parGrp={};      // gid -> dernier numéro attribué à ce demi-groupe
+  slots.forEach(sl=>{
+    if(!sl || !sl.slotKey || sl.annule) return;
+    const gid=_numPublicDuSlot(sl);
+    let n;
+    if(!gid){
+      // Classe entière : on repart du compteur le PLUS AVANCÉ, puis on réaligne
+      // tout le monde — sinon un groupe en retard ferait reculer la numérotation.
+      let base=entiere;
+      Object.keys(parGrp).forEach(g=>{ if(parGrp[g]>base) base=parGrp[g]; });
+      n=base+1; entiere=n;
+      Object.keys(parGrp).forEach(g=>{ parGrp[g]=n; });
+    } else {
+      // Un demi-groupe ne peut pas être en retard sur la classe entière : d'où
+      // le max, qui rattrape un groupe arrivé en cours d'année.
+      const deja=(parGrp[gid]!=null)?parGrp[gid]:0;
+      n=Math.max(deja, entiere)+1;
+      parGrp[gid]=n;
+    }
+    table[sl.slotKey]={n:n, gid:gid};
+  });
+  return table;
+}
+
+/** Table {slotKey:{n,gid}} de la classe, mémorisée le temps d'un rendu. */
+function _edtNumeroTable(clsCode){
+  if(!clsCode) return null;
+  if(typeof buildYearSlots!=='function') return null;
   let table=_numCoursMemo && _numCoursMemo[clsCode];
   if(!table){
-    table={};
-    let n=0;
     try{
-      (buildYearSlots(clsCode)||[]).forEach(sl=>{
-        if(!sl || !sl.slotKey) return;
-        if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, clsCode)) return;
-        n++; table[sl.slotKey]=n;
-      });
-    }catch(e){ return 0; }
+      table=_edtNumerotation((buildYearSlots(clsCode)||[]).map(sl=>({
+        slotKey:(sl&&sl.slotKey)||'',
+        isDemi :!!(sl&&sl.isDemi),
+        grpIds :(sl&&sl.grpIds)||[],
+        annule :!!(typeof isSlotCancelled==='function'
+                   && isSlotCancelled(sl&&sl.dateStr, sl&&sl.debut, clsCode))
+      })));
+    }catch(e){ return null; }
     if(_numCoursMemo) _numCoursMemo[clsCode]=table;
   }
-  return table[slotKey]||0;
+  return table;
+}
+
+function _edtNumeroCours(clsCode, slotKey){
+  if(!clsCode || !slotKey) return 0;
+  const table=_edtNumeroTable(clsCode);
+  const e=table && table[slotKey];
+  return (e && e.n) || 0;
+}
+
+/** Ce créneau est-il une moitié de leçon (donc un numéro partagé) ? */
+function _edtNumeroDemi(clsCode, slotKey){
+  if(!clsCode || !slotKey) return false;
+  const table=_edtNumeroTable(clsCode);
+  const e=table && table[slotKey];
+  return !!(e && e.gid);
 }
 
 function renderEdtList(){
@@ -28568,7 +28647,11 @@ function renderEdtList(){
         const numEl=document.createElement('span');
         numEl.className='edt-num';
         numEl.textContent=String(_nc);
-        numEl.title=_nc+'ᵉ cours de l\'année avec '+String(clsCode).toUpperCase()+' · cours annulés non comptés';
+        numEl.title=_nc+'ᵉ cours de l\'année avec '+String(clsCode).toUpperCase()
+          +(_edtNumeroDemi(clsCode, slotKey)
+              ? ' · les deux demi-groupes portent le même numéro'
+              : '')
+          +' · cours annulés non comptés';
         clsEl.appendChild(numEl);
       }
     }
@@ -41182,6 +41265,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Num\u00e9ro de cours et demi-groupes : les deux moiti\u00e9s d\u2019une m\u00eame le\u00e7on portent d\u00e9sormais le m\u00eame num\u00e9ro, qu\u2019elles se suivent dans la journ\u00e9e, tombent deux jours diff\u00e9rents ou alternent d\u2019une semaine \u00e0 l\u2019autre. Le num\u00e9ro r\u00e9pond \u00e0 \u00ab combien de fois ai-je vu CE groupe ? \u00bb, et un cours en classe enti\u00e8re compte pour les deux.',
     'Le diagnostic d\u2019affichage de cette fen\u00eatre est d\u00e9sormais repli\u00e9 : sa ligne de titre annonce \u00ab rien d\u2019anormal \u00bb, ou le nombre d\u2019anomalies d\u00e9tect\u00e9es, et il suffit de la toucher pour voir le d\u00e9tail.',
     'Le message affiché quand la synchronisation par fichier local est impossible reconnaît désormais l’appareil. Sur iPad et iPhone, il ne conseille plus d’installer Chrome — ce qui n’aurait servi à rien, Apple imposant son moteur à tous les navigateurs — mais renvoie vers la synchronisation cloud, qui fonctionne sur ces appareils, avec un bouton pour y aller directement.',
     'Cahier de texte du jour (bouton 📋 dans l\u2019en-tête de l\u2019emploi du temps de l\u2019accueil) : tous les cours d\u2019une journée sur une page, en deux colonnes matin / après-midi, avec un bouton Copier devant chaque cours pour remplir Pronote. Navigation d\u2019un jour à l\u2019autre pour rattraper les saisies en retard.',
