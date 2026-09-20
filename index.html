@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.51';
+const APP_VERSION = 'v11.3.52';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -17623,6 +17623,234 @@ function renderParamsSuivi(){
   pane.appendChild(_paramsSection('params-pane-alertes', renderParamsAlertes, '🚨', "Seuils d'alerte", 'Seuils et date de prise en compte pour les alertes automatiques.', 'psec-alertes', null));
 }
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V035-V11.3.52 — NETTOYAGE DES OBSERVATIONS RÉESTAMPILLÉES
+   ---------------------------------------------------------------------------
+   Avant la v11.3.44, la popup élève écrivait l'observation directement dans le
+   PROFIL (`S.observations['<cls>|<uid>']`), que rien ne vidait jamais — et
+   l'enregistrement de séance figeait ce profil dans `seance.observations`. La
+   même phrase se retrouvait donc recopiée sur TOUS les cours suivants, et c'est
+   elle qu'on voit encore dans « 🕒 n précédentes » et dans la ligne
+   Observations de Sc.Préc.
+
+   La v11.3.44 a coupé la source (§5.29) : depuis, le figeage vient de
+   `S.obsCours`, et une note permanente n'atteint plus jamais une séance. Il ne
+   reste donc que le passé à nettoyer — c'est ce que fait cette opération.
+
+   RÈGLE (arbitrage utilisateur, 20/09) : on replie les RÉPÉTITIONS CONSÉCUTIVES
+   identiques, en gardant la PREMIÈRE de chaque série — c'est elle qui porte la
+   vraie date de l'observation. Une note écrite puis réestampillée dix fois ne
+   laisse qu'une trace, à sa date ; une vraie observation de cours, différente de
+   ses voisines, n'est jamais touchée. Une note permanente modifiée en cours
+   d'année laisse donc une trace par version, ce qui est exact.
+
+   Puis la note permanente est vidée — MAIS SEULEMENT si son texte se retrouve
+   dans au moins une séance de cet élève. Une note qui n'a jamais été recopiée
+   (écrite après la v11.3.44, ou sur une classe sans séance enregistrée) n'a
+   jamais pollué quoi que ce soit : on la garde (arbitrage utilisateur).
+
+   Opération MANUELLE, avec aperçu chiffré et confirmation. Pas de migration au
+   démarrage : elle détruit des données, et le §5.24 rappelle qu'une exception au
+   premier niveau du script décapite tout ce qui suit.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Le scope de profil auquel répond un bucket de séances. PURE.
+ *  `S.seances` a trois formes de clé : '<cls>', '<cls>|<gid>' (demi-groupe) et
+ *  'grp:<gid>' (groupe inter-classes). Les deux premières partagent le même
+ *  profil '<cls>|<uid>' ; la troisième a le sien. */
+function _obsScopeDeBucket(bk){
+  const k=String(bk||'');
+  if(k.indexOf('grp:')===0) return k;
+  const i=k.indexOf('|');
+  return i<0 ? k : k.slice(0,i);
+}
+
+/** Les créneaux dont l'observation répète la précédente. PURE.
+ *  `entrees` : [{slotKey, txt}] dans l'ordre CHRONOLOGIQUE, pour UN élève.
+ *  Un texte vide casse la série : deux occurrences séparées par un cours sans
+ *  observation sont deux saisies distinctes, pas une répétition. */
+function _obsDoublons(entrees){
+  const out=[];
+  if(!Array.isArray(entrees)) return out;
+  let prec=null;
+  entrees.forEach(e=>{
+    if(!e || !e.slotKey) return;
+    const t=String(e.txt==null?'':e.txt).trim();
+    if(!t){ prec=null; return; }
+    if(prec!==null && t===prec) out.push(e.slotKey);
+    else prec=t;
+  });
+  return out;
+}
+
+/** Construit le plan de nettoyage. PURE : on lui passe une photo de l'état.
+ *  `profil`  : {'<scope>|<uid>': texte}
+ *  `buckets` : {'<bucketKey>': [{slotKey, observations:{uid:texte}}]}
+ *  Renvoie {doublons:[{bucket,slotKey,uid}], notesAVider:[clé],
+ *           notesGardees:[clé], eleves, seances}. */
+function _obsPlanNettoyage(profil, buckets){
+  const plan={doublons:[], notesAVider:[], notesGardees:[], eleves:0, seances:0};
+  const presents={};              // '<scope>|<uid>' -> [textes vus en séance]
+  const elevesTouches={}, seancesTouchees={};
+  Object.keys(buckets||{}).forEach(bk=>{
+    const scope=_obsScopeDeBucket(bk);
+    const seances=(buckets[bk]||[]).filter(x=>x&&x.slotKey)
+      .slice().sort((a,b)=>String(a.slotKey).localeCompare(String(b.slotKey)));
+    const uids={};
+    seances.forEach(se=>{ Object.keys((se&&se.observations)||{}).forEach(u=>{ uids[u]=1; }); });
+    Object.keys(uids).forEach(uid=>{
+      const entrees=seances.map(se=>({slotKey:se.slotKey, txt:((se.observations||{})[uid])}));
+      entrees.forEach(e=>{
+        const t=String(e.txt==null?'':e.txt).trim();
+        if(t){ const k=scope+'|'+uid; (presents[k]||(presents[k]=[])).push(t); }
+      });
+      _obsDoublons(entrees).forEach(sk=>{
+        plan.doublons.push({bucket:bk, slotKey:sk, uid:uid});
+        elevesTouches[scope+'|'+uid]=1; seancesTouchees[bk+'\u0000'+sk]=1;
+      });
+    });
+  });
+  Object.keys(profil||{}).forEach(cle=>{
+    const txt=String(profil[cle]==null?'':profil[cle]).trim();
+    if(!txt) return;
+    if((presents[cle]||[]).indexOf(txt)>=0) plan.notesAVider.push(cle);
+    else plan.notesGardees.push(cle);      // jamais recopiée → jamais polluante
+  });
+  plan.eleves=Object.keys(elevesTouches).length;
+  plan.seances=Object.keys(seancesTouchees).length;
+  return plan;
+}
+
+/** Photo de l'état courant, au format attendu par `_obsPlanNettoyage`. */
+function _obsPhotoEtat(){
+  const buckets={};
+  try{
+    Object.keys((typeof S!=='undefined'&&S&&S.seances)||{}).forEach(bk=>{
+      const arr=S.seances[bk];
+      if(Array.isArray(arr)) buckets[bk]=arr;
+    });
+  }catch(e){}
+  let profil={};
+  try{ profil=(S&&S.observations)||{}; }catch(e){}
+  return {profil:profil, buckets:buckets};
+}
+
+/** Applique le plan. Écrit dans S.seances et S.observations, puis sauvegarde.
+ *  Renvoie le nombre d'entrées réellement retirées (il peut différer du plan si
+ *  l'état a bougé entre l'aperçu et la confirmation). */
+function _obsAppliquerNettoyage(plan){
+  const bilan={observations:0, notes:0};
+  if(!plan) return bilan;
+  (plan.doublons||[]).forEach(d=>{
+    try{
+      const arr=(S.seances&&S.seances[d.bucket])||[];
+      const se=arr.find(x=>x&&x.slotKey===d.slotKey);
+      if(se && se.observations && se.observations[d.uid]!==undefined){
+        delete se.observations[d.uid];
+        bilan.observations++;
+      }
+    }catch(e){}
+  });
+  (plan.notesAVider||[]).forEach(cle=>{
+    try{
+      if(S.observations && S.observations[cle]!==undefined){
+        delete S.observations[cle]; bilan.notes++;
+      }
+    }catch(e){}
+  });
+  try{ saveS(); }catch(e){}
+  return bilan;
+}
+
+/** L'aperçu chiffré, puis la confirmation. createElement. */
+function _showObsNettoyageModal(){
+  if(typeof showModal!=='function') return;
+  const photo=_obsPhotoEtat();
+  const plan=_obsPlanNettoyage(photo.profil, photo.buckets);
+  const rien=(!plan.doublons.length && !plan.notesAVider.length);
+
+  showModal(rien ? 'Rien à nettoyer' : '🧹 Nettoyer les observations répétées',
+            '', null, false, false);
+  const mb=document.getElementById('mb'); if(mb) mb.textContent='';
+  const ex=document.getElementById('modal-extra'); if(!ex) return;
+  ex.innerHTML='';
+
+  const root=document.createElement('div');
+  root.style.cssText='text-align:left;max-width:560px';
+  const par=(t, style)=>{
+    const d=document.createElement('div');
+    d.style.cssText='font-size:13px;line-height:1.55;color:var(--tx2);margin-bottom:9px'+(style||'');
+    d.textContent=t; root.appendChild(d); return d;
+  };
+
+  if(rien){
+    par('Aucune observation répétée n’a été trouvée, et aucune note permanente '
+       +'n’a besoin d’être vidée. Rien n’a été modifié.');
+    if(plan.notesGardees.length){
+      par(plan.notesGardees.length+' note'+(plan.notesGardees.length>1?'s':'')
+         +' permanente'+(plan.notesGardees.length>1?'s':'')+' existe'
+         +(plan.notesGardees.length>1?'nt':'')+' toujours, mais elle'
+         +(plan.notesGardees.length>1?'s n’ont':' n’a')+' jamais été recopiée'
+         +(plan.notesGardees.length>1?'s':'')+' dans un cours : rien à corriger de ce côté.');
+    }
+    ex.appendChild(root); return;
+  }
+
+  par('Avant la version 11.3.44, une note permanente était recopiée sur chaque '
+     +'cours enregistré ensuite. Cette opération replie ces répétitions : pour '
+     +'chaque élève, la PREMIÈRE occurrence de chaque texte est conservée, à sa '
+     +'date ; les copies qui la suivent à l’identique sont retirées.');
+
+  const grille=document.createElement('div');
+  grille.style.cssText='display:grid;grid-template-columns:auto 1fr;gap:3px 12px;'
+    +'font-size:13px;margin:12px 0;padding:10px;border:1px solid var(--brd);'
+    +'border-radius:var(--r1);background:var(--sur2)';
+  const ligne=(v,k)=>{
+    const a=document.createElement('div');
+    a.style.cssText='font-weight:800;color:var(--tx);font-variant-numeric:tabular-nums;text-align:right';
+    a.textContent=String(v);
+    const b=document.createElement('div'); b.style.cssText='color:var(--tx2)'; b.textContent=k;
+    grille.appendChild(a); grille.appendChild(b);
+  };
+  ligne(plan.doublons.length, 'copie'+(plan.doublons.length>1?'s':'')+' d’observation retirée'+(plan.doublons.length>1?'s':''));
+  ligne(plan.seances, 'cours concerné'+(plan.seances>1?'s':''));
+  ligne(plan.eleves, 'élève'+(plan.eleves>1?'s':'')+' concerné'+(plan.eleves>1?'s':''));
+  ligne(plan.notesAVider.length, 'note'+(plan.notesAVider.length>1?'s':'')+' permanente'+(plan.notesAVider.length>1?'s':'')+' vidée'+(plan.notesAVider.length>1?'s':'')+' (leur texte reste dans le cours d’origine)');
+  if(plan.notesGardees.length) ligne(plan.notesGardees.length, 'note'+(plan.notesGardees.length>1?'s':'')+' permanente'+(plan.notesGardees.length>1?'s':'')+' CONSERVÉE'+(plan.notesGardees.length>1?'s':'')+' : jamais recopiée'+(plan.notesGardees.length>1?'s':'')+' dans un cours');
+  root.appendChild(grille);
+
+  par('⚠️ Opération irréversible. Exportez votre sauvegarde JSON d’abord si vous '
+     +'avez le moindre doute.', ';color:#92400E');
+
+  const barre=document.createElement('div');
+  barre.style.cssText='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px';
+  const bExp=document.createElement('button');
+  bExp.className='bs'; bExp.style.cssText='font-size:12px;padding:7px 14px';
+  bExp.textContent='📤 Exporter d’abord';
+  bExp.onclick=()=>{ try{ closeModal(); }catch(e){} setTimeout(()=>{ try{ exportData(); }catch(e){} },0); };
+  const bGo=document.createElement('button');
+  bGo.className='bp'; bGo.style.cssText='font-size:12px;padding:7px 14px';
+  bGo.textContent='🧹 Nettoyer maintenant';
+  bGo.onclick=()=>{
+    const bilan=_obsAppliquerNettoyage(plan);
+    try{ closeModal(); }catch(e){}
+    setTimeout(()=>{
+      try{
+        showModal('Nettoyage terminé',
+          bilan.observations+' copie'+(bilan.observations>1?'s':'')+' d’observation retirée'
+          +(bilan.observations>1?'s':'')+', '+bilan.notes+' note'+(bilan.notes>1?'s':'')
+          +' permanente'+(bilan.notes>1?'s':'')+' vidée'+(bilan.notes>1?'s':'')+'.\n\n'
+          +'Sc.Préc. et « 🕒 précédentes » ne montrent plus que les observations '
+          +'réellement saisies, chacune à sa date.', null, true);
+      }catch(e){}
+    },0);
+  };
+  barre.appendChild(bGo); barre.appendChild(bExp);
+  root.appendChild(barre);
+  ex.appendChild(root);
+}
+
 function renderParamsDonnees(){
   const pane=document.getElementById('params-pane-donnees');
   _paramsPaneSetup(pane);
@@ -20130,6 +20358,24 @@ function renderParamsDivers(){
   resetSection.appendChild(resetAllBtn);
 
   section.appendChild(resetSection);
+
+  // V11.3.52 — Nettoyage des observations réestampillées (cf. bloc dédié).
+  const obsSection=document.createElement('div');
+  obsSection.style.cssText='margin-top:14px;padding-top:12px;border-top:1px solid var(--brd)';
+  const obsBtn=document.createElement('button');
+  obsBtn.className='cab';
+  obsBtn.style.cssText='width:100%;justify-content:flex-start';
+  const obsIc=document.createElement('span'); obsIc.className='c-icon'; obsIc.textContent='🧹';
+  const obsWrap=document.createElement('span');
+  const obsLbl=document.createElement('span'); obsLbl.className='c-label';
+  obsLbl.textContent='Nettoyer les observations répétées';
+  const obsSub=document.createElement('span'); obsSub.className='c-sub';
+  obsSub.textContent='Replie les notes recopiées sur chaque cours avant la v11.3.44 — aperçu chiffré avant application';
+  obsWrap.appendChild(obsLbl); obsWrap.appendChild(obsSub);
+  obsBtn.appendChild(obsIc); obsBtn.appendChild(obsWrap);
+  obsBtn.onclick=()=>{ if(typeof _showObsNettoyageModal==='function') _showObsNettoyageModal(); };
+  obsSection.appendChild(obsBtn);
+  section.appendChild(obsSection);
 
   pane.appendChild(section);
 }
@@ -24939,14 +25185,52 @@ function summarySectionStyle(kind){
   };
   return map[kind]||'background:var(--sur);border:1px solid var(--brd);';
 }
+/* ════════════════════════════════════════════════════════════════════════════
+   V035-V11.3.52 — LIBELLÉ D'UN STATUT DANS LES VUES D'HISTORIQUE
+   ---------------------------------------------------------------------------
+   Signalé le 20/09 : dans Sc.Préc., un statut ajouté par l'utilisateur affichait
+   sa clé brute (« custom_1789623603436_797754 ») au lieu de son nom.
+
+   La cause n'était pas ce statut-là : les trois vues d'historique résolvaient le
+   libellé dans deux magasins (« neg » / « pos » Statuts) QUI NE SONT ÉCRITS
+   NULLE PART dans le fichier. `statusDefs` était donc toujours vide et
+   `statusLabel(k)` rendait toujours la clé. Les statuts d'origine s'en tiraient
+   par accident : leur clé ressemble à un mot (`absent`, `retard`), que le CSS
+   met en majuscules — personne n'avait remarqué que rien n'était résolu.
+
+   Le vrai magasin est `S.customStatuts` (celui que lit `getStatuts()`).
+   On ne passe PAS par `getStatuts()` ici : elle filtre sur `enabled`, alors
+   qu'un statut désactivé depuis a quand même été posé sur des élèves — son
+   historique doit rester lisible. On lit donc la source non filtrée, puis les
+   statuts d'origine en repli.
+
+   ⚠️ Ne pas citer ici le nom exact des deux magasins morts : un test vérifie
+   qu'ils ont disparu du fichier, commentaires compris.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function _statutLabel(k){
+  if(!k) return '';
+  const key=String(k);
+  try{
+    const perso=(typeof S!=='undefined'&&S&&Array.isArray(S.customStatuts))?S.customStatuts:null;
+    if(perso){ const d=perso.find(x=>x&&x.key===key); if(d&&d.label) return d.label; }
+  }catch(e){}
+  try{
+    const def=(typeof STATUTS!=='undefined'&&Array.isArray(STATUTS))?STATUTS.find(x=>x&&x.key===key):null;
+    if(def&&def.label) return def.label;
+  }catch(e){}
+  // Statut personnalisé supprimé des réglages : son libellé n'existe plus nulle
+  // part. Mieux vaut le dire que d'afficher un identifiant technique.
+  if(/^custom_/.test(key)) return 'Statut supprimé';
+  return key;
+}
+
 /* V018-v150 — Rendu dense Sc.Préc. (option D : fiche labels/valeurs).
    Appelé uniquement par buildCourseSummaryHtml quand opts.compactForHistory est vrai.
    Ordre : Rattachement → Tâches → Contenu/TAF → Statuts → Compétences → Observations.
    Tailles : titres 12px, corps 14px, line-height 1.5. */
 function buildCourseSummaryDense(slotKey, clsCode){
   const seance=_getSavedSeanceEntriesForClsCode(clsCode).map(x=>x.se).find(s=>s.slotKey===slotKey)||null;
-  const statusDefs=[...(S.negStatuts||[]),...(S.posStatuts||[])];
-  const statusLabel=(k)=>{ const d=statusDefs.find(x=>x.key===k); return d?d.label:k; };
+  const statusLabel=(k)=>_statutLabel(k);   // V11.3.52 — cf. _statutLabel
   const studentName=(id)=>escapeHtml(formatSummaryStudentName(id)||id);
 
   // Tokens de style (dense, fiche labels/valeurs)
@@ -25164,8 +25448,7 @@ function buildCourseSummaryHtml(slotKey, clsCode, ev, opts){
     const bodyBase='font-size:15px;line-height:1.55;color:var(--tx)';
 
     // ── Statuts / absences ──
-    const statusDefs=[...(S.negStatuts||[]),...(S.posStatuts||[])];
-    const statusLabel=(k)=>{ const d=statusDefs.find(x=>x.key===k); return d?d.label:k; };
+    const statusLabel=(k)=>_statutLabel(k);   // V11.3.52 — cf. _statutLabel
     const byStatus={};
     Object.entries(liveMap).forEach(([sid,keys])=>{ (keys||[]).forEach(k=>{ (byStatus[k]||(byStatus[k]=[])).push(sid); }); });
     const statusBlocks=Object.entries(byStatus).map(([k,arr])=>{
@@ -25244,8 +25527,7 @@ function buildCourseSummaryHtml(slotKey, clsCode, ev, opts){
   const statuts=seance.statuts||{};
   const observations=seance.observations||{};
   const evalComps=seance.evalComps||{};
-  const statusDefs=[...(S.negStatuts||[]),...(S.posStatuts||[])];
-  const statusLabel=(k)=>{ const d=statusDefs.find(x=>x.key===k); return d?d.label:k; };
+  const statusLabel=(k)=>_statutLabel(k);   // V11.3.52 — cf. _statutLabel
   const studentName=(id)=>escapeHtml(formatSummaryStudentName(id));
   const byStatus={};
   Object.entries(statuts).forEach(([sid,keys])=>{ (keys||[]).forEach(k=>{ (byStatus[k]||(byStatus[k]=[])).push(sid); }); });
@@ -41265,6 +41547,8 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'S\u00e9ance pr\u00e9c\u00e9dente : les statuts personnalis\u00e9s que vous avez ajout\u00e9s s\u2019affichent enfin sous leur nom, et non plus sous leur identifiant interne. La r\u00e9solution des libell\u00e9s cherchait dans un magasin qui n\u2019existait pas.',
+    'Nouvelle op\u00e9ration dans R\u00e9glages divers : \u00ab Nettoyer les observations r\u00e9p\u00e9t\u00e9es \u00bb. Avant la version 11.3.44, une note permanente \u00e9tait recopi\u00e9e sur chaque cours enregistr\u00e9 ensuite ; cette op\u00e9ration replie ces r\u00e9p\u00e9titions en gardant la premi\u00e8re, \u00e0 sa date, et vide les notes permanentes ainsi recycl\u00e9es. Aper\u00e7u chiffr\u00e9 avant application.',
     'Num\u00e9ro de cours et demi-groupes : les deux moiti\u00e9s d\u2019une m\u00eame le\u00e7on portent d\u00e9sormais le m\u00eame num\u00e9ro, qu\u2019elles se suivent dans la journ\u00e9e, tombent deux jours diff\u00e9rents ou alternent d\u2019une semaine \u00e0 l\u2019autre. Le num\u00e9ro r\u00e9pond \u00e0 \u00ab combien de fois ai-je vu CE groupe ? \u00bb, et un cours en classe enti\u00e8re compte pour les deux.',
     'Le diagnostic d\u2019affichage de cette fen\u00eatre est d\u00e9sormais repli\u00e9 : sa ligne de titre annonce \u00ab rien d\u2019anormal \u00bb, ou le nombre d\u2019anomalies d\u00e9tect\u00e9es, et il suffit de la toucher pour voir le d\u00e9tail.',
     'Le message affiché quand la synchronisation par fichier local est impossible reconnaît désormais l’appareil. Sur iPad et iPhone, il ne conseille plus d’installer Chrome — ce qui n’aurait servi à rien, Apple imposant son moteur à tous les navigateurs — mais renvoie vers la synchronisation cloud, qui fonctionne sur ces appareils, avec un bouton pour y aller directement.',
