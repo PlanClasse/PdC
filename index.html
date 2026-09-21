@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.52';
+const APP_VERSION = 'v11.3.53';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29412,6 +29412,8 @@ function openApp(cls, groupeId, slotKey){
   const tbRow2=document.getElementById('tb-row2');
   if(tbRow2) tbRow2.classList.toggle('show', !!curSlotKey);
   if(curSlotKey) renderTbRow2Context();
+  // V11.3.53 — barre de synchro iOS (sans effet sur les autres plateformes)
+  try{ _ensureSyncBar(); }catch(e){}
   // V030-v181.10.1 — Réglages d'affichage selon le mode (PdC vs EDT) :
   //   - Bouton Contraintes : uniquement en PdC (inchangé V029)
   //   - Switches Statuts / Comp. / NUM / Partic. : cachés en PdC (sans intérêt hors cours)
@@ -29650,6 +29652,7 @@ function backToMenu(){
 function _doBackToMenu(){
   curSlotKey=null;
   document.getElementById('app').style.display='none';
+  try{ _ensureSyncBar(); }catch(e){}   // V11.3.53 — retire la barre iOS
   document.getElementById('menu').style.display='flex';
   renderMenu();
 }
@@ -33222,6 +33225,157 @@ function _showFsaIndispo(){
   }
   ex.appendChild(root);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V035-V11.3.53 — BARRE DE SYNCHRO DU PLAN DE CLASSE, SUR iOS UNIQUEMENT
+   ---------------------------------------------------------------------------
+   Demandé le 21/09 : « sur l'iPad, un gros bouton synchronisation en bas du
+   plan de classe ». C'est là que ça se justifie le plus : sur iOS il n'existe
+   AUCUN repli « fichier local » (cf. §5.36), le cloud est le seul chemin — et
+   le 🔄 de l'en-tête d'accueil n'est pas visible depuis le plan de classe.
+
+   Forme retenue (arbitrage utilisateur, 21/09) : un gros bouton + les DEUX
+   actions de sens explicite (⬆ / ⬇ de la v11.3.46) + une ligne d'état.
+   La ligne d'état n'est pas décorative : l'incident du 18/09 est venu d'une
+   synchro lancée sans savoir ce qu'il y avait en face. Savoir quand remonte la
+   dernière — ou qu'il n'y en a jamais eu sur cet appareil — est ce qui permet
+   de choisir entre le gros bouton et un sens imposé.
+
+   ⚠️ z-index 480 : SOUS la modale et la popup élève (500 toutes les deux), et
+   sous #font-ctrl (999), dont on laisse le coin bas-droit libre. Une barre qui
+   flotterait au-dessus d'un modal de confirmation serait pire que pas de barre.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Le texte de la barre. PURE : c'est elle qu'on teste.
+ *  `etat` = {connecte, label, dernier:{at,status,message}|null}. */
+function _syncBarTexte(etat, maintenant){
+  const e=etat||{};
+  const cloud=e.label||'le cloud';
+  if(!e.connecte){
+    return {titre:'☁️ Configurer la synchronisation',
+            sous:'Aucun cloud connecté sur cet appareil',
+            niveau:'attention', sens:false};
+  }
+  const t={titre:'🔄 Synchroniser avec '+cloud, sous:'', niveau:'ok', sens:true};
+  const d=e.dernier;
+  if(!d || !d.at){
+    // Le cas le plus risqué : c'est CELUI du 18/09. On le dit.
+    t.sous='Jamais synchronisé sur cet appareil'; t.niveau='attention'; return t;
+  }
+  const secs=Math.max(0, Math.floor((((maintenant||0)-d.at))/1000));
+  const quand = secs<60      ? 'à l’instant'
+              : secs<3600    ? 'il y a '+Math.floor(secs/60)+' min'
+              : secs<86400   ? 'il y a '+Math.floor(secs/3600)+' h'
+              :                'il y a '+Math.floor(secs/86400)+' j';
+  if(d.status==='error'){
+    t.sous='⚠ Dernière tentative en échec ('+quand+')'; t.niveau='erreur'; return t;
+  }
+  t.sous='Dernière synchro '+quand;
+  return t;
+}
+
+/** Relevé de l'état de synchro. Aucune interprétation ici. */
+function _syncBarEtat(){
+  const e={connecte:false, label:'Dropbox', dernier:null};
+  try{ const eng=_pcSyncEngine(); e.label=eng.label||'Dropbox'; e.connecte=!!eng.connected(); }catch(x){}
+  try{
+    if(window.PCDropbox && typeof window.PCDropbox.getLastSync==='function')
+      e.dernier=window.PCDropbox.getLastSync()||null;
+  }catch(x){}
+  return e;
+}
+
+/** iOS/iPadOS ET plan de classe ouvert. Ailleurs, la barre n'existe pas. */
+function _syncBarDoitAfficher(){
+  try{
+    if(typeof _fsaPlateforme!=='function' || typeof _fsaEnv!=='function') return false;
+    if(_fsaPlateforme(_fsaEnv())!=='ios') return false;
+    const app=document.getElementById('app');
+    if(!app) return false;
+    return getComputedStyle(app).display!=='none';
+  }catch(e){ return false; }
+}
+
+/** Crée la barre si besoin, la met à jour, la masque quand elle n'a pas lieu
+ *  d'être. Idempotente, createElement : invariants de balises inchangés. */
+function _ensureSyncBar(){
+  let bar=document.getElementById('ios-sync-bar');
+  if(!_syncBarDoitAfficher()){ if(bar) bar.style.display='none'; return; }
+  const txt=_syncBarTexte(_syncBarEtat(), Date.now());
+
+  if(!bar){
+    bar=document.createElement('div');
+    bar.id='ios-sync-bar';
+    bar.style.cssText='position:fixed;left:1rem;z-index:480;'
+      +'bottom:calc(1rem + env(safe-area-inset-bottom, 0px));'
+      +'display:flex;flex-direction:column;gap:4px;'
+      +'max-width:min(460px, calc(100vw - 130px));'
+      +'background:var(--sur);border:1px solid var(--brd);border-radius:var(--r2);'
+      +'box-shadow:var(--sh);padding:8px 10px';
+
+    const ligne=document.createElement('div');
+    ligne.style.cssText='display:flex;align-items:stretch;gap:6px';
+
+    const gros=document.createElement('button');
+    gros.id='ios-sync-go'; gros.className='bp';
+    // 48 px : cible tactile minimale (Apple HIG), comme les sièges du §5.33.
+    gros.style.cssText='flex:1;min-height:48px;font-size:14px;font-weight:700;'
+      +'padding:0 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    gros.onclick=()=>{
+      try{ if(typeof window.syncNowSmart==='function') window.syncNowSmart(); }catch(e){}
+      setTimeout(_ensureSyncBar, 1500);
+    };
+    ligne.appendChild(gros);
+
+    const mk=(id, glyphe, titre, sens)=>{
+      const b=document.createElement('button'); b.id=id; b.className='bs';
+      b.style.cssText='min-width:48px;min-height:48px;font-size:17px;font-weight:700;padding:0';
+      b.textContent=glyphe; b.title=titre;
+      b.onclick=()=>{
+        try{ if(typeof _pcSyncForce==='function') _pcSyncForce(sens); }catch(e){}
+        setTimeout(_ensureSyncBar, 1500);
+      };
+      return b;
+    };
+    ligne.appendChild(mk('ios-sync-up','⬆',
+      'Envoyer : remplace la version du cloud par celle de cet appareil','push'));
+    ligne.appendChild(mk('ios-sync-down','⬇',
+      'Récupérer : remplace les données de cet appareil par celles du cloud','pull'));
+    bar.appendChild(ligne);
+
+    const sous=document.createElement('div'); sous.id='ios-sync-sub';
+    sous.style.cssText='font-size:11px;line-height:1.35';
+    bar.appendChild(sous);
+    document.body.appendChild(bar);
+  }
+
+  bar.style.display='flex';
+  const gros=document.getElementById('ios-sync-go');
+  if(gros) gros.textContent=txt.titre;
+  // Pas de cloud connecté : imposer un sens n'a aucun sens, on retire les deux.
+  ['ios-sync-up','ios-sync-down'].forEach(id=>{
+    const b=document.getElementById(id); if(b) b.style.display=txt.sens?'':'none';
+  });
+  const sous=document.getElementById('ios-sync-sub');
+  if(sous){
+    sous.textContent=txt.sous;
+    sous.style.color = txt.niveau==='erreur'    ? '#9F1239'
+                     : txt.niveau==='attention' ? '#92400E'
+                     :                            'var(--tx3)';
+  }
+}
+
+// « il y a n min » vieillit tout seul : on rafraîchit au retour au premier plan
+// et une fois par minute. Purement cosmétique — aucune décision n'en dépend,
+// donc le bridage des timers en arrière-plan (leçon n°6) est sans conséquence.
+try{
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden){ try{ _ensureSyncBar(); }catch(e){} }
+  });
+  setInterval(()=>{ try{ _ensureSyncBar(); }catch(e){} }, 60000);
+}catch(e){}
+
 
 async function chooseSyncFile(){
   if(!window.showSaveFilePicker){
@@ -41547,6 +41701,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Sur iPad et iPhone, le plan de classe affiche en bas une barre de synchronisation : un grand bouton \u00ab Synchroniser \u00bb, les deux actions de sens explicite \u2b06 / \u2b07, et la date de la derni\u00e8re synchro \u2014 ou l\u2019avertissement qu\u2019il n\u2019y en a jamais eu sur cet appareil. Elle n\u2019appara\u00eet que sur iOS, o\u00f9 le cloud est le seul chemin possible.',
     'S\u00e9ance pr\u00e9c\u00e9dente : les statuts personnalis\u00e9s que vous avez ajout\u00e9s s\u2019affichent enfin sous leur nom, et non plus sous leur identifiant interne. La r\u00e9solution des libell\u00e9s cherchait dans un magasin qui n\u2019existait pas.',
     'Nouvelle op\u00e9ration dans R\u00e9glages divers : \u00ab Nettoyer les observations r\u00e9p\u00e9t\u00e9es \u00bb. Avant la version 11.3.44, une note permanente \u00e9tait recopi\u00e9e sur chaque cours enregistr\u00e9 ensuite ; cette op\u00e9ration replie ces r\u00e9p\u00e9titions en gardant la premi\u00e8re, \u00e0 sa date, et vide les notes permanentes ainsi recycl\u00e9es. Aper\u00e7u chiffr\u00e9 avant application.',
     'Num\u00e9ro de cours et demi-groupes : les deux moiti\u00e9s d\u2019une m\u00eame le\u00e7on portent d\u00e9sormais le m\u00eame num\u00e9ro, qu\u2019elles se suivent dans la journ\u00e9e, tombent deux jours diff\u00e9rents ou alternent d\u2019une semaine \u00e0 l\u2019autre. Le num\u00e9ro r\u00e9pond \u00e0 \u00ab combien de fois ai-je vu CE groupe ? \u00bb, et un cours en classe enti\u00e8re compte pour les deux.',
