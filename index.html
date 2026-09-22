@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.53';
+const APP_VERSION = 'v11.3.54';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -33235,6 +33235,15 @@ function _showFsaIndispo(){
    AUCUN repli « fichier local » (cf. §5.36), le cloud est le seul chemin — et
    le 🔄 de l'en-tête d'accueil n'est pas visible depuis le plan de classe.
 
+   V11.3.54 (22/09) — la barre existe aussi sur GRAND ÉCRAN, en forme COMPACTE.
+   Motif donné par l'utilisateur : « quand on passe de la tablette au PC et
+   réciproquement, être sûr de ne pas écraser des données ». C'est le bon motif,
+   et c'est lui qui a dicté la forme : il demandait « Synchro. et les deux
+   flèches », mais savoir SI le poste est à jour est justement ce qui permet de
+   ne pas écraser. L'état est donc conservé — replié sur la MÊME ligne, en
+   version courte (« il y a 12 min », « jamais ici », « ⚠ échec »), pour rester
+   compact sans devenir muet.
+
    Forme retenue (arbitrage utilisateur, 21/09) : un gros bouton + les DEUX
    actions de sens explicite (⬆ / ⬇ de la v11.3.46) + une ligne d'état.
    La ligne d'état n'est pas décorative : l'incident du 18/09 est venu d'une
@@ -33255,13 +33264,17 @@ function _syncBarTexte(etat, maintenant){
   if(!e.connecte){
     return {titre:'☁️ Configurer la synchronisation',
             sous:'Aucun cloud connecté sur cet appareil',
+            titreCourt:'☁️ Configurer…', sousCourt:'non connecté',
             niveau:'attention', sens:false};
   }
-  const t={titre:'🔄 Synchroniser avec '+cloud, sous:'', niveau:'ok', sens:true};
+  const t={titre:'🔄 Synchroniser avec '+cloud, sous:'',
+           titreCourt:'🔄 Synchro.', sousCourt:'', niveau:'ok', sens:true};
   const d=e.dernier;
   if(!d || !d.at){
-    // Le cas le plus risqué : c'est CELUI du 18/09. On le dit.
-    t.sous='Jamais synchronisé sur cet appareil'; t.niveau='attention'; return t;
+    // Le cas le plus risqué : c'est CELUI du 18/09. On le dit — y compris dans
+    // la forme compacte, où c'est la seule information qui compte vraiment.
+    t.sous='Jamais synchronisé sur cet appareil';
+    t.sousCourt='jamais ici'; t.niveau='attention'; return t;
   }
   const secs=Math.max(0, Math.floor((((maintenant||0)-d.at))/1000));
   const quand = secs<60      ? 'à l’instant'
@@ -33269,10 +33282,24 @@ function _syncBarTexte(etat, maintenant){
               : secs<86400   ? 'il y a '+Math.floor(secs/3600)+' h'
               :                'il y a '+Math.floor(secs/86400)+' j';
   if(d.status==='error'){
-    t.sous='⚠ Dernière tentative en échec ('+quand+')'; t.niveau='erreur'; return t;
+    t.sous='⚠ Dernière tentative en échec ('+quand+')';
+    t.sousCourt='⚠ échec '+quand; t.niveau='erreur'; return t;
   }
   t.sous='Dernière synchro '+quand;
+  t.sousCourt=quand;
   return t;
+}
+
+/** Quelle forme de barre pour cet appareil ? PURE.
+ *  - 'complet' : iOS/iPadOS — gros bouton, état sur sa propre ligne. C'est là
+ *    qu'il n'existe aucun autre chemin de synchro (§5.36).
+ *  - 'aucune'  : téléphone — le plan de classe y tient déjà à peine (§5.33),
+ *    une barre de plus mangerait la classe.
+ *  - 'compact' : tout le reste, poste de travail compris (v11.3.54). */
+function _syncBarForme(plateforme, estPhone){
+  if(plateforme==='ios') return 'complet';
+  if(estPhone) return 'aucune';
+  return 'compact';
 }
 
 /** Relevé de l'état de synchro. Aucune interprétation ici. */
@@ -33286,42 +33313,59 @@ function _syncBarEtat(){
   return e;
 }
 
-/** iOS/iPadOS ET plan de classe ouvert. Ailleurs, la barre n'existe pas. */
-function _syncBarDoitAfficher(){
+/** La forme à afficher ICI, MAINTENANT — ou '' si le plan de classe est fermé.
+ *  La visibilité du plan est LUE sur le rendu (getComputedStyle), jamais devinée
+ *  sur un style inline qui peut être vide au premier chargement. */
+function _syncBarFormeCourante(){
   try{
-    if(typeof _fsaPlateforme!=='function' || typeof _fsaEnv!=='function') return false;
-    if(_fsaPlateforme(_fsaEnv())!=='ios') return false;
+    if(typeof _fsaPlateforme!=='function' || typeof _fsaEnv!=='function') return '';
     const app=document.getElementById('app');
-    if(!app) return false;
-    return getComputedStyle(app).display!=='none';
-  }catch(e){ return false; }
+    if(!app) return '';
+    if(getComputedStyle(app).display==='none') return '';
+    const phone=!!(document.body && document.body.classList.contains('is-phone'));
+    const forme=_syncBarForme(_fsaPlateforme(_fsaEnv()), phone);
+    return forme==='aucune' ? '' : forme;
+  }catch(e){ return ''; }
 }
 
 /** Crée la barre si besoin, la met à jour, la masque quand elle n'a pas lieu
  *  d'être. Idempotente, createElement : invariants de balises inchangés. */
 function _ensureSyncBar(){
   let bar=document.getElementById('ios-sync-bar');
-  if(!_syncBarDoitAfficher()){ if(bar) bar.style.display='none'; return; }
+  const forme=_syncBarFormeCourante();
+  if(!forme){ if(bar) bar.style.display='none'; return; }
+  // La forme peut changer (fenêtre rétrécie sous le seuil téléphone) : on
+  // reconstruit plutôt que de bricoler des styles par-dessus les précédents.
+  if(bar && bar.dataset && bar.dataset.forme!==forme){ bar.remove(); bar=null; }
   const txt=_syncBarTexte(_syncBarEtat(), Date.now());
+  const compact=(forme==='compact');
+  const cible=compact?36:48;   // souris : 36 px suffit ; doigt : 48 (Apple HIG)
 
   if(!bar){
     bar=document.createElement('div');
     bar.id='ios-sync-bar';
+    if(bar.dataset) bar.dataset.forme=forme;
     bar.style.cssText='position:fixed;left:1rem;z-index:480;'
-      +'bottom:calc(1rem + env(safe-area-inset-bottom, 0px));'
+      +'bottom:calc('+(compact?'.6rem':'1rem')+' + env(safe-area-inset-bottom, 0px));'
       +'display:flex;flex-direction:column;gap:4px;'
-      +'max-width:min(460px, calc(100vw - 130px));'
+      +'max-width:min('+(compact?'340px':'460px')+', calc(100vw - 130px));'
       +'background:var(--sur);border:1px solid var(--brd);border-radius:var(--r2);'
-      +'box-shadow:var(--sh);padding:8px 10px';
+      +'box-shadow:var(--sh);padding:'+(compact?'5px 7px':'8px 10px')
+      +(compact?';opacity:.72;transition:opacity .15s':'');
+    if(compact){
+      bar.onmouseenter=()=>{ bar.style.opacity='1'; };
+      bar.onmouseleave=()=>{ bar.style.opacity='.72'; };
+    }
 
     const ligne=document.createElement('div');
-    ligne.style.cssText='display:flex;align-items:stretch;gap:6px';
+    ligne.style.cssText='display:flex;align-items:center;gap:'+(compact?'5px':'6px');
 
     const gros=document.createElement('button');
     gros.id='ios-sync-go'; gros.className='bp';
-    // 48 px : cible tactile minimale (Apple HIG), comme les sièges du §5.33.
-    gros.style.cssText='flex:1;min-height:48px;font-size:14px;font-weight:700;'
-      +'padding:0 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    gros.style.cssText=(compact?'':'flex:1;')+'min-height:'+cible+'px;'
+      +'font-size:'+(compact?'12px':'14px')+';font-weight:700;'
+      +'padding:0 '+(compact?'11px':'14px')+';white-space:nowrap;'
+      +'overflow:hidden;text-overflow:ellipsis';
     gros.onclick=()=>{
       try{ if(typeof window.syncNowSmart==='function') window.syncNowSmart(); }catch(e){}
       setTimeout(_ensureSyncBar, 1500);
@@ -33330,7 +33374,8 @@ function _ensureSyncBar(){
 
     const mk=(id, glyphe, titre, sens)=>{
       const b=document.createElement('button'); b.id=id; b.className='bs';
-      b.style.cssText='min-width:48px;min-height:48px;font-size:17px;font-weight:700;padding:0';
+      b.style.cssText='min-width:'+cible+'px;min-height:'+cible+'px;'
+        +'font-size:'+(compact?'14px':'17px')+';font-weight:700;padding:0';
       b.textContent=glyphe; b.title=titre;
       b.onclick=()=>{
         try{ if(typeof _pcSyncForce==='function') _pcSyncForce(sens); }catch(e){}
@@ -33342,24 +33387,34 @@ function _ensureSyncBar(){
       'Envoyer : remplace la version du cloud par celle de cet appareil','push'));
     ligne.appendChild(mk('ios-sync-down','⬇',
       'Récupérer : remplace les données de cet appareil par celles du cloud','pull'));
-    bar.appendChild(ligne);
 
-    const sous=document.createElement('div'); sous.id='ios-sync-sub';
-    sous.style.cssText='font-size:11px;line-height:1.35';
-    bar.appendChild(sous);
+    // Compact : l'état est replié SUR la même ligne, en version courte. Le
+    // supprimer rendrait la barre muette — or c'est précisément savoir si ce
+    // poste est à jour qui évite d'écraser l'autre appareil.
+    const sous=document.createElement(compact?'span':'div');
+    sous.id='ios-sync-sub';
+    sous.style.cssText=compact
+      ? 'font-size:11px;line-height:1.2;white-space:nowrap;margin-left:2px'
+      : 'font-size:11px;line-height:1.35';
+    if(compact) ligne.appendChild(sous);
+    bar.appendChild(ligne);
+    if(!compact) bar.appendChild(sous);
     document.body.appendChild(bar);
   }
 
   bar.style.display='flex';
   const gros=document.getElementById('ios-sync-go');
-  if(gros) gros.textContent=txt.titre;
+  if(gros){
+    gros.textContent=compact?txt.titreCourt:txt.titre;
+    gros.title=txt.titre+(txt.sous?' — '+txt.sous:'');
+  }
   // Pas de cloud connecté : imposer un sens n'a aucun sens, on retire les deux.
   ['ios-sync-up','ios-sync-down'].forEach(id=>{
     const b=document.getElementById(id); if(b) b.style.display=txt.sens?'':'none';
   });
   const sous=document.getElementById('ios-sync-sub');
   if(sous){
-    sous.textContent=txt.sous;
+    sous.textContent=compact?txt.sousCourt:txt.sous;
     sous.style.color = txt.niveau==='erreur'    ? '#9F1239'
                      : txt.niveau==='attention' ? '#92400E'
                      :                            'var(--tx3)';
@@ -41701,6 +41756,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Sur ordinateur, le plan de classe porte la m\u00eame barre en version compacte : \u00ab \ud83d\udd04 Synchro. \u00bb, les deux fl\u00e8ches, et la date de la derni\u00e8re synchro sur la m\u00eame ligne. De quoi v\u00e9rifier d\u2019un coup d\u2019\u0153il, en passant de la tablette au poste, qu\u2019on ne s\u2019appr\u00eate pas \u00e0 \u00e9craser l\u2019autre appareil. Elle ne s\u2019affiche pas sur t\u00e9l\u00e9phone, o\u00f9 la place manque.',
     'Sur iPad et iPhone, le plan de classe affiche en bas une barre de synchronisation : un grand bouton \u00ab Synchroniser \u00bb, les deux actions de sens explicite \u2b06 / \u2b07, et la date de la derni\u00e8re synchro \u2014 ou l\u2019avertissement qu\u2019il n\u2019y en a jamais eu sur cet appareil. Elle n\u2019appara\u00eet que sur iOS, o\u00f9 le cloud est le seul chemin possible.',
     'S\u00e9ance pr\u00e9c\u00e9dente : les statuts personnalis\u00e9s que vous avez ajout\u00e9s s\u2019affichent enfin sous leur nom, et non plus sous leur identifiant interne. La r\u00e9solution des libell\u00e9s cherchait dans un magasin qui n\u2019existait pas.',
     'Nouvelle op\u00e9ration dans R\u00e9glages divers : \u00ab Nettoyer les observations r\u00e9p\u00e9t\u00e9es \u00bb. Avant la version 11.3.44, une note permanente \u00e9tait recopi\u00e9e sur chaque cours enregistr\u00e9 ensuite ; cette op\u00e9ration replie ces r\u00e9p\u00e9titions en gardant la premi\u00e8re, \u00e0 sa date, et vide les notes permanentes ainsi recycl\u00e9es. Aper\u00e7u chiffr\u00e9 avant application.',
