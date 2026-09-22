@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.54';
+const APP_VERSION = 'v11.3.55';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -33256,11 +33256,46 @@ function _showFsaIndispo(){
    flotterait au-dessus d'un modal de confirmation serait pire que pas de barre.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/** « il y a n min ». PURE, partagée par les deux chemins de synchro. */
+function _syncBarDepuis(ms){
+  const secs=Math.max(0, Math.floor((ms||0)/1000));
+  return secs<60    ? 'à l’instant'
+       : secs<3600  ? 'il y a '+Math.floor(secs/60)+' min'
+       : secs<86400 ? 'il y a '+Math.floor(secs/3600)+' h'
+       :              'il y a '+Math.floor(secs/86400)+' j';
+}
+
 /** Le texte de la barre. PURE : c'est elle qu'on teste.
- *  `etat` = {connecte, label, dernier:{at,status,message}|null}. */
+ *  `etat` = {connecte, label, dernier:{at,status,message}|null,
+ *            fichier:{nom, modifie}|null}
+ *
+ *  V11.3.55 — TROIS situations, pas deux. `connecte` ne parle QUE du cloud
+ *  (Dropbox, Drive) ; il existe un second chemin de synchro, le fichier JSON
+ *  partagé (File System Access), qui marchait déjà mais que la barre déclarait
+ *  « non connecté » — un mensonge, sur un appareil qui synchronise très bien.
+ *  On le nomme désormais. Les deux flèches restent absentes dans ce cas :
+ *  `_pcSyncForce` est une action du moteur CLOUD et n'a aucun équivalent côté
+ *  fichier. Annoncer un sens qu'on ne sait pas imposer serait pire que rien. */
 function _syncBarTexte(etat, maintenant){
   const e=etat||{};
   const cloud=e.label||'le cloud';
+
+  if(!e.connecte && e.fichier && e.fichier.nom){
+    const t={titre:'🔄 Synchroniser (fichier local)',
+             titreCourt:'🔄 Synchro. (fichier)',
+             niveau:'ok', sens:false};
+    const nom='« '+e.fichier.nom+' »';
+    if(e.fichier.modifie){
+      const q=_syncBarDepuis((maintenant||0)-e.fichier.modifie);
+      t.sous='Fichier partagé '+nom+' — dernière écriture '+q;
+      t.sousCourt='fichier · '+q;
+    } else {
+      t.sous='Fichier partagé '+nom;
+      t.sousCourt='fichier local';
+    }
+    return t;
+  }
+
   if(!e.connecte){
     return {titre:'☁️ Configurer la synchronisation',
             sous:'Aucun cloud connecté sur cet appareil',
@@ -33276,11 +33311,7 @@ function _syncBarTexte(etat, maintenant){
     t.sous='Jamais synchronisé sur cet appareil';
     t.sousCourt='jamais ici'; t.niveau='attention'; return t;
   }
-  const secs=Math.max(0, Math.floor((((maintenant||0)-d.at))/1000));
-  const quand = secs<60      ? 'à l’instant'
-              : secs<3600    ? 'il y a '+Math.floor(secs/60)+' min'
-              : secs<86400   ? 'il y a '+Math.floor(secs/3600)+' h'
-              :                'il y a '+Math.floor(secs/86400)+' j';
+  const quand=_syncBarDepuis((maintenant||0)-d.at);
   if(d.status==='error'){
     t.sous='⚠ Dernière tentative en échec ('+quand+')';
     t.sousCourt='⚠ échec '+quand; t.niveau='erreur'; return t;
@@ -33304,11 +33335,22 @@ function _syncBarForme(plateforme, estPhone){
 
 /** Relevé de l'état de synchro. Aucune interprétation ici. */
 function _syncBarEtat(){
-  const e={connecte:false, label:'Dropbox', dernier:null};
+  const e={connecte:false, label:'Dropbox', dernier:null, fichier:null};
   try{ const eng=_pcSyncEngine(); e.label=eng.label||'Dropbox'; e.connecte=!!eng.connected(); }catch(x){}
   try{
     if(window.PCDropbox && typeof window.PCDropbox.getLastSync==='function')
       e.dernier=window.PCDropbox.getLastSync()||null;
+  }catch(x){}
+  // Second chemin de synchro : le fichier JSON partagé. On ne le retient que
+  // s'il est RÉELLEMENT utilisable ici — sur iOS la File System Access API
+  // n'existe pas (§5.36), un nom de fichier hérité d'un autre appareil ne doit
+  // donc pas faire croire à une synchro disponible.
+  try{
+    const prefs=(typeof getSyncPrefs==='function')?getSyncPrefs():null;
+    const nom=prefs&&prefs.fileName;
+    if(nom && typeof window.showSaveFilePicker==='function'){
+      e.fichier={nom:String(nom), modifie:(prefs.lastRemoteModified||0)};
+    }
   }catch(x){}
   return e;
 }
@@ -41756,6 +41798,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'La barre de synchronisation reconna\u00eet le fichier JSON partag\u00e9 : si vous synchronisez par fichier local plut\u00f4t que par le cloud, elle affiche \u00ab \ud83d\udd04 Synchro. (fichier) \u00bb et la date de la derni\u00e8re \u00e9criture, au lieu d\u2019annoncer \u00e0 tort \u00ab non connect\u00e9 \u00bb.',
     'Sur ordinateur, le plan de classe porte la m\u00eame barre en version compacte : \u00ab \ud83d\udd04 Synchro. \u00bb, les deux fl\u00e8ches, et la date de la derni\u00e8re synchro sur la m\u00eame ligne. De quoi v\u00e9rifier d\u2019un coup d\u2019\u0153il, en passant de la tablette au poste, qu\u2019on ne s\u2019appr\u00eate pas \u00e0 \u00e9craser l\u2019autre appareil. Elle ne s\u2019affiche pas sur t\u00e9l\u00e9phone, o\u00f9 la place manque.',
     'Sur iPad et iPhone, le plan de classe affiche en bas une barre de synchronisation : un grand bouton \u00ab Synchroniser \u00bb, les deux actions de sens explicite \u2b06 / \u2b07, et la date de la derni\u00e8re synchro \u2014 ou l\u2019avertissement qu\u2019il n\u2019y en a jamais eu sur cet appareil. Elle n\u2019appara\u00eet que sur iOS, o\u00f9 le cloud est le seul chemin possible.',
     'S\u00e9ance pr\u00e9c\u00e9dente : les statuts personnalis\u00e9s que vous avez ajout\u00e9s s\u2019affichent enfin sous leur nom, et non plus sous leur identifiant interne. La r\u00e9solution des libell\u00e9s cherchait dans un magasin qui n\u2019existait pas.',
