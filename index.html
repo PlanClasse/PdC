@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.55';
+const APP_VERSION = 'v11.3.57';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -31479,11 +31479,61 @@ function getFicheCategories(fiche){
   return [];
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   V035-V11.3.56 — LE PAI NE PARAÎT PLUS DANS LES VUES EBEP DU PLAN DE CLASSE
+   ---------------------------------------------------------------------------
+   Demandé le 22/09 : « quand je clique sur EBEP, je ne veux plus voir les PAI,
+   ni dans la mise en évidence sur le plan ».
+
+   La moitié de l'application avait déjà tranché dans ce sens sans que l'autre
+   suive : `EBEP_PAGE_CATS` (page EBEP plein écran) et `_fdjGetEbepStudents`
+   (rappel de la Fiche du jour) portent tous deux, depuis la v181.4.4.3, le
+   commentaire « PAI exclu volontairement ». La liste 🧩 du plan de classe et le
+   surlignage des sièges, eux, retenaient TOUTE fiche existante — un élève dont
+   la fiche ne porte que « PAI » y figurait, avec la mention en clair.
+
+   Le PAI est un projet d'accueil individualisé : une donnée de SANTÉ. Elle n'a
+   pas à s'afficher sur un plan de salle projeté au tableau. Même raisonnement
+   que l'abandon des photos (§5.35).
+
+   Ce qui n'est PAS touché (l'utilisateur a tranché le 22/09) : l'import continue
+   de lire la colonne « Projet d'accompagnement », la case PAI reste cochable
+   dans le panneau Besoins, et les fiches existantes gardent leur catégorie. On
+   ne change que ce que ces deux vues MONTRENT.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Les catégories que les vues EBEP du plan affichent. PAI n'en est pas. */
+const EBEP_CATS_AFFICHEES = ['ULIS','PAP','PPRE','PPS','EBEP','Autre'];
+
+/** Filtre une liste de catégories pour l'affichage. PURE. */
+function _ebepCatsAffichables(cats){
+  const l=Array.isArray(cats)?cats:[];
+  return l.filter(c=>EBEP_CATS_AFFICHEES.indexOf(c)>=0);
+}
+
+/** Cet élève doit-il apparaître dans la liste 🧩 et dans le surlignage ? PURE.
+ *  Une fiche qui ne porte QUE « PAI » ne suffit plus. En revanche une
+ *  adaptation cochée suffit toujours : photocopies, évaluation adaptée et
+ *  tiers temps sont des consignes pédagogiques, pas des données de santé —
+ *  l'enseignant doit les voir même si la fiche ne porte aucune catégorie
+ *  affichable. */
+function _ebepFicheAffichable(fiche){
+  if(!fiche) return false;
+  const brut=(Array.isArray(fiche.categories)&&fiche.categories.length)
+             ? fiche.categories
+             : (fiche.categorie?[fiche.categorie]:[]);
+  if(_ebepCatsAffichables(brut).length) return true;
+  return !!(fiche.photocopies || fiche.evalAdaptee || fiche.tiersTps);
+}
+
+/** Le texte affiché à côté d'un élève dans la liste 🧩. Les catégories y sont
+ *  FILTRÉES : un élève PAI + PAP y figure pour son PAP, sans que le PAI soit
+ *  nommé. Fonction d'affichage uniquement — elle ne modifie aucune donnée. */
 function getEbepInfoParts(uid, clsCode){
   const fiche=getBesoinFiche(uid, clsCode);
   if(!fiche) return [];
   const parts=[];
-  const cats=getFicheCategories(fiche);
+  const cats=_ebepCatsAffichables(getFicheCategories(fiche));
   if(cats.length) parts.push(cats.join(', '));
   if(fiche.photocopies) parts.push('Fournir les photocopies');
   if(fiche.evalAdaptee) parts.push('Évaluation adaptée');
@@ -31500,7 +31550,8 @@ function getDisplayedSeatStudents(){
 }
 
 function getDisplayedEbepStudents(){
-  return getDisplayedSeatStudents().filter(uid=>!!_besoinFicheScoped(uid));
+  // V11.3.56 — une fiche ne portant que « PAI » ne surligne plus le siège.
+  return getDisplayedSeatStudents().filter(uid=>_ebepFicheAffichable(_besoinFicheScoped(uid)));
 }
 
 function areAllDisplayedEbepSelected(){
@@ -31735,7 +31786,9 @@ function openEbepList(){
     const fallback=((clsObj && Array.isArray(clsObj.students)) ? clsObj.students.slice() : []);
     const allNames=(displayed.length ? displayed : fallback).filter(Boolean);
     const ebepNames=allNames.filter(uid=>{
-      try{ return !!_besoinFicheScoped(uid); }
+      // V11.3.56 — MÊME critère que getDisplayedEbepStudents (le surlignage).
+      // Deux filtres différents ici feraient diverger la liste et le plan.
+      try{ return _ebepFicheAffichable(_besoinFicheScoped(uid)); }
       catch(e){ return false; }
     });
 
@@ -41798,6 +41851,8 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'R\u00e9glages des alertes du compte \u00e0 rebours (bouton \u2699 dans la fen\u00eatre du minuteur) : chaque palier (5, 3, 2 et 1 minute) s\u2019active ou se coupe s\u00e9par\u00e9ment, et six timbres sont propos\u00e9s \u2014 bips, cloche, bois, carillon, marimba, ou votre propre fichier audio pour le palier 5 minutes. Le nombre de bips continue d\u2019indiquer les minutes restantes. Le son import\u00e9 reste sur l\u2019appareil o\u00f9 vous l\u2019importez : il ne suit ni la synchronisation ni l\u2019export.',
+    'Le PAI ne para\u00eet plus dans les vues EBEP du plan de classe : ni dans la liste \ud83e\udde9, ni dans le surlignage des si\u00e8ges. Un \u00e9l\u00e8ve dont la fiche porte aussi un PAP ou une adaptation continue d\u2019y figurer, pour ce motif-l\u00e0 seulement. La page EBEP et la Fiche du jour l\u2019excluaient d\u00e9j\u00e0 ; la saisie et l\u2019import, eux, ne changent pas.',
     'La barre de synchronisation reconna\u00eet le fichier JSON partag\u00e9 : si vous synchronisez par fichier local plut\u00f4t que par le cloud, elle affiche \u00ab \ud83d\udd04 Synchro. (fichier) \u00bb et la date de la derni\u00e8re \u00e9criture, au lieu d\u2019annoncer \u00e0 tort \u00ab non connect\u00e9 \u00bb.',
     'Sur ordinateur, le plan de classe porte la m\u00eame barre en version compacte : \u00ab \ud83d\udd04 Synchro. \u00bb, les deux fl\u00e8ches, et la date de la derni\u00e8re synchro sur la m\u00eame ligne. De quoi v\u00e9rifier d\u2019un coup d\u2019\u0153il, en passant de la tablette au poste, qu\u2019on ne s\u2019appr\u00eate pas \u00e0 \u00e9craser l\u2019autre appareil. Elle ne s\u2019affiche pas sur t\u00e9l\u00e9phone, o\u00f9 la place manque.',
     'Sur iPad et iPhone, le plan de classe affiche en bas une barre de synchronisation : un grand bouton \u00ab Synchroniser \u00bb, les deux actions de sens explicite \u2b06 / \u2b07, et la date de la derni\u00e8re synchro \u2014 ou l\u2019avertissement qu\u2019il n\u2019y en a jamais eu sur cet appareil. Elle n\u2019appara\u00eet que sur iOS, o\u00f9 le cloud est le seul chemin possible.',
@@ -58978,43 +59033,145 @@ function _tmrUpdateUI(){
   }
 }
 
-function _tmrPlayBeeps(level){
+/* ═══════════════════════════════════════════════════════════════════════════
+   V035-V11.3.57 — PARAMÉTRAGE DES ALERTES DU COMPTE À REBOURS
+   ---------------------------------------------------------------------------
+   Demandé le 24/09 : activer/désactiver les alertes intermédiaires, choisir un
+   timbre, et pouvoir diffuser un fichier audio personnel au palier 5 minutes.
+
+   Les quatre paliers (5/3/2/1 min) gardent leur sémantique de la v181.4.13 :
+   n bips = n minutes restantes, fréquence descendante = urgence croissante.
+   Le timbre ne change QUE la couleur du son (forme d'onde, durée, partiel
+   harmonique) — jamais le nombre de bips, qui porte l'information.
+
+   Le timbre « bips » reproduit EXACTEMENT le comportement antérieur : c'est le
+   défaut, et un test le vérifie. Personne ne doit voir son minuteur changer de
+   son en installant cette version.
+
+   ⚠️ Le fichier personnel vit en IndexedDB, PAS dans `S` : 157 Ko en base64
+   (+33 %) reséralisés par `saveS()` à chaque frappe, c'est exactement le
+   scénario écarté pour les photos (§5.35), sur un plafond de ~5 Mo et sans
+   garde de quota (§5.13). Conséquence assumée, dite à l'utilisateur : le son
+   ne suit ni la synchro ni l'export JSON, il est à réimporter par appareil.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Les timbres proposés. `dec` étire la durée du bip, `harm` ajoute un partiel
+ *  (0 = aucun). Tous synthétisés : rien à télécharger, rien à stocker. */
+const TMR_TIMBRES = [
+  {id:'bips',     label:'Bips',     sub:'Le son d’origine, bref et discret', type:'sine',     dec:1.00, harm:0},
+  {id:'cloche',   label:'Cloche',   sub:'Résonance longue, deux partiels',        type:'sine',     dec:3.20, harm:2.76},
+  {id:'bois',     label:'Bois',     sub:'Sec et mat, façon claves',               type:'triangle', dec:0.45, harm:0},
+  {id:'carillon', label:'Carillon', sub:'Clair et chantant',                      type:'triangle', dec:2.40, harm:1.50},
+  {id:'marimba',  label:'Marimba',  sub:'Rond et boisé',                          type:'sine',     dec:1.60, harm:4.00}
+];
+
+/** Réglages de base d'un palier — inchangés depuis la v181.10.3 (« trop longs,
+ *  trop présents » : bips brefs, volumes divisés par deux). */
+const TMR_PALIERS = {
+  5: {n:5, d:0.08, gap:0.12, f:880, v:0.15},
+  3: {n:3, d:0.10, gap:0.15, f:770, v:0.17},
+  2: {n:2, d:0.12, gap:0.20, f:660, v:0.19},
+  1: {n:1, d:0.20, gap:0.00, f:550, v:0.22}
+};
+
+/** Ce palier doit-il sonner ? PURE. Par DÉFAUT oui : une absence de réglage ne
+ *  doit jamais rendre un minuteur muet. */
+function _tmrPalierActif(reglages, level){
+  const r=(reglages&&reglages.tmrPaliers)||null;
+  if(!r) return true;
+  return r[String(level)]!==false && r[level]!==false;
+}
+
+/** La recette sonore d'un palier. PURE : c'est elle qu'on teste.
+ *  Renvoie null si le palier n'existe pas. */
+function _tmrVoixPalier(timbreId, level){
+  const base=TMR_PALIERS[level];
+  if(!base) return null;
+  const t=TMR_TIMBRES.find(x=>x.id===timbreId)||TMR_TIMBRES[0];
+  return {
+    n:base.n, gap:base.gap, f:base.f, v:base.v,   // l'information ne change PAS
+    d:Math.round(base.d*t.dec*1000)/1000,
+    type:t.type, harm:t.harm, timbre:t.id
+  };
+}
+
+/* ── Le fichier personnel : IndexedDB, jamais dans S ────────────────────── */
+const TMR_CLIP_KEY='tmr-clip-5';
+async function _tmrSaveClip(blob, nom){
+  await persistHandle(TMR_CLIP_KEY, {blob:blob, nom:String(nom||'son.m4a'), taille:(blob&&blob.size)||0});
+}
+async function _tmrLoadClip(){
+  try{ const e=await readPersistedHandle(TMR_CLIP_KEY); return (e&&e.blob)?e:null; }
+  catch(e){ return null; }
+}
+async function _tmrClearClip(){
+  try{ await clearPersistedHandle(TMR_CLIP_KEY); }catch(e){}
+}
+
+/** Joue le fichier personnel. Repli TOUJOURS sur les bips : une alerte muette
+ *  est le pire cas possible (leçon n°5 — un journal muet est le défaut qu'il
+ *  devait diagnostiquer). Le timbre du repli est imposé, donc pas de récursion. */
+function _tmrPlayFichier(){
+  let repli=true;
+  const secours=()=>{ if(repli){ repli=false; try{ _tmrPlayBeeps(5,{force:true, timbre:'bips'}); }catch(e){} } };
+  try{
+    _tmrLoadClip().then(entry=>{
+      if(!entry || !entry.blob){ secours(); return; }
+      try{
+        const url=URL.createObjectURL(entry.blob);
+        const a=new Audio(url);
+        const nettoyer=()=>{ try{ URL.revokeObjectURL(url); }catch(e){} };
+        a.onended=nettoyer;
+        a.onerror=()=>{ nettoyer(); secours(); };
+        const pr=a.play();
+        if(pr && pr.catch) pr.catch(()=>{ nettoyer(); secours(); });
+        else repli=false;
+        // Lecture lancée : on désarme le repli une fois le son réellement parti.
+        a.onplaying=()=>{ repli=false; };
+      }catch(e){ secours(); }
+    }).catch(secours);
+  }catch(e){ secours(); }
+}
+
+function _tmrPlayBeeps(level, opts){
   // V020-v181.4.13 — Avertissements progressifs aux paliers 5/3/2/1 min restants.
-  // V030-v181.10.3 — Nicolas : "trop longs, trop présents, désagréables". Refonte :
-  //   - Bips brefs (80-200 ms au lieu de 300-1500 ms) : on signale, on n'occupe pas
-  //     l'espace sonore d'une classe.
-  //   - Volumes divisés par ~2 (0.15-0.22 au lieu de 0.30-0.36) : discrets.
-  //   - On conserve la sémantique : n bips = n min restantes, fréquence descendante
-  //     = urgence croissante.
-  //   - Enveloppe raccourcie (attack 10 ms / release 40 ms) pour éviter que le
-  //     release ne mange un bip court (le release de 80 ms avalait les bips brefs).
+  // V030-v181.10.3 — bips brefs et discrets (cf. TMR_PALIERS).
+  // V11.3.57 — paliers désactivables, timbre au choix, fichier personnel au 5 min.
+  const force=!!(opts&&opts.force);
+  let reglages={};
+  try{ reglages=(typeof S!=='undefined'&&S&&S.reglages)||{}; }catch(e){}
+  if(!force && !_tmrPalierActif(reglages, level)) return;
+  const timbre=(opts&&opts.timbre) || reglages.tmrTimbre || 'bips';
+
+  if(level===5 && timbre==='fichier'){ _tmrPlayFichier(); return; }
+
   try{
     const AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) return;
-    const CFG = {
-      5: {n:5, d:0.08, gap:0.12, f:880, v:0.15},
-      3: {n:3, d:0.10, gap:0.15, f:770, v:0.17},
-      2: {n:2, d:0.12, gap:0.20, f:660, v:0.19},
-      1: {n:1, d:0.20, gap:0.00, f:550, v:0.22}
-    };
-    const cfg = CFG[level];
+    const cfg = _tmrVoixPalier(timbre, level);
     if(!cfg) return;
     const ctx = new AC();
     const t0 = ctx.currentTime + 0.02;
     const ATTACK = 0.010, RELEASE = 0.040;
     for(let i = 0; i < cfg.n; i++){
       const t = t0 + i*(cfg.d + cfg.gap);
-      const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = cfg.f;
       gain.gain.setValueAtTime(0.0001, t);
       gain.gain.exponentialRampToValueAtTime(cfg.v, t + ATTACK);
       gain.gain.setValueAtTime(cfg.v, t + Math.max(ATTACK, cfg.d - RELEASE));
       gain.gain.exponentialRampToValueAtTime(0.0001, t + cfg.d);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + cfg.d + 0.05);
+      gain.connect(ctx.destination);
+      const voix=[{f:cfg.f, v:1}];
+      if(cfg.harm) voix.push({f:cfg.f*cfg.harm, v:0.35});
+      voix.forEach(v=>{
+        const osc = ctx.createOscillator();
+        const g2 = ctx.createGain(); g2.gain.value=v.v;
+        osc.type = cfg.type;
+        osc.frequency.value = v.f;
+        osc.connect(g2).connect(gain);
+        osc.start(t);
+        osc.stop(t + cfg.d + 0.05);
+      });
     }
     const total = cfg.n*cfg.d + (cfg.n - 1)*cfg.gap + 0.3;
     setTimeout(() => { try{ ctx.close(); }catch(e){} }, Math.ceil(total * 1000));
@@ -59499,6 +59656,178 @@ function _tmrReset(sec){
   _tmrUpdateUI();
 }
 
+
+/** Le panneau ⚙ du compte à rebours. createElement, donc invariants de balises
+ *  inchangés. LEÇON N°1 : #mbg est unique — on ferme, on rouvre au tick
+ *  suivant, et « ← Retour » ramène au minuteur de la même façon. */
+function _showTmrReglages(){
+  if(typeof showModal!=='function') return;
+  if(!S.reglages) S.reglages={};
+  if(!S.reglages.tmrPaliers) S.reglages.tmrPaliers={};
+  if(!S.reglages.tmrTimbre) S.reglages.tmrTimbre='bips';
+
+  showModal('⚙ Alertes du compte à rebours','',null,false,false);
+  const mb=document.getElementById('mb'); if(mb) mb.textContent='';
+  const ex=document.getElementById('modal-extra'); if(!ex) return;
+  ex.innerHTML='';
+  const root=document.createElement('div'); root.style.cssText='text-align:left;max-width:560px';
+
+  const titre=(t)=>{ const d=document.createElement('div');
+    d.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;'
+      +'color:var(--tx3);margin:14px 0 6px;border-top:1px solid var(--brd);padding-top:10px';
+    d.textContent=t; root.appendChild(d); };
+
+  /* ── 1. Quels paliers sonnent ── */
+  const d1=document.createElement('div');
+  d1.style.cssText='font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:8px';
+  d1.textContent='Le minuteur prévient aux paliers ci-dessous. Le nombre de bips indique '
+    +'les minutes restantes — c’est lui qui porte l’information, le timbre ne change que la couleur du son.';
+  root.appendChild(d1);
+
+  [5,3,2,1].forEach(lv=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:10px;padding:5px 0';
+    const lab=document.createElement('label');
+    lab.style.cssText='display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;font-size:13px;color:var(--tx)';
+    const cb=document.createElement('input'); cb.type='checkbox';
+    cb.checked=_tmrPalierActif(S.reglages, lv);
+    cb.onchange=()=>{ S.reglages.tmrPaliers[String(lv)]=cb.checked; saveS(); };
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(lv+' minute'+(lv>1?'s':'')+' restante'+(lv>1?'s':'')
+      +' — '+TMR_PALIERS[lv].n+' bip'+(TMR_PALIERS[lv].n>1?'s':'')));
+    row.appendChild(lab);
+    const t=document.createElement('button'); t.className='bs';
+    t.style.cssText='font-size:11.5px;padding:5px 11px'; t.textContent='▶ Écouter';
+    t.onclick=()=>{ try{ _tmrPlayBeeps(lv,{force:true}); }catch(e){} };
+    row.appendChild(t);
+    root.appendChild(row);
+  });
+
+  /* ── 2. Le timbre ── */
+  titre('Timbre');
+  const grille=document.createElement('div');
+  grille.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+  const chips=[];
+  const majChips=()=>chips.forEach(c=>{
+    const on=(S.reglages.tmrTimbre===c.dataset.id);
+    c.style.borderColor=on?'var(--acc)':'var(--brd)';
+    c.style.background=on?'var(--acc)':'var(--sur)';
+    c.style.color=on?'#fff':'var(--tx2)';
+    c.style.fontWeight=on?'700':'500';
+  });
+  const mkChip=(id,label,sub)=>{
+    const b=document.createElement('button');
+    b.dataset.id=id;
+    b.style.cssText='font-size:12px;padding:7px 13px;border-radius:14px;cursor:pointer;'
+      +'font-family:inherit;border:1.5px solid var(--brd);background:var(--sur);color:var(--tx2)';
+    b.textContent=label; b.title=sub||'';
+    b.onclick=()=>{
+      S.reglages.tmrTimbre=id; saveS(); majChips();
+      try{ _tmrPlayBeeps(5,{force:true}); }catch(e){}
+    };
+    chips.push(b); grille.appendChild(b);
+    return b;
+  };
+  TMR_TIMBRES.forEach(t=>mkChip(t.id, t.label, t.sub));
+  const chipFic=mkChip('fichier','🎵 Mon fichier','Diffusé au palier 5 minutes ; les autres paliers gardent leurs bips');
+  root.appendChild(grille);
+  const note=document.createElement('div');
+  note.style.cssText='font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.45';
+  note.textContent='Un clic sur un timbre le fait écouter au palier 5 minutes.';
+  root.appendChild(note);
+
+  /* ── 3. Le fichier personnel ── */
+  titre('Son personnel du palier 5 minutes');
+  const etat=document.createElement('div');
+  etat.style.cssText='font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:8px';
+  etat.textContent='Lecture du fichier en cours…';
+  root.appendChild(etat);
+
+  const barre=document.createElement('div');
+  barre.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
+  const inp=document.createElement('input');
+  inp.type='file'; inp.style.display='none';
+  // Le navigateur lit « audio » suivi d'une barre et d'une étoile ; l'étoile est
+  // échappée en \u002A parce que cette paire de caractères ouvre un commentaire
+  // pour les contrôles TEXTUELS du harnais (noCom), qui ne connaissent pas les
+  // chaînes : elle amputait silencieusement la fin de cette fonction, et faisait
+  // passer les tests suivants par absence de code. Ne pas la réécrire en clair,
+  // ici ni dans un commentaire.
+  inp.accept='audio/\u002A';
+  const bImp=document.createElement('button'); bImp.className='bs';
+  bImp.style.cssText='font-size:12px;padding:6px 13px';
+  bImp.textContent='📂 Importer un son…';
+  bImp.onclick=()=>inp.click();
+  const bEcout=document.createElement('button'); bEcout.className='bs';
+  bEcout.style.cssText='font-size:12px;padding:6px 13px';
+  bEcout.textContent='▶ Écouter';
+  bEcout.onclick=()=>{ try{ _tmrPlayFichier(); }catch(e){} };
+  const bSup=document.createElement('button'); bSup.className='bs';
+  bSup.style.cssText='font-size:12px;padding:6px 13px';
+  bSup.textContent='🗑 Retirer';
+  bSup.onclick=()=>{
+    _tmrClearClip().then(()=>{
+      if(S.reglages.tmrTimbre==='fichier'){ S.reglages.tmrTimbre='bips'; saveS(); majChips(); }
+      majFichier();
+    });
+  };
+  barre.appendChild(bImp); barre.appendChild(bEcout); barre.appendChild(bSup); barre.appendChild(inp);
+  root.appendChild(barre);
+
+  const LIMITE=1024*1024;   // 1 Mo : au-delà, IndexedDB tient, mais plus rien ne
+                            // justifie un si gros fichier pour une alerte de classe.
+  inp.onchange=()=>{
+    const f=inp.files && inp.files[0];
+    inp.value='';
+    if(!f) return;
+    if(f.size>LIMITE){
+      etat.textContent='Fichier trop lourd ('+Math.round(f.size/1024)+' Ko) — 1 Mo maximum.';
+      etat.style.color='#9F1239';
+      return;
+    }
+    _tmrSaveClip(f, f.name).then(()=>{
+      S.reglages.tmrTimbre='fichier'; saveS(); majChips(); majFichier();
+    }).catch(err=>{
+      etat.textContent='Enregistrement impossible : '+((err&&err.message)||err);
+      etat.style.color='#9F1239';
+    });
+  };
+
+  function majFichier(){
+    _tmrLoadClip().then(entry=>{
+      etat.style.color='var(--tx2)';
+      if(entry && entry.blob){
+        etat.textContent='Fichier en place : « '+entry.nom+' » ('+Math.round((entry.taille||entry.blob.size)/1024)+' Ko). '
+          +'Il reste sur CET appareil : il ne suit ni la synchronisation ni l’export, à réimporter ailleurs.';
+        bEcout.style.display=''; bSup.style.display=''; chipFic.style.display='';
+      } else {
+        etat.textContent='Aucun son personnel sur cet appareil. Importez un fichier audio '
+          +'(1 Mo maximum) : il sera diffusé au palier 5 minutes à la place des bips.';
+        bEcout.style.display='none'; bSup.style.display='none';
+        chipFic.style.display=(S.reglages.tmrTimbre==='fichier')?'':'none';
+        if(S.reglages.tmrTimbre==='fichier'){
+          etat.textContent='Le son personnel est choisi, mais aucun fichier n’est présent sur cet '
+            +'appareil : le palier 5 minutes retombe sur les bips. Importez-le ici.';
+          etat.style.color='#92400E';
+        }
+      }
+      majChips();
+    });
+  }
+  majFichier();
+
+  /* ── Retour ── */
+  const retour=document.createElement('button'); retour.className='bp';
+  retour.style.cssText='margin-top:16px;font-size:12px;padding:7px 14px';
+  retour.textContent='← Retour au minuteur';
+  retour.onclick=()=>{
+    try{ closeModal(); }catch(e){}
+    setTimeout(()=>{ try{ openTimerModal(); }catch(e){} },0);
+  };
+  root.appendChild(retour);
+  ex.appendChild(root);
+}
+
 function openTimerModal(){
   document.getElementById('mt').textContent='⏱ Décompte du temps';
   document.getElementById('mb').textContent='';
@@ -59512,7 +59841,18 @@ function openTimerModal(){
   if(!_tmrIv && _tmrSec === 0){ _tmrSec = initSec; _tmrTotalSec = initSec; }
   const mIn=mkNum(Math.floor(initSec/60),90), sIn=mkNum(initSec%60,59);
   const lbl=(t)=>{ const s=document.createElement('span'); s.style.cssText='font-size:13px;color:var(--tx3)'; s.textContent=t; return s; };
-  [mIn,lbl('min'),sIn,lbl('sec')].forEach(el=>row1.appendChild(el)); extra.appendChild(row1);
+  [mIn,lbl('min'),sIn,lbl('sec')].forEach(el=>row1.appendChild(el));
+  // V11.3.57 — accès aux réglages d'alertes, poussé à droite de la rangée.
+  const bCfg=document.createElement('button'); bCfg.className='bs';
+  bCfg.style.cssText='margin-left:auto;font-size:12px;padding:6px 11px';
+  bCfg.textContent='⚙ Alertes';
+  bCfg.title='Activer ou couper les paliers, choisir le timbre, importer un son';
+  bCfg.onclick=()=>{
+    try{ closeModal(); }catch(e){}
+    setTimeout(()=>{ try{ _showTmrReglages(); }catch(e){} },0);
+  };
+  row1.appendChild(bCfg);
+  extra.appendChild(row1);
   const disp=document.createElement('div');
   disp.style.cssText='text-align:center;font-size:52px;font-weight:900;font-family:monospace;color:var(--acc);padding:8px;margin-bottom:8px';
   // V020-v181.4.12 — Initialisation avec valeur courante (corrige le flash "05:00")
