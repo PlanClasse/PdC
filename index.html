@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.58';
+const APP_VERSION = 'v11.3.59';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -41851,7 +41851,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
-    'R\u00e9glages des alertes du compte \u00e0 rebours (bouton \u2699 dans la fen\u00eatre du minuteur) : chaque palier (5, 3, 2 et 1 minute) s\u2019active ou se coupe s\u00e9par\u00e9ment, et six timbres sont propos\u00e9s \u2014 bips, cloche, bois, carillon, marimba, ou votre propre fichier audio pour le palier 5 minutes. Le nombre de bips continue d\u2019indiquer les minutes restantes. Le son importé est converti à l’import pour être lisible partout, et reste sur l’appareil où vous l’importez : il ne suit ni la synchronisation ni l’export. Si votre navigateur ne sait pas lire le format fourni (c’est le cas de plusieurs pour le m4a), il vous le dit au moment de l’import, pas en plein cours.',
+    'Réglages des alertes du compte à rebours (bouton ⚙ dans la fenêtre du minuteur) : les cinq moments d’alerte — 5, 3, 2 et 1 minute, plus la fin du décompte — se règlent séparément. Chacun peut être coupé et recevoir SON propre son importé ; sans son importé, c’est la voix synthétisée (bips, cloche, bois, carillon ou marimba) qui est jouée. Le nombre de bips continue d’indiquer les minutes restantes. Les sons sont convertis à l’import pour être lisibles partout, et restent sur l’appareil où vous les importez : ils ne suivent ni la synchronisation ni l’export. Si votre navigateur ne sait pas lire le format fourni (c’est le cas de plusieurs pour le m4a), il vous le dit au moment de l’import, pas en plein cours.',
     'Le PAI ne para\u00eet plus dans les vues EBEP du plan de classe : ni dans la liste \ud83e\udde9, ni dans le surlignage des si\u00e8ges. Un \u00e9l\u00e8ve dont la fiche porte aussi un PAP ou une adaptation continue d\u2019y figurer, pour ce motif-l\u00e0 seulement. La page EBEP et la Fiche du jour l\u2019excluaient d\u00e9j\u00e0 ; la saisie et l\u2019import, eux, ne changent pas.',
     'La barre de synchronisation reconna\u00eet le fichier JSON partag\u00e9 : si vous synchronisez par fichier local plut\u00f4t que par le cloud, elle affiche \u00ab \ud83d\udd04 Synchro. (fichier) \u00bb et la date de la derni\u00e8re \u00e9criture, au lieu d\u2019annoncer \u00e0 tort \u00ab non connect\u00e9 \u00bb.',
     'Sur ordinateur, le plan de classe porte la m\u00eame barre en version compacte : \u00ab \ud83d\udd04 Synchro. \u00bb, les deux fl\u00e8ches, et la date de la derni\u00e8re synchro sur la m\u00eame ligne. De quoi v\u00e9rifier d\u2019un coup d\u2019\u0153il, en passant de la tablette au poste, qu\u2019on ne s\u2019appr\u00eate pas \u00e0 \u00e9craser l\u2019autre appareil. Elle ne s\u2019affiche pas sur t\u00e9l\u00e9phone, o\u00f9 la place manque.',
@@ -59121,9 +59121,36 @@ function _tmrVoixPalier(timbreId, level){
    Coût : ~44 Ko par seconde de son. Six secondes ≈ 275 Ko, en IndexedDB, jamais
    dans S (§5.35 / §5.13).
    ─────────────────────────────────────────────────────────────────────────── */
-const TMR_CLIP_KEY='tmr-clip-5';
 const TMR_PCM_HZ=22050;          // largement suffisant pour une alerte de classe
 const TMR_CLIP_MAX_S=30;         // au-delà, ce n'est plus une alerte
+
+/* V11.3.59 — UN SON IMPORTÉ PAR MOMENT D'ALERTE, plus un son global unique.
+   Cinq moments, chacun avec sa propre entrée IndexedDB. Le « timbre » ne
+   désigne plus que la voix SYNTHÉTISÉE : elle sert partout où aucun son n'a été
+   importé, et de repli partout où le son importé manque. */
+const TMR_MOMENTS = [
+  {id:'5',   titre:'5 minutes restantes', sub:'5 bips'},
+  {id:'3',   titre:'3 minutes restantes', sub:'3 bips'},
+  {id:'2',   titre:'2 minutes restantes', sub:'2 bips'},
+  {id:'1',   titre:'1 minute restante',   sub:'1 bip'},
+  {id:'fin', titre:'Fin du décompte',     sub:'mélodie « ta-da »'}
+];
+
+/** La clé IndexedDB d'un moment. PURE. */
+function _tmrClipKey(moment){ return 'tmr-clip-'+String(moment||''); }
+
+/** Un son personnel est-il annoncé pour ce moment ? PURE, et SYNCHRONE : c'est
+ *  ce qui permet à la lecture de décider sans attendre IndexedDB. Le drapeau vit
+ *  dans S (donc il voyage par la synchro) ; le son, non — d'où le repli
+ *  systématique côté lecture quand l'appareil ne l'a pas. */
+function _tmrSonConfigure(reglages, moment){
+  const r=reglages||{};
+  const m=String(moment);
+  if(r.tmrSons && r.tmrSons[m]) return true;
+  // Héritage v11.3.57/58 : un son global unique, qui ne valait que pour le 5 min.
+  if(m==='5' && r.tmrTimbre==='fichier') return true;
+  return false;
+}
 
 /** Float32 [-1,1] → Int16. PURE. Le clamp est le point délicat : sans lui, un
  *  échantillon à 1.0 déborde en -32768 et produit un craquement. */
@@ -59148,27 +59175,24 @@ function _tmrInt16VersFloat(i16){
 
 /** Ce que le panneau dit d'une entrée stockée. PURE : c'est elle qu'on teste. */
 function _tmrClipInfo(entry){
-  if(!entry) return {present:false, reimporter:false,
-    texte:'Aucun son personnel sur cet appareil.'};
+  if(!entry) return {present:false, reimporter:false, texte:'Aucun son importé.'};
   if(!entry.pcm || !entry.pcm.length){
     // Entrée déposée par la v11.3.57 (octets bruts) : illisible ici.
     return {present:false, reimporter:true,
-      texte:'Un son a été importé par une version antérieure, mais il n’était pas '
-           +'décodé : réimportez-le une fois, il sera converti pour être lu partout.'};
+      texte:'Importé par une version antérieure, non décodé : réimportez-le une fois.'};
   }
   const hz=entry.sampleRate||TMR_PCM_HZ;
   const duree=Math.round((entry.pcm.length/hz)*10)/10;
   return {present:true, reimporter:false, duree:duree,
-    texte:'Son en place : « '+(entry.nom||'son')+' » — '+String(duree).replace('.',',')
-         +' s, '+Math.round((entry.pcm.length*2)/1024)+' Ko. Il reste sur CET appareil : '
-         +'il ne suit ni la synchronisation ni l’export, à réimporter ailleurs.'};
+    texte:'« '+(entry.nom||'son')+' » — '+String(duree).replace('.',',')+' s, '
+         +Math.round((entry.pcm.length*2)/1024)+' Ko'};
 }
 
-async function _tmrSaveClip(entry){ await persistHandle(TMR_CLIP_KEY, entry); }
-async function _tmrLoadClip(){
-  try{ return (await readPersistedHandle(TMR_CLIP_KEY))||null; }catch(e){ return null; }
+async function _tmrSaveClip(moment, entry){ await persistHandle(_tmrClipKey(moment), entry); }
+async function _tmrLoadClip(moment){
+  try{ return (await readPersistedHandle(_tmrClipKey(moment)))||null; }catch(e){ return null; }
 }
-async function _tmrClearClip(){ try{ await clearPersistedHandle(TMR_CLIP_KEY); }catch(e){} }
+async function _tmrClearClip(moment){ try{ await clearPersistedHandle(_tmrClipKey(moment)); }catch(e){} }
 
 /** Décode un fichier, le ramène en mono 22 050 Hz, et rend l'entrée à stocker.
  *  Lève une erreur PARLANTE si le navigateur ne sait pas lire ce format. */
@@ -59205,13 +59229,14 @@ async function _tmrPreparerClip(file){
           pcm:_tmrFloatVersInt16(rendu.getChannelData(0))};
 }
 
-/** Joue le son personnel. Repli TOUJOURS sur les bips : une alerte muette est
- *  le pire cas possible. Le timbre du repli est imposé, donc pas de récursion. */
-function _tmrPlayFichier(){
+/** Joue le son personnel d'un moment. `replier` est la voix synthétisée de ce
+ *  moment, jouée dès que le son n'est pas utilisable : absent, non décodé,
+ *  contexte audio indisponible. Une alerte muette est le pire cas possible. */
+function _tmrPlaySon(moment, replier){
   let repli=true;
-  const secours=()=>{ if(repli){ repli=false; try{ _tmrPlayBeeps(5,{force:true, timbre:'bips'}); }catch(e){} } };
+  const secours=()=>{ if(repli){ repli=false; try{ if(replier) replier(); }catch(e){} } };
   try{
-    _tmrLoadClip().then(entry=>{
+    _tmrLoadClip(moment).then(entry=>{
       try{
         if(!entry || !entry.pcm || !entry.pcm.length){ secours(); return; }
         const AC=window.AudioContext||window.webkitAudioContext;
@@ -59230,18 +59255,8 @@ function _tmrPlayFichier(){
   }catch(e){ secours(); }
 }
 
-function _tmrPlayBeeps(level, opts){
-  // V020-v181.4.13 — Avertissements progressifs aux paliers 5/3/2/1 min restants.
-  // V030-v181.10.3 — bips brefs et discrets (cf. TMR_PALIERS).
-  // V11.3.57 — paliers désactivables, timbre au choix, fichier personnel au 5 min.
-  const force=!!(opts&&opts.force);
-  let reglages={};
-  try{ reglages=(typeof S!=='undefined'&&S&&S.reglages)||{}; }catch(e){}
-  if(!force && !_tmrPalierActif(reglages, level)) return;
-  const timbre=(opts&&opts.timbre) || reglages.tmrTimbre || 'bips';
-
-  if(level===5 && timbre==='fichier'){ _tmrPlayFichier(); return; }
-
+/** La voix SYNTHÉTISÉE d'un palier. Séparée pour pouvoir servir de repli. */
+function _tmrSynthPalier(timbre, level){
   try{
     const AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) return;
@@ -59273,6 +59288,22 @@ function _tmrPlayBeeps(level, opts){
     const total = cfg.n*cfg.d + (cfg.n - 1)*cfg.gap + 0.3;
     setTimeout(() => { try{ ctx.close(); }catch(e){} }, Math.ceil(total * 1000));
   } catch(e){ /* navigateur sans Web Audio : silence */ }
+}
+
+function _tmrPlayBeeps(level, opts){
+  // V020-v181.4.13 — avertissements progressifs 5/3/2/1 min ; v181.10.3 — bips
+  // brefs et discrets ; V11.3.57 — paliers désactivables et timbres ;
+  // V11.3.59 — un son importé par moment, qui remplace la voix synthétisée.
+  const force=!!(opts&&opts.force);
+  let reglages={};
+  try{ reglages=(typeof S!=='undefined'&&S&&S.reglages)||{}; }catch(e){}
+  if(!force && !_tmrPalierActif(reglages, level)) return;
+  const timbre=(opts&&opts.timbre) || reglages.tmrTimbre || 'bips';
+  const synth=()=>_tmrSynthPalier(timbre, level);
+  if(!(opts&&opts.synthSeul) && _tmrSonConfigure(reglages, level)){
+    _tmrPlaySon(String(level), synth); return;
+  }
+  synth();
 }
 
 /* V030-v181.10.5 — Clips audio MP3 embarqués pour les rappels.
@@ -59658,7 +59689,16 @@ function _endOfClassStart(){
   _endOfClassTimer = setTimeout(_endOfClassScheduleNext, 2000);
 }
 
-function _tmrPlayEndBeeps(){
+function _tmrPlayEndBeeps(opts){
+  // V11.3.59 — un son importé peut remplacer la mélodie de fin ; en cas
+  // d'absence, on rejoue CETTE fonction en mode synthèse seule (pas de boucle :
+  // le drapeau synthSeul court-circuite le test).
+  let _rg={};
+  try{ _rg=(typeof S!=='undefined'&&S&&S.reglages)||{}; }catch(e){}
+  if(!(opts&&opts.synthSeul) && _tmrSonConfigure(_rg,'fin')){
+    _tmrPlaySon('fin', ()=>_tmrPlayEndBeeps({synthSeul:true}));
+    return;
+  }
   // V020-v181.4.13 — Mélodie ta-da (do-mi-sol-do) en triangle, finale tenue
   // avec harmonique sol. Choix Nicolas : positif, reconnaissable comme "fin",
   // et timbre différent des bips d'avertissement (sinusoïdales) pour ne pas
@@ -59761,49 +59801,32 @@ function _showTmrReglages(){
   if(typeof showModal!=='function') return;
   if(!S.reglages) S.reglages={};
   if(!S.reglages.tmrPaliers) S.reglages.tmrPaliers={};
+  if(!S.reglages.tmrSons) S.reglages.tmrSons={};
+  // Migration v11.3.57/58 → v11.3.59 : le son global unique devient le son du
+  // moment « 5 min ». Le timbre repasse sur une voix synthétisée réelle.
+  if(S.reglages.tmrTimbre==='fichier'){
+    S.reglages.tmrSons['5']=true; S.reglages.tmrTimbre='bips'; saveS();
+  }
   if(!S.reglages.tmrTimbre) S.reglages.tmrTimbre='bips';
 
   showModal('⚙ Alertes du compte à rebours','',null,false,false);
   const mb=document.getElementById('mb'); if(mb) mb.textContent='';
   const ex=document.getElementById('modal-extra'); if(!ex) return;
   ex.innerHTML='';
-  const root=document.createElement('div'); root.style.cssText='text-align:left;max-width:560px';
+  const root=document.createElement('div'); root.style.cssText='text-align:left;max-width:600px';
 
   const titre=(t)=>{ const d=document.createElement('div');
     d.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;'
       +'color:var(--tx3);margin:14px 0 6px;border-top:1px solid var(--brd);padding-top:10px';
     d.textContent=t; root.appendChild(d); };
 
-  /* ── 1. Quels paliers sonnent ── */
-  const d1=document.createElement('div');
-  d1.style.cssText='font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:8px';
-  d1.textContent='Le minuteur prévient aux paliers ci-dessous. Le nombre de bips indique '
-    +'les minutes restantes — c’est lui qui porte l’information, le timbre ne change que la couleur du son.';
-  root.appendChild(d1);
+  const intro=document.createElement('div');
+  intro.style.cssText='font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:10px';
+  intro.textContent='Chaque moment peut être coupé, et recevoir son propre son importé. '
+    +'Sans son importé, c’est la voix synthétisée choisie plus bas qui est jouée — '
+    +'et c’est elle aussi qui prend le relais si le son manque sur cet appareil.';
+  root.appendChild(intro);
 
-  [5,3,2,1].forEach(lv=>{
-    const row=document.createElement('div');
-    row.style.cssText='display:flex;align-items:center;gap:10px;padding:5px 0';
-    const lab=document.createElement('label');
-    lab.style.cssText='display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;font-size:13px;color:var(--tx)';
-    const cb=document.createElement('input'); cb.type='checkbox';
-    cb.checked=_tmrPalierActif(S.reglages, lv);
-    cb.onchange=()=>{ S.reglages.tmrPaliers[String(lv)]=cb.checked; saveS(); };
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(lv+' minute'+(lv>1?'s':'')+' restante'+(lv>1?'s':'')
-      +' — '+TMR_PALIERS[lv].n+' bip'+(TMR_PALIERS[lv].n>1?'s':'')));
-    row.appendChild(lab);
-    const t=document.createElement('button'); t.className='bs';
-    t.style.cssText='font-size:11.5px;padding:5px 11px'; t.textContent='▶ Écouter';
-    t.onclick=()=>{ try{ _tmrPlayBeeps(lv,{force:true}); }catch(e){} };
-    row.appendChild(t);
-    root.appendChild(row);
-  });
-
-  /* ── 2. Le timbre ── */
-  titre('Timbre');
-  const grille=document.createElement('div');
-  grille.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
   const chips=[];
   const majChips=()=>chips.forEach(c=>{
     const on=(S.reglages.tmrTimbre===c.dataset.id);
@@ -59812,113 +59835,148 @@ function _showTmrReglages(){
     c.style.color=on?'#fff':'var(--tx2)';
     c.style.fontWeight=on?'700':'500';
   });
-  const mkChip=(id,label,sub)=>{
+
+  /* ── Une ligne par moment ── */
+  TMR_MOMENTS.forEach(mo=>{
+    const estFin=(mo.id==='fin');
+    const lvl=estFin?null:parseInt(mo.id,10);
+
+    const bloc=document.createElement('div');
+    bloc.style.cssText='padding:7px 0;border-bottom:1px solid var(--brd)';
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+
+    const lab=document.createElement('label');
+    lab.style.cssText='display:flex;align-items:center;gap:8px;flex:1;min-width:190px;'
+      +'cursor:'+(estFin?'default':'pointer')+';font-size:13px;color:var(--tx)';
+    if(!estFin){
+      const cb=document.createElement('input'); cb.type='checkbox';
+      cb.checked=_tmrPalierActif(S.reglages, lvl);
+      cb.onchange=()=>{ S.reglages.tmrPaliers[String(lvl)]=cb.checked; saveS(); };
+      lab.appendChild(cb);
+    } else {
+      // La fin du décompte n'est pas désactivable : c'est l'objet du minuteur.
+      const puce=document.createElement('span');
+      puce.style.cssText='width:13px;text-align:center;color:var(--tx3)';
+      puce.textContent='•'; lab.appendChild(puce);
+    }
+    const txt=document.createElement('span');
+    txt.appendChild(document.createTextNode(mo.titre));
+    const sub=document.createElement('span');
+    sub.style.cssText='color:var(--tx3);font-size:11.5px;margin-left:6px';
+    sub.textContent='— '+mo.sub;
+    txt.appendChild(sub);
+    lab.appendChild(txt);
+    row.appendChild(lab);
+
+    const mkB=(t, titre2)=>{ const b=document.createElement('button'); b.className='bs';
+      b.style.cssText='font-size:11.5px;padding:5px 10px;white-space:nowrap';
+      b.textContent=t; if(titre2) b.title=titre2; row.appendChild(b); return b; };
+    const bEcout=mkB('▶', 'Écouter ce moment');
+    bEcout.onclick=()=>{ try{
+      if(estFin) _tmrPlayEndBeeps(); else _tmrPlayBeeps(lvl,{force:true});
+    }catch(e){} };
+    const bImp=mkB('📂 Son…', 'Importer un son pour ce moment');
+    const bSup=mkB('🗑', 'Retirer le son importé de ce moment');
+
+    const inp=document.createElement('input');
+    inp.type='file'; inp.style.display='none';
+    // Le navigateur lit « audio » suivi d'une barre et d'une étoile ; l'étoile est
+    // échappée en * parce que cette paire de caractères ouvre un commentaire
+    // pour les contrôles TEXTUELS du harnais (noCom) : elle amputerait la fonction.
+    // L'astérisque est assemblé à l'exécution : écrite en clair, la paire
+    // barre-étoile ouvre un commentaire pour les contrôles TEXTUELS du harnais
+    // (noCom), qui ne connaissent pas les chaînes — elle amputait cette
+    // fonction, et faisait passer les tests suivants par absence de code.
+    inp.accept='audio/'+String.fromCharCode(42);
+    row.appendChild(inp);
+    bImp.onclick=()=>inp.click();
+
+    const etat=document.createElement('div');
+    etat.style.cssText='font-size:11px;line-height:1.4;margin:3px 0 0 21px';
+    bloc.appendChild(row); bloc.appendChild(etat);
+    root.appendChild(bloc);
+
+    const LIMITE=8*1024*1024;   // c'est le son DÉCODÉ qui est stocké (~44 Ko/s)
+    inp.onchange=()=>{
+      const f=inp.files && inp.files[0]; inp.value='';
+      if(!f) return;
+      if(f.size>LIMITE){
+        etat.textContent='Fichier trop lourd ('+Math.round(f.size/1024/1024*10)/10+' Mo) — 8 Mo maximum.';
+        etat.style.color='#9F1239'; return;
+      }
+      etat.style.color='var(--tx2)';
+      etat.textContent='Lecture et conversion du son…';
+      _tmrPreparerClip(f)
+        .then(entry=>_tmrSaveClip(mo.id, entry))
+        .then(()=>{ S.reglages.tmrSons[mo.id]=true; saveS(); maj(); })
+        .catch(err=>{
+          // Le message porte la CAUSE : c'est maintenant qu'il faut le dire,
+          // pas au milieu d'un cours.
+          etat.textContent=((err&&err.message)||String(err));
+          etat.style.color='#9F1239';
+        });
+    };
+    bSup.onclick=()=>{
+      _tmrClearClip(mo.id).then(()=>{
+        delete S.reglages.tmrSons[mo.id];
+        if(mo.id==='5' && S.reglages.tmrTimbre==='fichier') S.reglages.tmrTimbre='bips';
+        saveS(); maj();
+      });
+    };
+
+    function maj(){
+      _tmrLoadClip(mo.id).then(entry=>{
+        const info=_tmrClipInfo(entry);
+        const annonce=_tmrSonConfigure(S.reglages, mo.id);
+        bSup.style.display=(info.present||info.reimporter)?'':'none';
+        if(info.present){
+          etat.textContent='🎵 '+info.texte;
+          etat.style.color='var(--tx3)';
+        } else if(info.reimporter){
+          etat.textContent='⚠ '+info.texte;
+          etat.style.color='#92400E';
+        } else if(annonce){
+          // Le drapeau a voyagé par la synchro, le son non.
+          etat.textContent='⚠ Un son est annoncé pour ce moment mais absent de cet '
+            +'appareil : la voix synthétisée prend le relais. Importez-le ici.';
+          etat.style.color='#92400E';
+        } else {
+          etat.textContent='Voix synthétisée. Importez un son (MP3, WAV, OGG, m4a si '
+            +'votre navigateur le lit) pour le remplacer.';
+          etat.style.color='var(--tx3)';
+        }
+      });
+    }
+    maj();
+  });
+
+  /* ── Le timbre synthétisé ── */
+  titre('Voix synthétisée');
+  const grille=document.createElement('div');
+  grille.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+  TMR_TIMBRES.forEach(t=>{
     const b=document.createElement('button');
-    b.dataset.id=id;
+    b.dataset.id=t.id;
     b.style.cssText='font-size:12px;padding:7px 13px;border-radius:14px;cursor:pointer;'
       +'font-family:inherit;border:1.5px solid var(--brd);background:var(--sur);color:var(--tx2)';
-    b.textContent=label; b.title=sub||'';
+    b.textContent=t.label; b.title=t.sub||'';
     b.onclick=()=>{
-      S.reglages.tmrTimbre=id; saveS(); majChips();
-      try{ _tmrPlayBeeps(5,{force:true}); }catch(e){}
+      S.reglages.tmrTimbre=t.id; saveS(); majChips();
+      // On fait entendre la SYNTHÈSE, même si un son est importé sur ce moment :
+      // c'est elle qu'on est en train de choisir.
+      try{ _tmrPlayBeeps(5,{force:true, synthSeul:true}); }catch(e){}
     };
     chips.push(b); grille.appendChild(b);
-    return b;
-  };
-  TMR_TIMBRES.forEach(t=>mkChip(t.id, t.label, t.sub));
-  const chipFic=mkChip('fichier','🎵 Mon fichier','Diffusé au palier 5 minutes ; les autres paliers gardent leurs bips');
+  });
   root.appendChild(grille);
+  majChips();
   const note=document.createElement('div');
   note.style.cssText='font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.45';
-  note.textContent='Un clic sur un timbre le fait écouter au palier 5 minutes.';
+  note.textContent='Le nombre de bips indique les minutes restantes : le timbre n’en '
+    +'change que la couleur. Un son importé reste sur CET appareil — il ne suit ni la '
+    +'synchronisation ni l’export, et sera à réimporter ailleurs.';
   root.appendChild(note);
-
-  /* ── 3. Le fichier personnel ── */
-  titre('Son personnel du palier 5 minutes');
-  const etat=document.createElement('div');
-  etat.style.cssText='font-size:12px;color:var(--tx2);line-height:1.5;margin-bottom:8px';
-  etat.textContent='Lecture du fichier en cours…';
-  root.appendChild(etat);
-
-  const barre=document.createElement('div');
-  barre.style.cssText='display:flex;gap:6px;flex-wrap:wrap';
-  const inp=document.createElement('input');
-  inp.type='file'; inp.style.display='none';
-  // Le navigateur lit « audio » suivi d'une barre et d'une étoile ; l'étoile est
-  // échappée en \u002A parce que cette paire de caractères ouvre un commentaire
-  // pour les contrôles TEXTUELS du harnais (noCom), qui ne connaissent pas les
-  // chaînes : elle amputait silencieusement la fin de cette fonction, et faisait
-  // passer les tests suivants par absence de code. Ne pas la réécrire en clair,
-  // ici ni dans un commentaire.
-  inp.accept='audio/\u002A';
-  const bImp=document.createElement('button'); bImp.className='bs';
-  bImp.style.cssText='font-size:12px;padding:6px 13px';
-  bImp.textContent='📂 Importer un son…';
-  bImp.onclick=()=>inp.click();
-  const bEcout=document.createElement('button'); bEcout.className='bs';
-  bEcout.style.cssText='font-size:12px;padding:6px 13px';
-  bEcout.textContent='▶ Écouter';
-  bEcout.onclick=()=>{ try{ _tmrPlayFichier(); }catch(e){} };
-  const bSup=document.createElement('button'); bSup.className='bs';
-  bSup.style.cssText='font-size:12px;padding:6px 13px';
-  bSup.textContent='🗑 Retirer';
-  bSup.onclick=()=>{
-    _tmrClearClip().then(()=>{
-      if(S.reglages.tmrTimbre==='fichier'){ S.reglages.tmrTimbre='bips'; saveS(); majChips(); }
-      majFichier();
-    });
-  };
-  barre.appendChild(bImp); barre.appendChild(bEcout); barre.appendChild(bSup); barre.appendChild(inp);
-  root.appendChild(barre);
-
-  const LIMITE=8*1024*1024;  // 8 Mo à l'entrée : c'est le son DÉCODÉ qui est
-                             // stocké (~44 Ko/s), pas le fichier d'origine.
-  inp.onchange=()=>{
-    const f=inp.files && inp.files[0];
-    inp.value='';
-    if(!f) return;
-    if(f.size>LIMITE){
-      etat.textContent='Fichier trop lourd ('+Math.round(f.size/1024/1024*10)/10+' Mo) — 8 Mo maximum.';
-      etat.style.color='#9F1239';
-      return;
-    }
-    etat.style.color='var(--tx2)';
-    etat.textContent='Lecture et conversion du son…';
-    _tmrPreparerClip(f)
-      .then(entry=>_tmrSaveClip(entry))
-      .then(()=>{
-        S.reglages.tmrTimbre='fichier'; saveS(); majChips(); majFichier();
-      })
-      .catch(err=>{
-        // Le message porte la CAUSE (format illisible, son trop long…) : c'est
-        // maintenant qu'il faut le dire, pas au milieu d'un cours.
-        etat.textContent=((err&&err.message)||String(err));
-        etat.style.color='#9F1239';
-      });
-  };
-
-  function majFichier(){
-    _tmrLoadClip().then(entry=>{
-      const info=_tmrClipInfo(entry);
-      etat.textContent=info.texte;
-      etat.style.color=info.reimporter?'#92400E':'var(--tx2)';
-      bEcout.style.display=info.present?'':'none';
-      bSup.style.display=(info.present||info.reimporter)?'':'none';
-      chipFic.style.display=(info.present||S.reglages.tmrTimbre==='fichier')?'':'none';
-      if(!info.present && !info.reimporter){
-        etat.textContent=info.texte+' Importez un fichier audio (MP3, WAV, OGG, '
-          +'m4a si votre navigateur le lit) : il sera converti à l\u2019import, puis '
-          +'diffusé au palier 5 minutes à la place des bips.';
-      }
-      if(!info.present && S.reglages.tmrTimbre==='fichier'){
-        etat.textContent='Le son personnel est choisi, mais aucun son utilisable n\u2019est '
-          +'présent sur cet appareil : le palier 5 minutes retombe sur les bips. '+info.texte;
-        etat.style.color='#92400E';
-      }
-      majChips();
-    });
-  }
-  majFichier();
 
   /* ── Retour ── */
   const retour=document.createElement('button'); retour.className='bp';
