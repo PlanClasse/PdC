@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.59';
+const APP_VERSION = 'v11.3.60';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -41851,7 +41851,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
-    'Réglages des alertes du compte à rebours (bouton ⚙ dans la fenêtre du minuteur) : les cinq moments d’alerte — 5, 3, 2 et 1 minute, plus la fin du décompte — se règlent séparément. Chacun peut être coupé et recevoir SON propre son importé ; sans son importé, c’est la voix synthétisée (bips, cloche, bois, carillon ou marimba) qui est jouée. Le nombre de bips continue d’indiquer les minutes restantes. Les sons sont convertis à l’import pour être lisibles partout, et restent sur l’appareil où vous les importez : ils ne suivent ni la synchronisation ni l’export. Si votre navigateur ne sait pas lire le format fourni (c’est le cas de plusieurs pour le m4a), il vous le dit au moment de l’import, pas en plein cours.',
+    'Réglages des alertes du compte à rebours (bouton ⚙ dans la fenêtre du minuteur) : les cinq moments d’alerte — 5, 3, 2 et 1 minute, plus la fin du décompte — se règlent séparément. Chacun peut être coupé et recevoir SON propre son importé ; sans son importé, c’est la voix synthétisée (bips, cloche, bois, carillon ou marimba) qui est jouée. Chaque moment a aussi son propre réglage de volume (10 à 200 %), qui vaut pour la voix synthétisée comme pour le son importé — de quoi remonter un enregistrement trop faible. Le nombre de bips continue d’indiquer les minutes restantes. Les sons sont convertis à l’import pour être lisibles partout, et restent sur l’appareil où vous les importez : ils ne suivent ni la synchronisation ni l’export. Si votre navigateur ne sait pas lire le format fourni (c’est le cas de plusieurs pour le m4a), il vous le dit au moment de l’import, pas en plein cours.',
     'Le PAI ne para\u00eet plus dans les vues EBEP du plan de classe : ni dans la liste \ud83e\udde9, ni dans le surlignage des si\u00e8ges. Un \u00e9l\u00e8ve dont la fiche porte aussi un PAP ou une adaptation continue d\u2019y figurer, pour ce motif-l\u00e0 seulement. La page EBEP et la Fiche du jour l\u2019excluaient d\u00e9j\u00e0 ; la saisie et l\u2019import, eux, ne changent pas.',
     'La barre de synchronisation reconna\u00eet le fichier JSON partag\u00e9 : si vous synchronisez par fichier local plut\u00f4t que par le cloud, elle affiche \u00ab \ud83d\udd04 Synchro. (fichier) \u00bb et la date de la derni\u00e8re \u00e9criture, au lieu d\u2019annoncer \u00e0 tort \u00ab non connect\u00e9 \u00bb.',
     'Sur ordinateur, le plan de classe porte la m\u00eame barre en version compacte : \u00ab \ud83d\udd04 Synchro. \u00bb, les deux fl\u00e8ches, et la date de la derni\u00e8re synchro sur la m\u00eame ligne. De quoi v\u00e9rifier d\u2019un coup d\u2019\u0153il, en passant de la tablette au poste, qu\u2019on ne s\u2019appr\u00eate pas \u00e0 \u00e9craser l\u2019autre appareil. Elle ne s\u2019affiche pas sur t\u00e9l\u00e9phone, o\u00f9 la place manque.',
@@ -59152,6 +59152,18 @@ function _tmrSonConfigure(reglages, moment){
   return false;
 }
 
+/** Le volume d'un moment, en facteur multiplicatif. PURE.
+ *  Réglé en pourcentage dans S (100 = le volume d'origine), borné à [10 %, 200 %].
+ *  Le plancher n'est pas cosmétique : un gain nul ferait échouer les rampes
+ *  exponentielles de l'enveloppe (exponentialRampToValueAtTime refuse zéro), et
+ *  couper un moment est déjà le rôle de sa case à cocher. */
+function _tmrVolume(reglages, moment){
+  const r=reglages||{};
+  const v=(r.tmrVolumes||{})[String(moment)];
+  const n=(typeof v==='number' && isFinite(v)) ? v : 100;
+  return Math.min(200, Math.max(10, n))/100;
+}
+
 /** Float32 [-1,1] → Int16. PURE. Le clamp est le point délicat : sans lui, un
  *  échantillon à 1.0 déborde en -32768 et produit un craquement. */
 function _tmrFloatVersInt16(f32){
@@ -59232,7 +59244,7 @@ async function _tmrPreparerClip(file){
 /** Joue le son personnel d'un moment. `replier` est la voix synthétisée de ce
  *  moment, jouée dès que le son n'est pas utilisable : absent, non décodé,
  *  contexte audio indisponible. Une alerte muette est le pire cas possible. */
-function _tmrPlaySon(moment, replier){
+function _tmrPlaySon(moment, replier, gain){
   let repli=true;
   const secours=()=>{ if(repli){ repli=false; try{ if(replier) replier(); }catch(e){} } };
   try{
@@ -59246,7 +59258,11 @@ function _tmrPlaySon(moment, replier){
         const buf=ctx.createBuffer(1, entry.pcm.length, hz);
         buf.getChannelData(0).set(_tmrInt16VersFloat(entry.pcm));
         const src=ctx.createBufferSource();
-        src.buffer=buf; src.connect(ctx.destination);
+        src.buffer=buf;
+        // Le gain peut dépasser 1 : un enregistrement faible doit pouvoir être
+        // remonté. Au-delà, le son écrête — c'est le choix de l'utilisateur.
+        const g=ctx.createGain(); g.gain.value=(typeof gain==='number'&&gain>0)?gain:1;
+        src.connect(g).connect(ctx.destination);
         src.onended=()=>{ try{ ctx.close(); }catch(e){} };
         src.start();
         repli=false;
@@ -59256,7 +59272,7 @@ function _tmrPlaySon(moment, replier){
 }
 
 /** La voix SYNTHÉTISÉE d'un palier. Séparée pour pouvoir servir de repli. */
-function _tmrSynthPalier(timbre, level){
+function _tmrSynthPalier(timbre, level, gain){
   try{
     const AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) return;
@@ -59265,14 +59281,18 @@ function _tmrSynthPalier(timbre, level){
     const ctx = new AC();
     const t0 = ctx.currentTime + 0.02;
     const ATTACK = 0.010, RELEASE = 0.040;
+    // Le volume module l'enveloppe, PAS la recette : _tmrVoixPalier garde les
+    // valeurs réglées à l'oreille en v181.10.3, que des tests figent.
+    const k = (typeof gain==='number'&&gain>0) ? gain : 1;
     for(let i = 0; i < cfg.n; i++){
       const t = t0 + i*(cfg.d + cfg.gap);
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(cfg.v, t + ATTACK);
-      gain.gain.setValueAtTime(cfg.v, t + Math.max(ATTACK, cfg.d - RELEASE));
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + cfg.d);
-      gain.connect(ctx.destination);
+      const vol = cfg.v * k;
+      const gain2 = ctx.createGain();
+      gain2.gain.setValueAtTime(0.0001, t);
+      gain2.gain.exponentialRampToValueAtTime(vol, t + ATTACK);
+      gain2.gain.setValueAtTime(vol, t + Math.max(ATTACK, cfg.d - RELEASE));
+      gain2.gain.exponentialRampToValueAtTime(0.0001, t + cfg.d);
+      gain2.connect(ctx.destination);
       const voix=[{f:cfg.f, v:1}];
       if(cfg.harm) voix.push({f:cfg.f*cfg.harm, v:0.35});
       voix.forEach(v=>{
@@ -59280,7 +59300,7 @@ function _tmrSynthPalier(timbre, level){
         const g2 = ctx.createGain(); g2.gain.value=v.v;
         osc.type = cfg.type;
         osc.frequency.value = v.f;
-        osc.connect(g2).connect(gain);
+        osc.connect(g2).connect(gain2);
         osc.start(t);
         osc.stop(t + cfg.d + 0.05);
       });
@@ -59299,9 +59319,10 @@ function _tmrPlayBeeps(level, opts){
   try{ reglages=(typeof S!=='undefined'&&S&&S.reglages)||{}; }catch(e){}
   if(!force && !_tmrPalierActif(reglages, level)) return;
   const timbre=(opts&&opts.timbre) || reglages.tmrTimbre || 'bips';
-  const synth=()=>_tmrSynthPalier(timbre, level);
+  const vol=_tmrVolume(reglages, level);
+  const synth=()=>_tmrSynthPalier(timbre, level, vol);
   if(!(opts&&opts.synthSeul) && _tmrSonConfigure(reglages, level)){
-    _tmrPlaySon(String(level), synth); return;
+    _tmrPlaySon(String(level), synth, vol); return;
   }
   synth();
 }
@@ -59695,8 +59716,9 @@ function _tmrPlayEndBeeps(opts){
   // le drapeau synthSeul court-circuite le test).
   let _rg={};
   try{ _rg=(typeof S!=='undefined'&&S&&S.reglages)||{}; }catch(e){}
+  const _kFin=_tmrVolume(_rg,'fin');
   if(!(opts&&opts.synthSeul) && _tmrSonConfigure(_rg,'fin')){
-    _tmrPlaySon('fin', ()=>_tmrPlayEndBeeps({synthSeul:true}));
+    _tmrPlaySon('fin', ()=>_tmrPlayEndBeeps({synthSeul:true}), _kFin);
     return;
   }
   // V020-v181.4.13 — Mélodie ta-da (do-mi-sol-do) en triangle, finale tenue
@@ -59709,7 +59731,8 @@ function _tmrPlayEndBeeps(opts){
     const ctx = new AC();
     const t0 = ctx.currentTime + 0.02;
     const ATTACK = 0.020, RELEASE = 0.080;
-    const play = (t, freq, dur, vol) => {
+    const play = (t, freq, dur, vol0) => {
+      const vol = vol0 * _kFin;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
@@ -59802,6 +59825,7 @@ function _showTmrReglages(){
   if(!S.reglages) S.reglages={};
   if(!S.reglages.tmrPaliers) S.reglages.tmrPaliers={};
   if(!S.reglages.tmrSons) S.reglages.tmrSons={};
+  if(!S.reglages.tmrVolumes) S.reglages.tmrVolumes={};
   // Migration v11.3.57/58 → v11.3.59 : le son global unique devient le son du
   // moment « 5 min ». Le timbre repasse sur une voix synthétisée réelle.
   if(S.reglages.tmrTimbre==='fichier'){
@@ -59892,9 +59916,32 @@ function _showTmrReglages(){
     row.appendChild(inp);
     bImp.onclick=()=>inp.click();
 
+    // Volume propre au moment. Il module l'enveloppe à la lecture, il ne touche
+    // pas à la recette : le nombre et la hauteur des bips restent l'information.
+    const volRow=document.createElement('div');
+    volRow.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0 0 21px';
+    const volLbl=document.createElement('span');
+    volLbl.style.cssText='font-size:11px;color:var(--tx3);min-width:58px';
+    const volIn=document.createElement('input');
+    volIn.type='range'; volIn.min='10'; volIn.max='200'; volIn.step='10';
+    volIn.style.cssText='flex:1;max-width:210px;accent-color:var(--acc)';
+    volIn.value=String(Math.round(_tmrVolume(S.reglages, mo.id)*100));
+    volLbl.textContent='🔊 '+volIn.value+' %';
+    volIn.title='Volume de ce moment — s\u2019applique à la voix synthétisée comme au son importé';
+    volIn.oninput=()=>{
+      volLbl.textContent='🔊 '+volIn.value+' %';
+      S.reglages.tmrVolumes[mo.id]=parseInt(volIn.value,10)||100;
+      saveS();
+    };
+    // Au relâchement seulement : on ne veut pas un bip à chaque pixel du curseur.
+    volIn.onchange=()=>{ try{
+      if(estFin) _tmrPlayEndBeeps(); else _tmrPlayBeeps(lvl,{force:true});
+    }catch(e){} };
+    volRow.appendChild(volLbl); volRow.appendChild(volIn);
+
     const etat=document.createElement('div');
     etat.style.cssText='font-size:11px;line-height:1.4;margin:3px 0 0 21px';
-    bloc.appendChild(row); bloc.appendChild(etat);
+    bloc.appendChild(row); bloc.appendChild(volRow); bloc.appendChild(etat);
     root.appendChild(bloc);
 
     const LIMITE=8*1024*1024;   // c'est le son DÉCODÉ qui est stocké (~44 Ko/s)
@@ -59973,7 +60020,9 @@ function _showTmrReglages(){
   majChips();
   const note=document.createElement('div');
   note.style.cssText='font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.45';
-  note.textContent='Le nombre de bips indique les minutes restantes : le timbre n’en '
+  note.textContent='Le volume se règle moment par moment et s’applique aussi bien à la '
+    +'voix synthétisée qu’au son importé ; au-delà de 100 %, un enregistrement faible est '
+    +'remonté. Le nombre de bips indique les minutes restantes : le timbre n’en '
     +'change que la couleur. Un son importé reste sur CET appareil — il ne suit ni la '
     +'synchronisation ni l’export, et sera à réimporter ailleurs.';
   root.appendChild(note);
