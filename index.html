@@ -2745,6 +2745,11 @@ body:has(#sdc-bg) .mobile-menu-btn{display:none}
 .sdc-carte-i{display:flex;gap:6px;justify-content:space-between;font-size:11px;color:var(--tx2);line-height:1.3}
 .sdc-carte-b{color:var(--tx)}
 .sdc-carte-vide{font-size:11px;color:var(--tx3);font-style:italic}
+.sdc-restes{padding:8px 14px;border-bottom:1px solid var(--brd);background:#FFFBEB}
+.sdc-reste{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;font-size:12.5px}
+.sdc-reste-meta{font-size:11px;color:#92400E}
+.sdc-reste-b{font-size:11.5px;padding:4px 10px;margin-left:auto}
+.sdc-reste-i{font-size:11.5px;border:none;background:none;color:var(--tx3);text-decoration:underline;cursor:pointer;padding:4px 6px}
 .sdc-carte-tot{font-size:10px;font-weight:700;color:var(--tx3);margin-top:3px;text-align:right}
 .sdc-etat{flex:1;font-size:12px;color:var(--tx2)}
 .sdc-etat.sdc-ok{color:var(--acc);font-weight:700}
@@ -4150,7 +4155,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.64';
+const APP_VERSION = 'v11.3.65';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -12087,6 +12092,12 @@ function _buildPlanningAdjustmentFromSeance(clsCode, seance){
       items.push({ kind:'comp', action:'annuler', compId:er.id, label:er.label||'', summary:'évaluation annulée pour ce cours' });
     }
   });
+  // V11.3.65 — lot B : après la bascule, une tâche partielle ou reportée n'est
+  // plus poussée sur le cours suivant ; elle est PROPOSÉE dans « Saisir mes
+  // cours » (_sdcRestes). On ne garde ici que les compétences.
+  if(typeof _sdcApresBascule==='function' && _sdcApresBascule(String(seance.slotKey).slice(0,10), clsCode)){
+    for(let _i=items.length-1;_i>=0;_i--){ if(items[_i].kind==='task') items.splice(_i,1); }
+  }
   if(!items.length) return null;
   return {
     id:'auto_'+clsCode+'|'+seance.slotKey,
@@ -12295,7 +12306,8 @@ function _applyPlanningAdjustments(entries){
             applied.push({kind:'task-cleanup', label:it.label, target:it.nextSlotKey});
           }
           // ── [Fix Éval] Partiel/reporter mo_* : pousser l'éval après le dernier slot de débordement ──
-          if((it.action==='partiel'||it.action==='reporter') && it.nextSlotKey){
+          if((it.action==='partiel'||it.action==='reporter') && it.nextSlotKey
+             && !(typeof _sdcApresBascule==='function' && _sdcApresBascule(String(it.nextSlotKey).slice(0,10), en.clsCode))){
             const _remaining=Number(it.remainingMn!=null&&it.remainingMn!==''?it.remainingMn:it.duree)||0;
             if(_remaining>0){
               // Trouver le slot source de l'éval (N+1 ou déjà décalée)
@@ -12353,7 +12365,8 @@ function _applyPlanningAdjustments(entries){
       }
 
       // ── Tâches non-mo_* (fi_*, doc_*, taf_*) : freeItem reporter sur N+1 ─────────
-      if(it.kind==='task' && (it.action==='reporter'||it.action==='partiel') && it.nextSlotKey && en.clsCode){
+      if(it.kind==='task' && (it.action==='reporter'||it.action==='partiel') && it.nextSlotKey && en.clsCode
+         && !(typeof _sdcApresBascule==='function' && _sdcApresBascule(String(it.nextSlotKey).slice(0,10), en.clsCode))){
         const mapKey=it.nextSlotKey+'|'+en.clsCode;
         const entry=getMapEntry(mapKey);
         const freeId=it.sourceTaskKey||('adj_'+(it.label||'').toLowerCase());
@@ -29024,6 +29037,9 @@ function _sdcRendre(){
   const lv=_sdcNiveau(cls);
   const prog=getProgression(lv)||[];
 
+  // ── Lot B : ce qui reste des cours précédents (proposé, jamais imposé)
+  if(!lectureSeule) _sdcZoneRestes(pan, cls, slotKey, prog, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
+
   // ── Bibliothèque : choisir une séance, en prendre tout ou partie
   const sels=_sdcEl('div','sdc-sels'); pan.appendChild(sels);
   const selSeq=_sdcEl('select'); const selSean=_sdcEl('select');
@@ -29169,6 +29185,148 @@ function _sdcCarteLignes(inner, card, slot, cc){
   card.style.cursor='pointer';
   card.title='Ouvrir ce cours dans « Saisir mes cours »';
   card.addEventListener('click', ()=>openSaisieCours({cls:cc, slotKey:slot.slotKey}));
+}
+
+/* ── Lot B (v11.3.65) : « Reste des cours précédents » ────────────────────
+   Décision du 25/09 : une tâche non terminée n'est plus reportée toute seule ;
+   elle est PROPOSÉE dans l'écran des cours suivants, à reprendre d'un geste.
+   Source : les séances ENREGISTRÉES depuis la bascule (réalisé), leurs lignes
+   « Commencée / partielle » et « Reportée » (taskRows, ou décisions en attente).
+   Le choix (repris / ignoré) est noté SUR la séance enregistrée elle-même
+   (se.sdcRestes[clé] = {etat, vers, at}) : aucun nouveau magasin, et une tâche
+   non traitée reste proposée aux cours suivants tant qu'on n'a pas choisi. */
+
+/** Les restes à proposer avant le cours `avantSlotKey`. Pure. */
+function _sdcRestes(seances, prog, bascule, avantSlotKey){
+  prog=Array.isArray(prog)?prog:[];
+  const out=[];
+  const trouverSean=(seanId)=>{
+    for(let i=0;i<prog.length;i++){
+      const L=(prog[i]&&prog[i].seances)||[];
+      const j=L.findIndex(s=>s&&s.id===seanId);
+      if(j>=0) return {seq:prog[i], seqIdx:i, sean:L[j], seanIdx:j};
+    }
+    return null;
+  };
+  (Array.isArray(seances)?seances:[]).forEach(se=>{
+    if(!se || !se.slotKey) return;
+    if(bascule && String(se.slotKey).slice(0,10)<bascule) return;
+    if(avantSlotKey && !(String(se.slotKey)<String(avantSlotKey))) return;
+    const faits=se.sdcRestes||{};
+    const vus=new Set();
+    const lignes=[];
+    (Array.isArray(se.taskRows)?se.taskRows:[]).forEach(tr=>{
+      if(!tr || !tr.key) return;
+      const st=tr.stateLabel||'';
+      if(st==='Commencée / partielle') lignes.push({key:tr.key, etat:'partielle', tr});
+      else if(st==='Reportée') lignes.push({key:tr.key, etat:'reportée', tr});
+      else return;
+      vus.add(tr.key);
+    });
+    Object.entries(se.tacheDecisions||{}).forEach(([key,dec])=>{
+      if(vus.has(key)) return;
+      if(dec==='partiel') lignes.push({key, etat:'partielle', tr:null});
+      else if(dec==='reporter') lignes.push({key, etat:'reportée', tr:null});
+    });
+    lignes.forEach(({key, etat, tr})=>{
+      if(faits[key]) return;
+      let ref=null, label='';
+      const m1=String(key).match(/^mo_(\d+)$/), m2=String(key).match(/^mo_(.+)_(\d+)$/);
+      const f = m1 ? (se.seanId?trouverSean(se.seanId):null) : (m2?trouverSean(m2[1]):null);
+      const moIdx = m1 ? +m1[1] : (m2 ? +m2[2] : -1);
+      if(f && moIdx>=0 && Array.isArray(f.sean.modeOp) && f.sean.modeOp[moIdx]){
+        ref={seqId:f.seq.id, seanId:f.sean.id, moIdx, seqIdx:f.seqIdx, seanIdx:f.seanIdx};
+        label=String(f.sean.modeOp[moIdx]).trim();
+      }
+      if(!label) label=String((tr&&tr.label)||key).replace(/^\[[^\]]*\]\s*/,'').replace(/\s*\(suite\)\s*$/,'').trim();
+      let duree=0;
+      if(etat==='partielle'){
+        const r=(tr&&tr.remainingMn)!=null&&(tr&&tr.remainingMn)!=='' ? tr.remainingMn : (se.tachePartiels||{})[key];
+        duree=parseInt(r,10)||0;
+      } else duree=parseInt((tr&&tr.duree)||0,10)||0;
+      out.push({id:se.slotKey+'#'+key, srcSlot:se.slotKey, key, label, etat, duree, ref});
+    });
+  });
+  out.sort((a,b)=>a.srcSlot.localeCompare(b.srcSlot));
+  return out;
+}
+/** La ligne de saisie d'un reste. Pure. */
+function _sdcLigneReste(p){
+  return String((p&&p.label)||'')+((p&&p.duree)>0?' - '+p.duree+' min':'');
+}
+/** Reprend un reste dans le texte d'un cours. Pure. Ligne de la bibliothèque :
+ *  sous son en-tête (elle reste reliée) ; sinon : en fin de texte. */
+function _sdcReprendreDansTexte(text, p, prog){
+  const ligne=_sdcLigneReste(p);
+  if(p && p.ref && Array.isArray(prog)){
+    const seq=prog[p.ref.seqIdx], sean=seq&&(seq.seances||[])[p.ref.seanIdx];
+    if(seq && sean && sean.id===p.ref.seanId)
+      return _sdcAjouterDepuisBiblio(text, _sdcLigneSeq(seq, p.ref.seqIdx), _sdcLigneSean(sean, p.ref.seanIdx), [ligne]);
+  }
+  const s=String(text||'').replace(/\s+$/,'');
+  return (s?s+'\n':'')+ligne;
+}
+
+/* Impur : lecture / écriture du choix sur la séance enregistrée. */
+function _sdcSeancesEnregistrees(cls){
+  try{ return (typeof readAllSeancesForClass==='function') ? (readAllSeancesForClass(cls)||[]) : []; }catch(e){ return []; }
+}
+function _sdcMarquerReste(cls, p, etat, versSlotKey){
+  const se=_sdcSeancesEnregistrees(cls).find(x=>x && x.slotKey===p.srcSlot);
+  if(!se) return false;
+  if(!se.sdcRestes) se.sdcRestes={};
+  if(etat) se.sdcRestes[p.key]={etat, vers:versSlotKey||'', at:Date.now()};
+  else delete se.sdcRestes[p.key];
+  saveS();
+  return true;
+}
+/** Les reports hérités de l'ancien planning, posés sur CE cours (gardés à la
+ *  bascule) : eux aussi deviennent des propositions. */
+function _sdcReportsHerites(cls, slotKey){
+  const e=(S.edtProgMapping||{})[_sdcMapKey(slotKey, cls)];
+  return ((e&&e.freeItems)||[]).filter(f=>f && f.type==='reporter');
+}
+function _sdcRetirerReportHerite(cls, slotKey, fiId){
+  const k=_sdcMapKey(slotKey, cls);
+  const e=(S.edtProgMapping||{})[k]; if(!e) return;
+  e.freeItems=(e.freeItems||[]).filter(f=>!(f && f.type==='reporter' && f.id===fiId));
+  if(typeof invalidateLayoutCache==='function') try{ invalidateLayoutCache(cls); }catch(err){}
+  saveS();
+}
+
+/** La zone, construite dans l'écran. `ajouter(ligneOuFn)` modifie le texte. */
+function _sdcZoneRestes(parent, cls, slotKey, prog, lectureSeule, ajouter){
+  const zone=_sdcEl('div','sdc-restes'); parent.appendChild(zone);
+  const restes=_sdcRestes(_sdcSeancesEnregistrees(cls), prog, S.planningBascule, slotKey);
+  const herites=_sdcReportsHerites(cls, slotKey);
+  let nTaf=0;
+  try{ nTaf=(typeof getTafVerifsForTargetSlot==='function') ? (getTafVerifsForTargetSlot(slotKey, cls)||[]).length : 0; }catch(e){}
+  if(!restes.length && !herites.length && !nTaf){ zone.remove(); return; }
+  zone.appendChild(_sdcEl('div','sdc-h','Reste des cours précédents'));
+  const dateCourte=(sk)=>{ try{ return new Date(sk.slice(0,10)+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return sk.slice(0,10); } };
+  const ligne=(texte, meta, onPrendre, onIgnorer)=>{
+    const row=_sdcEl('div','sdc-reste');
+    row.appendChild(_sdcEl('span','sdc-lbl',texte));
+    row.appendChild(_sdcEl('span','sdc-reste-meta',meta));
+    const bP=_sdcEl('button','bs sdc-reste-b','Reprendre'); bP.disabled=lectureSeule; bP.onclick=onPrendre;
+    const bI=_sdcEl('button','sdc-reste-i','Ignorer'); bI.disabled=lectureSeule; bI.onclick=onIgnorer;
+    row.appendChild(bP); row.appendChild(bI);
+    zone.appendChild(row);
+  };
+  restes.forEach(p=>{
+    const meta=(p.etat==='partielle'?'partielle':'reportée')+' · '+dateCourte(p.srcSlot)
+      +(p.duree?' · '+(p.etat==='partielle'?'reste ':'')+p.duree+' min':'')+(p.ref?' · bibliothèque':'');
+    ligne('↩ '+p.label, meta,
+      ()=>{ ajouter(t=>_sdcReprendreDansTexte(t, p, prog)); _sdcMarquerReste(cls, p, 'repris', slotKey); _sdcRendre(); },
+      ()=>{ _sdcMarquerReste(cls, p, 'ignore', slotKey); _sdcRendre(); });
+  });
+  herites.forEach(fi=>{
+    const p={label:fi.label||'', duree:fi.duree||0, ref:null};
+    ligne('↩ '+p.label, 'report de l’ancien planning'+(p.duree?' · '+p.duree+' min':''),
+      ()=>{ ajouter(t=>_sdcReprendreDansTexte(t, p, prog)); _sdcRetirerReportHerite(cls, slotKey, fi.id); _sdcRendre(); },
+      ()=>{ _sdcRetirerReportHerite(cls, slotKey, fi.id); _sdcRendre(); });
+  });
+  if(nTaf) zone.appendChild(_sdcEl('div','sdc-pref-n','📌 '+nTaf+' TAF à vérifier pendant ce cours — proposé'+(nTaf>1?'s':'')+' d’office dans le modal Séance.'));
 }
 
 function closeCahierTexte(){
@@ -42795,6 +42953,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Saisir mes cours — « Reste des cours précédents » : une tâche partielle ou reportée à l’enregistrement d’une séance n’est plus poussée toute seule sur le cours suivant. Elle est proposée dans l’écran des cours suivants, avec « Reprendre » (elle s’ajoute au cours, reliée à la bibliothèque si elle en vient, avec ce qu’il reste à faire) ou « Ignorer ». Tant qu’on n’a pas choisi, elle reste proposée. Les TAF à vérifier restent proposés d’office dans le modal Séance.',
     'Nouvel écran « Saisir mes cours » (tuile verte de l’accueil, ou onglet dans Progression) : c’est désormais LA manière de remplir le planning d’affectation, cours par cours. Un cours est une suite de lignes : prises dans la bibliothèque (toute une séance ou quelques lignes), ou propres à ce cours — rien n’entre dans la bibliothèque sans que vous le demandiez. Plusieurs séances, même de séquences différentes, dans un même cours. Plus de débordement automatique : un cours trop rempli s’allonge et l’écran le signale. À la première ouverture, l’écran propose la bascule : ce qui était placé dans les cours à venir est retiré (sauvegarde téléchargée avant, annulable), le reste est intact. Le planning d’affectation devient une vue d’ensemble : un clic sur un cours l’ouvre dans l’écran.',
     'Synchronisation cloud : la copie de sécurité prise avant chaque synchronisation porte enfin sur ce qui VA ÊTRE REMPLACÉ — la version du cloud avant un envoi, celle de cet appareil avant un import. Jusqu’ici, c’est l’état de l’appareil qui lançait la synchro qui était copié, et non celui qu’il écrasait. Si cette copie échoue, rien n’est remplacé.',
     'Si la mémoire du navigateur venait à manquer, PlanClasse ne plante plus en plein enregistrement : un bandeau rouge prévient que les dernières modifications ne sont pas enregistrées sur l’appareil, avec un bouton pour exporter une sauvegarde. Il disparaît dès qu’un enregistrement réussit.',
@@ -43625,6 +43784,9 @@ function openSaveSeance(){
     // Fix R3A : sauter les reporters mo_* déjà couverts par le layout engine (section 1)
     (entry4.freeItems||[]).filter(fi=>{
       if(fi.type!=='reporter'&&fi.type!=='taf-verif') return false;
+      // V11.3.65 — lot B : après la bascule, un report n'est plus imposé ; il est
+      // proposé dans « Saisir mes cours », et n'entre ici que repris en ligne.
+      if(fi.type==='reporter' && typeof _sdcApresBascule==='function' && _sdcApresBascule(String(slotKey).slice(0,10), curCls)) return false;
       if(fi.adjustmentKey&&_layoutMoKeys.has(fi.adjustmentKey)) return false; // doublon layout
       if(fi.type==='taf-verif'&&_tvCoveredByModern.has(fi.sourceSlot+'#'+fi.sourceIndex)) return false;
       return true;
