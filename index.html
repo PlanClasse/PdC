@@ -2728,6 +2728,24 @@ body.is-touch .v169-source{
    premier est masqué tant que l'écran est ouvert ; pour le second, Enregistrer
    est placé À GAUCHE du pied, loin du coin qu'il occupe. */
 body:has(#sdc-bg) .mobile-menu-btn{display:none}
+.sdc-biblio{display:flex;flex-wrap:wrap;gap:5px;padding:0 14px 10px;border-bottom:1px solid var(--brd)}
+.sdc-biblio:empty{display:none}
+.sdc-bl{font-family:inherit;text-align:left;max-width:100%;white-space:normal}
+.sdc-tout{font-weight:700;color:var(--acc);border-color:var(--acc)}
+.sdc-jauge{font-size:12.5px;color:var(--tx2);margin-bottom:4px}
+.sdc-jauge-ko{color:#B45309;font-weight:600}
+.sdc-prov{font-size:10px;font-weight:700;flex:none;padding:1px 5px;border-radius:4px}
+.sdc-prov-biblio{color:var(--acc);background:var(--acc-l)}
+.sdc-prov-cours{color:#6B21A8;background:#F3E8FF}
+.sdc-etat-inconnu{font-size:10px;font-weight:700;color:#92400E;background:#FEF3C7;border-radius:4px;padding:1px 5px;flex:none}
+.sdc-bascule{padding:14px 18px;overflow:auto;font-size:13.5px;line-height:1.55;color:var(--tx)}
+.sdc-bascule p{margin:6px 0}
+.sdc-rap{font-size:13px;margin:2px 0;color:var(--tx2)}
+.sdc-carte-l{display:flex;flex-direction:column;gap:2px;margin-top:3px}
+.sdc-carte-i{display:flex;gap:6px;justify-content:space-between;font-size:11px;color:var(--tx2);line-height:1.3}
+.sdc-carte-b{color:var(--tx)}
+.sdc-carte-vide{font-size:11px;color:var(--tx3);font-style:italic}
+.sdc-carte-tot{font-size:10px;font-weight:700;color:var(--tx3);margin-top:3px;text-align:right}
 .sdc-etat{flex:1;font-size:12px;color:var(--tx2)}
 .sdc-etat.sdc-ok{color:var(--acc);font-weight:700}
 .sdc-etat.sdc-ko{color:#B91C1C;font-weight:700}
@@ -4132,7 +4150,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.63';
+const APP_VERSION = 'v11.3.64';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28392,22 +28410,22 @@ function _cdtCoursDuJour(dateStr){
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   V11.3.63 — SAISIR MES COURS (lot 1)            [nom de travail, cf. mémo §5.45]
+   V11.3.64 — SAISIR MES COURS : un cours est une suite de LIGNES   (lots A + C)
    ---------------------------------------------------------------------------
-   Une porte d'entrée « par cours » sur les trois magasins EXISTANTS :
-     – la bibliothèque          = S.progression[niveau] (la progression, relue
-                                  comme un réservoir — AUCUN magasin parallèle) ;
-     – le planning d'affectation = S.edtProgMapping[slotKey|cls].seances ;
-     – le contenu prévu          = S.seanceContentDraft[cls|slotKey]
-                                  {contenu, taf} (lu par le modal Séance)
-                                  + {saisie, saisieEnreg} (le texte de CET écran).
-   On change la porte d'entrée, pas la plomberie : l'enregistrement de séance et
-   la confrontation prévu / réalisé ne sont pas touchés.
-   Arbitrages (25/09) : l'accueil ouvre le PROCHAIN COURS SANS CONTENU ; choisir
-   une autre séance ne change QUE ce cours ; si la séance choisie est déjà posée
-   sur un autre cours de la classe, on DEMANDE (déplacer / doublon).
-   Syntaxe = celle de la saisie rapide (_srParseDur, /SEQ /Séance /Doc /Res /TAF
-   /Eval, ligne nue = tâche, « - 15 min »).
+   Spécification : claude/spec-saisir-mes-cours.md (25/09). Décisions :
+   – un cours est entièrement modulaire : chaque ligne vient de la bibliothèque,
+     d'un autre cours, ou de nulle part (propre au cours) ;
+   – RIEN n'entre dans la bibliothèque sans geste explicite (étoile, lot E) :
+     un en-tête /SEQ ou /Séance inconnu est un simple repère ;
+   – plusieurs séances, de séquences différentes, dans un même cours ;
+   – cet écran est la SEULE manière de remplir le planning, à partir de la
+     date de bascule S.planningBascule ; avant elle, l'ancien moteur, intact ;
+   – plus de débordement automatique : un cours trop rempli s'allonge ;
+   – prévu ≠ réalisé : un cours enregistré est en lecture seule ici.
+   Stockage : S.edtProgMapping[slotKey|cls] = { seances:[…] (où le cours puise,
+   pour les lecteurs existants — ne déroule plus rien), lignes:[…] (l'ordre du
+   cours), freeItems:[…] (lignes propres au cours, marquées sdc:true, + ce qui
+   vient du réalisé : taf-verif, reporter) } ; texte : seanceContentDraft.saisie.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /** Numéro affiché d'un chapitre : son `num` s'il en a un, sinon son rang. Pure. */
@@ -28421,34 +28439,46 @@ function _sdcTitreSeance(sean){
   return /^s[ée]ance\s*\d*$/i.test(t) ? '' : t;
 }
 function _sdcNorm(s){
-  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 }
 
-/** Retrouve un chapitre et une séance dans la bibliothèque. Pure.
- *  Chapitre : par numéro, sinon par titre. Séance : par RANG dans le chapitre
- *  (les séances de la progression n'ont pas de numéro propre), sinon par titre. */
-function _sdcTrouver(prog, entete){
+/** Deux textes de tâche sont-ils « proches » ? Pure. (Question ouverte n°3 de
+ *  la spec : seuil à régler sur les vrais textes de l'utilisateur.)
+ *  Égalité après normalisation → 1 ; sinon indice de Jaccard sur les mots, et
+ *  l'inclusion d'un texte dans l'autre compte comme proche s'il fait au moins
+ *  8 caractères (« Prise en main de la carte » ⊂ « … de la carte micro:bit »). */
+const _SDC_SEUIL_PROCHE=0.5;
+function _sdcProximite(a, b){
+  const x=_sdcNorm(a), y=_sdcNorm(b);
+  if(!x || !y) return 0;
+  if(x===y) return 1;
+  const court=x.length<=y.length?x:y, long=x.length<=y.length?y:x;
+  if(court.length>=8 && (' '+long+' ').indexOf(' '+court+' ')>=0) return 0.9;
+  const A=new Set(x.split(' ')), B=new Set(y.split(' '));
+  let inter=0; A.forEach(w=>{ if(B.has(w)) inter++; });
+  return inter/(A.size+B.size-inter);
+}
+
+/** Retrouve un chapitre (par numéro, sinon par titre) et une séance (par RANG,
+ *  sinon par titre) dans la bibliothèque. Pure. */
+function _sdcTrouverSeq(prog, num, titre){
   prog=Array.isArray(prog)?prog:[];
-  const out={seq:null, seqIdx:-1, sean:null, seanIdx:-1};
-  if(!entete || !entete.seq) return out;
-  const num=String(entete.seq.num||'').trim(), tit=_sdcNorm(entete.seq.titre);
-  if(num) out.seqIdx=prog.findIndex((s,i)=>_sdcSeqNum(s,i)===num);
-  if(out.seqIdx<0 && tit && tit!=='(sans titre)') out.seqIdx=prog.findIndex(s=>_sdcNorm(s&&s.titre)===tit);
-  if(out.seqIdx<0) return out;
-  out.seq=prog[out.seqIdx];
-  if(!entete.sean) return out;
-  const seances=Array.isArray(out.seq.seances)?out.seq.seances:[];
-  const n=parseInt(entete.sean.num,10);
-  if(n>=1 && n<=seances.length) out.seanIdx=n-1;
-  else {
-    const st=_sdcNorm(entete.sean.titre);
-    if(st && st!=='(sans titre)') out.seanIdx=seances.findIndex(s=>_sdcNorm(s&&s.titre)===st);
-  }
-  if(out.seanIdx>=0) out.sean=seances[out.seanIdx];
-  return out;
+  let i=-1;
+  if(String(num||'').trim()) i=prog.findIndex((s,k)=>_sdcSeqNum(s,k)===String(num).trim());
+  const t=_sdcNorm(titre);
+  if(i<0 && t) i=prog.findIndex(s=>_sdcNorm(s&&s.titre)===t);
+  return i;
+}
+function _sdcTrouverSean(seq, num, titre){
+  const L=(seq&&Array.isArray(seq.seances))?seq.seances:[];
+  const n=parseInt(num,10);
+  if(n>=1 && n<=L.length) return n-1;
+  const t=_sdcNorm(titre);
+  return t ? L.findIndex(s=>_sdcNorm(s&&s.titre)===t) : -1;
 }
 
-/** Classe UNE ligne de saisie. Pure. Même grammaire que la saisie rapide. */
+/** Classe UNE ligne. Pure. Même grammaire que la saisie rapide. */
 function _sdcClasserLigne(raw){
   const t=String(raw||'').trim();
   if(!t) return null;
@@ -28476,59 +28506,81 @@ function _sdcClasserLigne(raw){
   return {type:'tache', label:d.label, duree:d.duree};
 }
 
-/** Interprète toute la saisie d'un cours face à la bibliothèque. Pure.
- *  Renvoie les lignes classées (avec leur n° de ligne, pour réordonner), l'en-tête
- *  résolu (existe / à créer) et un résumé chiffré. */
+/** Interprète la saisie d'un cours : blocs, provenance de chaque ligne. Pure.
+ *  – chaque /SEQ ouvre un contexte de chapitre ; chaque /Séance, un bloc de
+ *    séance dans le chapitre courant ;
+ *  – une tâche sous une séance CONNUE est reliée à la ligne de la bibliothèque
+ *    la plus proche (au-delà du seuil, et une seule fois par bloc) ; sinon elle
+ *    est propre au cours ; /Doc et /Res idem, face aux docs / ressources ;
+ *  – un en-tête inconnu ne crée RIEN : ses lignes sont propres au cours. */
 function _sdcInterpreter(text, prog){
+  prog=Array.isArray(prog)?prog:[];
   const lignes=String(text||'').split('\n');
-  const items=[]; const entete={seq:null, sean:null}; const erreurs=[];
-  let apresSeq=false, apresSean=false;
+  const items=[]; const avert=[]; const seances=[];
+  let seqIdx=-1, seqHdr=null, sean=null;   // sean = {seqIdx, seanIdx, obj, pris:{mo:Set,doc:Set,res:Set}}
   lignes.forEach((raw,i)=>{
     const it=_sdcClasserLigne(raw); if(!it) return;
     it.ligne=i;
     if(it.type==='seq'){
-      if(entete.seq){ erreurs.push('Un seul chapitre par cours : la ligne '+(i+1)+' est ignorée.'); it.ignoree=true; }
-      else entete.seq={num:it.num, titre:it.label};
-      apresSeq=true;
+      seqIdx=_sdcTrouverSeq(prog, it.num, it.label);
+      seqHdr=it; sean=null;
+      it.etat=seqIdx>=0?'existe':'inconnu';
+      if(seqIdx>=0){ it.seqId=prog[seqIdx].id; it.titreBiblio=String(prog[seqIdx].titre||''); }
     } else if(it.type==='sean'){
-      if(entete.sean){ erreurs.push('Une seule séance par cours : la ligne '+(i+1)+' est ignorée.'); it.ignoree=true; }
-      else entete.sean={num:it.num, titre:it.label};
-      apresSean=true;
-    } else if(it.type==='tache' && apresSeq && !apresSean){
-      it.type='intention';            // même règle que la saisie rapide
+      if(!seqHdr){ it.etat='inconnu'; avert.push('Ligne '+(i+1)+' : une séance sans /SEQ au-dessus — ses lignes restent propres au cours.'); sean=null; }
+      else if(seqIdx<0){ it.etat='inconnu'; sean=null; }
+      else {
+        const si=_sdcTrouverSean(prog[seqIdx], it.num, it.label);
+        if(si>=0){
+          const obj=prog[seqIdx].seances[si];
+          it.etat='existe'; it.seqId=prog[seqIdx].id; it.seanId=obj.id; it.titreBiblio=String(obj.titre||'');
+          it.seqNum=_sdcSeqNum(prog[seqIdx], seqIdx); it.seanNum=si+1;
+          sean={seqIdx, seanIdx:si, obj, pris:{mo:new Set(), doc:new Set(), res:new Set(), taf:new Set()}};
+          if(!seances.some(s=>s.seqId===it.seqId && s.seanId===it.seanId)) seances.push({seqId:it.seqId, seanId:it.seanId});
+        } else { it.etat='inconnu'; sean=null; }
+      }
+    } else {
+      it.src='cours';
+      if(sean){
+        const lier=(liste, pris)=>{
+          let best=-1, score=0;
+          (Array.isArray(liste)?liste:[]).forEach((l,k)=>{
+            if(pris.has(k)) return;
+            const p=_sdcProximite(it.label, l);
+            if(p>score){ score=p; best=k; }
+          });
+          if(best>=0 && score>=_SDC_SEUIL_PROCHE){ pris.add(best); return best; }
+          return -1;
+        };
+        let k=-1;
+        if(it.type==='tache') k=lier(sean.obj.modeOp, sean.pris.mo);
+        else if(it.type==='doc') k=lier(sean.obj.docs, sean.pris.doc);
+        else if(it.type==='res') k=lier(sean.obj.ressources, sean.pris.res);
+        else if(it.type==='taf') k=lier((Array.isArray(sean.obj.tafs)&&sean.obj.tafs.length)?sean.obj.tafs:(sean.obj.taf?[sean.obj.taf]:[]), sean.pris.taf);
+        if(k>=0){
+          it.src='biblio'; it.seqId=prog[sean.seqIdx].id; it.seanId=sean.obj.id; it.idx=k;
+          it.seqNum=_sdcSeqNum(prog[sean.seqIdx], sean.seqIdx); it.seanNum=sean.seanIdx+1;
+        }
+      }
+      if(it.type==='eval' && seqIdx>=0) it.seqId=prog[seqIdx].id;
     }
     items.push(it);
   });
-  if(entete.sean && !entete.seq) erreurs.push('Une séance sans chapitre : ajoutez une ligne /SEQ au-dessus.');
-  const t=_sdcTrouver(prog, entete);
-  const res={items, erreurs, entete,
-    seq:null, sean:null,
-    taches:[], docs:[], res:[], tafs:[], evals:[], total:0};
-  if(entete.seq){
-    res.seq={num:entete.seq.num, titre:entete.seq.titre, etat:t.seq?'existe':'creer',
-             id:t.seq?t.seq.id:null, idx:t.seqIdx,
-             titreBiblio:t.seq?String(t.seq.titre||''):''};
-  }
-  if(entete.sean && entete.seq){
-    res.sean={num:entete.sean.num, titre:entete.sean.titre, etat:t.sean?'existe':'creer',
-              id:t.sean?t.sean.id:null, idx:t.seanIdx,
-              titreBiblio:t.sean?String(t.sean.titre||''):''};
-  }
+  const r={items, avert, seances, taches:[], docs:[], res:[], tafs:[], evals:[], total:0};
   items.forEach(it=>{
-    if(it.ignoree) return;
-    if(it.type==='tache'){ res.taches.push({label:it.label, duree:it.duree||0}); res.total+=it.duree||0; }
-    else if(it.type==='doc') res.docs.push(it.label);
-    else if(it.type==='res') res.res.push(it.label);
-    else if(it.type==='taf') res.tafs.push(it.label);
-    else if(it.type==='eval'){ res.evals.push({titre:it.label, duree:it.duree||0}); res.total+=it.duree||0; }
+    if(it.type==='tache'){ r.taches.push(it); r.total+=it.duree||0; }
+    else if(it.type==='doc') r.docs.push(it);
+    else if(it.type==='res') r.res.push(it);
+    else if(it.type==='taf') r.tafs.push(it);
+    else if(it.type==='eval'){ r.evals.push(it); r.total+=it.duree||0; }
   });
-  return res;
+  return r;
 }
 
 /** « 3 tâches · 50 min · 1 doc · 1 TAF ». Pure. */
 function _sdcResume(r){
   if(!r) return '';
-  const p=(n,s,pl)=>n+' '+(n>1?(pl||s+'s'):s);
+  const p=(n,s)=>n+' '+s+(n>1?'s':'');
   const out=[p(r.taches.length,'tâche')];
   if(r.total) out.push(r.total+' min');
   if(r.docs.length) out.push(p(r.docs.length,'doc'));
@@ -28537,27 +28589,25 @@ function _sdcResume(r){
   if(r.evals.length) out.push(p(r.evals.length,'éval'));
   return out.join(' · ');
 }
-
-/** Lignes d'en-tête pour un chapitre / une séance de la bibliothèque. Pure. */
-function _sdcLigneSeq(seq, idx){
-  return '/SEQ'+_sdcSeqNum(seq, idx)+(seq&&seq.titre?' '+String(seq.titre).trim():'');
-}
-function _sdcLigneSean(sean, idx){
-  const t=_sdcTitreSeance(sean);
-  return '/Séance '+((idx|0)+1)+(t?' '+t:'');
+/** Étiquette de provenance d'une ligne. Pure. */
+function _sdcProvenance(it){
+  if(!it) return '';
+  if(it.src==='biblio') return 'SEQ'+it.seqNum+' · S'+it.seanNum+(it.type==='tache'?' · l. '+(it.idx+1):'');
+  if(it.src==='cours') return 'ce cours seulement';
+  return '';
 }
 
-/** Texte complet d'une séance de la bibliothèque, dans la syntaxe de saisie. Pure. */
-function _sdcSerialiserSeance(seq, seqIdx, sean, seanIdx){
-  const L=[];
-  if(seq) L.push(_sdcLigneSeq(seq, seqIdx));
-  if(sean){
-    L.push(_sdcLigneSean(sean, seanIdx));
-    L.push(..._sdcCorpsSeance(sean));
-  }
-  return L.join('\n');
+/** Durée d'un cours en minutes, depuis « 10:20 » – « 11:15 ». Pure. */
+function _sdcDureeCours(debut, fin){
+  const m=(s)=>{ const x=String(s||'').match(/^(\d{1,2}):(\d{2})/); return x?(+x[1])*60+(+x[2]):null; };
+  const a=m(debut), b=m(fin);
+  return (a!=null && b!=null && b>a) ? b-a : 0;
 }
-/** Le corps seul (sans en-tête) d'une séance de la bibliothèque. Pure. */
+
+/** Lignes d'en-tête pour la bibliothèque. Pure. */
+function _sdcLigneSeq(seq, idx){ return '/SEQ'+_sdcSeqNum(seq, idx)+(seq&&seq.titre?' '+String(seq.titre).trim():''); }
+function _sdcLigneSean(sean, idx){ const t=_sdcTitreSeance(sean); return '/Séance '+((idx|0)+1)+(t?' '+t:''); }
+/** Les lignes d'une séance de la bibliothèque, en syntaxe de saisie. Pure. */
 function _sdcCorpsSeance(sean){
   const L=[];
   if(!sean) return L;
@@ -28570,24 +28620,25 @@ function _sdcCorpsSeance(sean){
   return L;
 }
 
-/** Remplace (ou pose) les lignes /SEQ et /Séance en tête, sans toucher au corps.
- *  `seanLigne` null → la ligne /Séance existante est retirée. Pure. */
-function _sdcRemplacerEntete(text, seqLigne, seanLigne){
-  const corps=String(text||'').split('\n').filter(l=>{
-    const it=_sdcClasserLigne(l); return !(it && (it.type==='seq'||it.type==='sean'));
-  });
-  while(corps.length && !corps[0].trim()) corps.shift();
-  const tete=[seqLigne, seanLigne].filter(Boolean);
-  return tete.concat(corps).join('\n');
-}
-/** Le texte a-t-il un corps (autre chose que l'en-tête) ? Pure. */
-function _sdcACorps(text){
-  return String(text||'').split('\n').some(l=>{ const it=_sdcClasserLigne(l); return it && it.type!=='seq' && it.type!=='sean'; });
+/** Ajoute des lignes de la bibliothèque AU BON ENDROIT, sans changer la
+ *  provenance des lignes existantes : si le dernier bloc du texte est déjà
+ *  cette séance, on ajoute à la fin ; sinon on ajoute en fin de texte un
+ *  nouvel en-tête /SEQ + /Séance suivi des lignes. Pure. */
+function _sdcAjouterDepuisBiblio(text, seqLigne, seanLigne, lignesAjout){
+  const s=String(text||'').replace(/\s+$/,'');
+  const L=s?s.split('\n'):[];
+  let dernierSeq=null, dernierSean=null;
+  L.forEach(l=>{ const it=_sdcClasserLigne(l); if(!it) return;
+    if(it.type==='seq'){ dernierSeq=l.trim(); dernierSean=null; }
+    else if(it.type==='sean') dernierSean=l.trim(); });
+  const memeBloc = dernierSeq && dernierSean
+    && _sdcNorm(dernierSeq)===_sdcNorm(seqLigne) && _sdcNorm(dernierSean)===_sdcNorm(seanLigne);
+  const ajout = memeBloc ? lignesAjout.slice() : [seqLigne, seanLigne].concat(lignesAjout);
+  return (L.length?L.join('\n')+'\n':'')+ajout.join('\n');
 }
 
-/** Insère un préfixe au curseur : sur une ligne NEUVE si la ligne courante
- *  n'est pas vide, curseur laissé derrière l'espace. « - N min » s'ajoute au
- *  contraire en FIN de ligne courante, en remplaçant une durée existante. Pure. */
+/** Insère un préfixe au curseur (ligne neuve si la ligne courante n'est pas
+ *  vide) ; « - N min » s'ajoute en fin de ligne et remplace une durée. Pure. */
 function _sdcInsererPrefixe(text, pos, prefixe){
   const s=String(text||''); pos=Math.max(0, Math.min(pos|0, s.length));
   const debut=s.lastIndexOf('\n', pos-1)+1;
@@ -28599,14 +28650,10 @@ function _sdcInsererPrefixe(text, pos, prefixe){
     return {text:s.slice(0,debut)+nouvelle+s.slice(fin), pos:debut+nouvelle.length};
   }
   const ins=prefixe+' ';
-  if(!ligne.trim()){
-    return {text:s.slice(0,debut)+ins+s.slice(fin), pos:debut+ins.length};
-  }
+  if(!ligne.trim()) return {text:s.slice(0,debut)+ins+s.slice(fin), pos:debut+ins.length};
   return {text:s.slice(0,fin)+'\n'+ins+s.slice(fin), pos:fin+1+ins.length};
 }
-
-/** Échange la ligne `idx` avec sa voisine (dir = -1 / +1), en sautant les
- *  lignes vides. Pure. */
+/** Échange la ligne `idx` avec sa voisine non vide (dir = ±1). Pure. */
 function _sdcDeplacerLigne(text, idx, dir){
   const L=String(text||'').split('\n');
   if(idx<0 || idx>=L.length) return String(text||'');
@@ -28617,18 +28664,75 @@ function _sdcDeplacerLigne(text, idx, dir){
   return L.join('\n');
 }
 
-/** Ce qui part vers le modal Séance : contenu (une ligne par tâche, SANS les
- *  durées — le cahier de texte est lu par les familles) et TAF (un par ligne). Pure. */
-function _sdcVersSeance(r){
-  const c=[];
-  (r&&r.taches||[]).forEach(t=>{ if(t.label) c.push(t.label); });
-  (r&&r.evals||[]).forEach(e=>{ if(e.titre) c.push('Évaluation : '+e.titre); });
-  return {contenu:c.join('\n'), taf:(r&&r.tafs||[]).filter(Boolean).join('\n')};
+/** Ce qui s'écrit dans le planning pour un cours. Pure.
+ *  `base` = l'entrée existante (on n'en garde que ce qui vient du RÉALISÉ :
+ *  taf-verif et reporter) ; `idBase` rend les identifiants stables et uniques. */
+function _sdcConstruireEntree(r, base, idBase){
+  base=base||{};
+  const garde=(Array.isArray(base.freeItems)?base.freeItems:[])
+    .filter(f=>f && !f.sdc && (f.type==='taf-verif' || f.type==='reporter'));
+  const free=[], lignes=[];
+  let n=0;
+  const ICON={tache:'⚙️', doc:'📄', res:'🔗', eval:'📝'};
+  const TYPE={tache:'modeOp', doc:'doc', res:'ressource', eval:'eval'};
+  (r&&r.items||[]).forEach(it=>{
+    if(it.type==='seq' || it.type==='sean' || it.type==='intention') return;
+    if(it.type==='taf') return;                       // → contenu prévu (champ TAF)
+    if(it.src==='biblio' && it.type==='tache'){
+      lignes.push({src:'biblio', kind:'tache', seqId:it.seqId, seanId:it.seanId, moIdx:it.idx, label:it.label, duree:it.duree||0});
+      return;
+    }
+    if(it.src==='biblio'){                            // doc / res de la séance : le modal les liste déjà
+      lignes.push({src:'biblio', kind:it.type, seqId:it.seqId, seanId:it.seanId, idx:it.idx, label:it.label});
+      return;
+    }
+    const id='sdc_'+String(idBase||'').replace(/[^A-Za-z0-9]/g,'')+'_'+(n++);
+    const fi={id, label:it.type==='eval'?(it.label||'Évaluation'):it.label, type:TYPE[it.type]||'modeOp',
+              icon:ICON[it.type]||'📝', duree:it.duree||0, sdc:true, suiviSynthese:it.type==='eval'};
+    if(it.type==='eval' && it.seqId) fi.seqId=it.seqId;
+    free.push(fi);
+    lignes.push({src:'cours', kind:it.type, fiId:id});
+  });
+  return {seances:(r&&r.seances||[]).map(s=>({seqId:s.seqId, seanId:s.seanId})),
+          lignes, freeItems:garde.concat(free), isolatedOps:[], skippedOps:[]};
 }
 
-/** Le premier cours à venir sans contenu. Pure.
- *  cours : [{cls, slotKey, dateStr, debut, fin, rempli, annule}] ; un cours du
- *  jour compte tant qu'il n'est pas terminé. */
+/** Contenu prévu vers le modal Séance : une ligne par tâche (SANS durées — le
+ *  cahier de texte est lu par les familles), TAF un par ligne. Pure. */
+function _sdcVersSeance(r){
+  const c=[];
+  (r&&r.items||[]).forEach(it=>{
+    if(it.type==='tache' && it.label) c.push(it.label);
+    else if(it.type==='eval') c.push('Évaluation : '+(it.label||''));
+  });
+  return {contenu:c.join('\n'), taf:(r&&r.tafs||[]).map(t=>t.label).filter(Boolean).join('\n')};
+}
+
+/** Une ligne stockée → l'élément que lisent les 36 consommateurs du moteur. Pure. */
+function _sdcLigneVersItem(l, freeItems){
+  if(!l) return null;
+  if(l.src==='biblio' && l.kind==='tache'){
+    const d=l.duree||0;
+    return {type:'task', seqId:l.seqId, seanId:l.seanId, taskIdx:l.moIdx, label:l.label,
+            dureeSlot:d, dureeTotal:d, doneBeforeSlot:0, isStart:true, isEnd:true,
+            taskIsLast:true, taskDoneSoFar:d, sdc:true};
+  }
+  if(l.src==='cours'){
+    const fi=(freeItems||[]).find(f=>f && f.id===l.fiId);
+    if(!fi) return null;
+    if(fi.type==='eval') return {type:'eval', fi, dureeSlot:fi.duree||0, sdc:true};
+    return {type:'free', fi, dureeSlot:fi.duree||0, isStart:true, isEnd:true, sdc:true};
+  }
+  return null;   // doc / res de la bibliothèque : pas d'élément de minutage
+}
+
+/** Un cours est « rempli » s'il a un contenu (saisi ou enregistré). Pure. */
+function _sdcEstRempli(saved, draft){
+  if(saved && ((saved.contenu && String(saved.contenu).trim()) || saved.valide)) return true;
+  if(draft && ((draft.saisie && String(draft.saisie).trim()) || (draft.contenu && String(draft.contenu).trim()))) return true;
+  return false;
+}
+/** Le premier cours à venir sans contenu. Pure. */
 function _sdcProchainVide(cours, today, now){
   const ok=(cours||[]).filter(c=>c && !c.annule && !c.rempli
     && (c.dateStr>today || (c.dateStr===today && String(c.fin||c.debut||'')>String(now||''))));
@@ -28636,34 +28740,47 @@ function _sdcProchainVide(cours, today, now){
   return ok[0]||null;
 }
 
-/** Un cours est « rempli » s'il a un contenu — PAS s'il a seulement une séance
- *  posée par le planning (sinon l'accueil sauterait des semaines). Pure. */
-function _sdcEstRempli(saved, draft){
-  if(saved && ((saved.contenu && String(saved.contenu).trim()) || saved.valide)) return true;
-  if(draft && ((draft.saisie && String(draft.saisie).trim()) || (draft.contenu && String(draft.contenu).trim()))) return true;
-  return false;
-}
-
-/** Les AUTRES cours de la classe où cette séance est déjà posée. Pure. */
-function _sdcAutresPlacements(mapping, cls, slotKey, seqId, seanId){
-  const out=[]; const c=String(cls||'').toLowerCase();
+/** LA BASCULE, calculée sans rien écrire. Pure.
+ *  mapping : S.edtProgMapping ; date : 'AAAA-MM-JJ' ; enregistres : Set de
+ *  'slotKey|cls' (cls en minuscules) des cours déjà enregistrés.
+ *  Pour chaque cours À PARTIR de la date, d'une classe (pas d'un scope groupe
+ *  « grp: »), non enregistré : on retire séances posées, lignes isolées, lignes
+ *  sautées, coupures, tâches libres, évaluations ; on GARDE taf-verif et
+ *  reporter (ils viennent du réalisé). Renvoie {nouvelles, retire, rapport}. */
+function _sdcPlanBascule(mapping, date, enregistres){
+  const nouvelles={}, retire={}, rapport={};
   Object.keys(mapping||{}).forEach(k=>{
     const p=k.lastIndexOf('|'); if(p<0) return;
-    if(k.slice(p+1).toLowerCase()!==c) return;
-    const sk=k.slice(0,p); if(sk===slotKey) return;
-    const e=mapping[k];
-    if(e && Array.isArray(e.seances) && e.seances.some(s=>s && s.seqId===seqId && s.seanId===seanId)) out.push({key:k, slotKey:sk});
+    const sk=k.slice(0,p), cls=k.slice(p+1);
+    if(/^grp:/.test(cls)) return;
+    if(sk.slice(0,10)<date) return;
+    if(enregistres && enregistres.has(sk+'|'+cls.toLowerCase())) return;
+    const e=mapping[k]; if(!e) return;
+    const fi=Array.isArray(e.freeItems)?e.freeItems:[];
+    const garde=fi.filter(f=>f && (f.type==='taf-verif' || f.type==='reporter'));
+    const nS=(e.seances||[]).length, nI=(e.isolatedOps||[]).length;
+    const nE=fi.filter(f=>f&&f.type==='eval').length, nL=fi.length-garde.length-nE;
+    if(!nS && !nI && !nE && !nL && !(e.skippedOps||[]).length && !e.stopAfterSlot && !e.lignes) return;
+    retire[k]=JSON.parse(JSON.stringify(e));
+    nouvelles[k]=garde.length ? {seances:[], freeItems:garde, isolatedOps:[], skippedOps:[]} : null;
+    const c=cls.toUpperCase();
+    if(!rapport[c]) rapport[c]={cours:0, seances:0, evals:0, libres:0};
+    rapport[c].cours++; rapport[c].seances+=nS+nI; rapport[c].evals+=nE; rapport[c].libres+=nL;
   });
-  out.sort((a,b)=>a.slotKey.localeCompare(b.slotKey));
-  return out;
+  return {nouvelles, retire, rapport};
 }
 
 /* ── Lecture de l'état réel (impur) ─────────────────────────────────────── */
 function _sdcNiveau(cls){ return String(cls||'').replace(/[0-9]+$/,''); }
+/** La clé de classe telle que S.cl la connaît (le planning passe '4e5', le
+ *  modal Séance lit les brouillons sous la clé de S.cl). */
+function _sdcClsCanon(cls){
+  const c=String(cls||''); const keys=Object.keys(S.cl||{});
+  return keys.find(k=>k===c) || keys.find(k=>k.toLowerCase()===c.toLowerCase()) || c;
+}
 function _sdcDraft(cls, slotKey){
   return (S.seanceContentDraft && S.seanceContentDraft[cls+'|'+slotKey]) || null;
 }
-/** Les cours (non annulés) d'une classe, dans l'ordre, avec leur état. */
 function _sdcCoursDeClasse(cls){
   let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ slots=[]; }
   return slots.map(s=>({
@@ -28680,49 +28797,101 @@ function _sdcMaintenant(){
   const d=(typeof _appNow==='function')?_appNow():new Date();
   return {today:toDateStr(d), now:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
 }
-/** Clé de planning : on réutilise la clé qui existe (casse historique), sinon
- *  slotKey|cls — lisible par getMapEntry ET par _homeProgSeanceFromMapping. */
+/** Clé de planning : celle qui existe, sinon slotKey|cls EN MINUSCULES — c'est
+ *  la forme que lit le moteur (computeSlotLayout met la classe en minuscules). */
 function _sdcMapKey(slotKey, cls){
   const m=S.edtProgMapping||{};
-  const k=slotKey+'|'+cls;
-  if(m[k]) return k;
   const kl=slotKey+'|'+String(cls).toLowerCase();
   if(m[kl]) return kl;
-  return k;
+  const k=slotKey+'|'+cls;
+  if(m[k]) return k;
+  return kl;
 }
-function _sdcSeanceDuPlanning(cls, slotKey){
-  const e=(S.edtProgMapping||{})[_sdcMapKey(slotKey, cls)];
-  if(!e || !Array.isArray(e.seances) || !e.seances.length) return null;
-  const prog=getProgression(_sdcNiveau(cls))||[];
-  const {seqId, seanId}=e.seances[0];
-  const seqIdx=prog.findIndex(s=>s&&s.id===seqId); if(seqIdx<0) return null;
-  const seq=prog[seqIdx];
-  const seanIdx=(seq.seances||[]).findIndex(s=>s&&s.id===seanId);
-  return {seq, seqIdx, sean:seanIdx>=0?seq.seances[seanIdx]:null, seanIdx};
-}
-/** Texte de départ d'un cours : la saisie de cet écran si elle existe ; sinon
- *  la séance posée par le planning, prise dans la bibliothèque ; sinon rien. */
-function _sdcTexteInitial(cls, slotKey){
-  const d=_sdcDraft(cls, slotKey);
-  if(d && typeof d.saisie==='string' && d.saisie.trim()) return d.saisie;
-  const p=_sdcSeanceDuPlanning(cls, slotKey);
-  if(p) return _sdcSerialiserSeance(p.seq, p.seqIdx, p.sean, p.seanIdx);
-  return '';
+/** Le cours est-il géré par cet écran (date ≥ bascule, classe) ? */
+function _sdcApresBascule(dateStr, cls){
+  const b=S.planningBascule;
+  if(!b || !dateStr) return false;
+  if(cls && typeof _isGrpScopeId==='function' && _isGrpScopeId(cls)) return false;
+  if(/^grp:/.test(String(cls||''))) return false;
+  return String(dateStr).slice(0,10)>=b;
 }
 
-/* ── État de l'écran ───────────────────────────────────────────────────── */
-let _sdc=null;   // {cls, slotKey, cours:[…], conflit:null|{…}}
-let _sdcSaisieT=null;
+/* ── La bascule (impur) ────────────────────────────────────────────────── */
+function _sdcEnregistresSet(){
+  const out=new Set();
+  Object.keys(S.cl||{}).forEach(cls=>{
+    try{ (_getSavedSeanceEntriesForClsCode(cls)||[]).forEach(({se})=>{ if(se&&se.slotKey) out.add(se.slotKey+'|'+cls.toLowerCase()); }); }catch(e){}
+  });
+  return out;
+}
+function _sdcApercuBascule(date){
+  return _sdcPlanBascule(S.edtProgMapping||{}, date, _sdcEnregistresSet());
+}
+/** Effectue la bascule. Tout ce qui est retiré est ARCHIVÉ dans
+ *  S.planningBasculeArchive (restaurable par _sdcAnnulerBascule). */
+function _sdcBasculer(date){
+  const plan=_sdcApercuBascule(date);
+  if(!S.edtProgMapping) S.edtProgMapping={};
+  if(typeof pushUndo==='function') try{ pushUndo(); }catch(e){}
+  Object.keys(plan.retire).forEach(k=>{
+    if(plan.nouvelles[k]) S.edtProgMapping[k]=plan.nouvelles[k]; else delete S.edtProgMapping[k];
+  });
+  S.planningBascule=date;
+  S.planningBasculeArchive={date, at:Date.now(), retire:plan.retire, rapport:plan.rapport};
+  if(typeof invalidateLayoutCache==='function') try{ invalidateLayoutCache(); }catch(e){}
+  saveS();
+  return plan;
+}
+/** Revenir en arrière tant qu'aucun cours n'a été composé depuis. */
+function _sdcAnnulerBascule(){
+  const a=S.planningBasculeArchive;
+  if(!a || !S.planningBascule) return {ok:false, message:'Aucune bascule à annuler.'};
+  const composes=Object.keys(S.edtProgMapping||{}).filter(k=>{ const e=S.edtProgMapping[k]; return e && Array.isArray(e.lignes) && e.lignes.length; });
+  if(composes.length) return {ok:false, message:composes.length+' cours déjà composé(s) depuis la bascule : annulation refusée pour ne pas les perdre.'};
+  Object.keys(a.retire||{}).forEach(k=>{ S.edtProgMapping[k]=a.retire[k]; });
+  delete S.planningBascule; delete S.planningBasculeArchive;
+  if(typeof invalidateLayoutCache==='function') try{ invalidateLayoutCache(); }catch(e){}
+  saveS();
+  return {ok:true, message:'Bascule annulée : l’ancien planning est rétabli.'};
+}
 
-/** Ouvre l'écran. Sans argument : le prochain cours sans contenu, toutes
- *  classes confondues (arbitrage du 25/09). */
+/* ── Écriture d'un cours ───────────────────────────────────────────────── */
+function _sdcEnregistrer(cls, slotKey, text){
+  cls=_sdcClsCanon(cls);
+  const cours=_sdcCoursDeClasse(cls).find(c=>c.slotKey===slotKey);
+  if(!cours) return {ok:false, message:'Cours introuvable.'};
+  if(cours.saved) return {ok:false, message:'Ce cours est déjà enregistré : modifiez-le depuis la séance ou le cahier de texte.'};
+  if(!_sdcApresBascule(cours.dateStr, cls)) return {ok:false, message:'Ce cours est antérieur à la bascule : il relève de l’ancien planning.'};
+  const r=_sdcInterpreter(text, getProgression(_sdcNiveau(cls))||[]);
+  if(!S.edtProgMapping) S.edtProgMapping={};
+  if(typeof pushUndo==='function') try{ pushUndo(); }catch(e){}
+  const key=_sdcMapKey(slotKey, cls);
+  const e=_sdcConstruireEntree(r, S.edtProgMapping[key], slotKey+cls);
+  if(!e.lignes.length && !e.freeItems.length) delete S.edtProgMapping[key];
+  else S.edtProgMapping[key]=e;
+  if(typeof invalidateLayoutCache==='function') try{ invalidateLayoutCache(cls); }catch(err){}
+  if(!S.seanceContentDraft) S.seanceContentDraft={};
+  const dk=cls+'|'+slotKey;
+  const d=S.seanceContentDraft[dk]||{};
+  const vs=_sdcVersSeance(r);
+  d.saisie=String(text||''); d.saisieEnreg=d.saisie; d.contenu=vs.contenu; d.taf=vs.taf;
+  S.seanceContentDraft[dk]=d;
+  if(_sdcSaisieT){ clearTimeout(_sdcSaisieT); _sdcSaisieT=null; }
+  saveS();
+  const nb=r.items.filter(i=>i.src==='biblio').length, nc=r.items.filter(i=>i.src==='cours').length;
+  return {ok:true, message:'Cours enregistré · '+nb+' ligne'+(nb>1?'s':'')+' de la bibliothèque, '+nc+' propre'+(nc>1?'s':'')+' au cours'};
+}
+
+/* ── État et ouverture ─────────────────────────────────────────────────── */
+let _sdc=null, _sdcSaisieT=null;
 function openSaisieCours(opts){
   opts=opts||{};
-  let cls=opts.cls||null, slotKey=opts.slotKey||null;
+  let cls=opts.cls?_sdcClsCanon(opts.cls):null, slotKey=opts.slotKey||null;
   const {today, now}=_sdcMaintenant();
   if(!cls || !slotKey){
     const classes=cls?[cls]:_sdcClasses();
     let tous=[]; classes.forEach(c=>{ tous=tous.concat(_sdcCoursDeClasse(c)); });
+    if(S.planningBascule) tous=tous.filter(c=>c.dateStr>=S.planningBascule);
     const p=_sdcProchainVide(tous, today, now);
     if(p){ cls=p.cls; slotKey=p.slotKey; }
     else if(classes.length){
@@ -28731,18 +28900,15 @@ function openSaisieCours(opts){
       slotKey=futurs.length?futurs[0].slotKey:null;
     }
   }
-  _sdc={cls, slotKey, conflit:null};
+  _sdc={cls, slotKey};
   _sdcRendre();
 }
 function closeSaisieCours(){
   _sdcFlushSaisie();
-  const bg=document.getElementById('sdc-bg');
-  if(bg) bg.remove();
+  const bg=document.getElementById('sdc-bg'); if(bg) bg.remove();
   _sdc=null;
+  try{ if(typeof renderVueAnnuelle==='function' && document.getElementById('prog-pane-annuelle') && document.getElementById('prog-pane-annuelle').style.display!=='none') renderVueAnnuelle(); }catch(e){}
 }
-/** Persiste le texte brut à chaque frappe (différé) : rien ne se perd en
- *  naviguant ou en fermant. La structure (planning, contenu prévu) n'est écrite
- *  qu'au bouton Enregistrer. */
 function _sdcPersisterSaisie(cls, slotKey, text){
   if(!cls || !slotKey) return;
   if(!S.seanceContentDraft) S.seanceContentDraft={};
@@ -28753,99 +28919,14 @@ function _sdcPersisterSaisie(cls, slotKey, text){
   if(_sdcSaisieT) clearTimeout(_sdcSaisieT);
   _sdcSaisieT=setTimeout(()=>{ _sdcSaisieT=null; saveS(); }, 400);
 }
-function _sdcFlushSaisie(){
-  if(_sdcSaisieT){ clearTimeout(_sdcSaisieT); _sdcSaisieT=null; saveS(); }
-}
-
-/* ── Enregistrer ───────────────────────────────────────────────────────── */
-/** Écrit un cours. `choix` ∈ {undefined, 'deplacer', 'doublon'}.
- *  Renvoie {ok, message} ou {besoinChoix:true, autres:[…]} sans RIEN écrire. */
-function _sdcEnregistrer(cls, slotKey, text, choix){
-  const lv=_sdcNiveau(cls);
-  const prog=getProgression(lv)||[];
-  const r=_sdcInterpreter(text, prog);
-  if(r.entete.sean && !r.entete.seq) return {ok:false, message:'Une séance sans chapitre : ajoutez une ligne /SEQ au-dessus.'};
-  const cours=_sdcCoursDeClasse(cls).find(c=>c.slotKey===slotKey);
-  if(cours && cours.saved) return {ok:false, message:'Ce cours est déjà enregistré : modifiez-le depuis la séance ou le cahier de texte.'};
-
-  // 1. Conflit de placement — détecté AVANT toute écriture (y compris avant
-  //    une création dans la bibliothèque), pour pouvoir annuler proprement.
-  let seqId=r.seq&&r.seq.id, seanId=r.sean&&r.sean.id;
-  if(seqId && seanId && !choix){
-    const autres=_sdcAutresPlacements(S.edtProgMapping, cls, slotKey, seqId, seanId);
-    if(autres.length){
-      const parSlot={}; _sdcCoursDeClasse(cls).forEach(c=>{ parSlot[c.slotKey]=c; });
-      return {besoinChoix:true, autres:autres.map(a=>{
-        const c=parSlot[a.slotKey]||{};
-        return {slotKey:a.slotKey, key:a.key, dateStr:c.dateStr||a.slotKey.slice(0,10), debut:c.debut||'',
-                protege:!!(c.saved || c.rempli), enregistre:!!c.saved};
-      })};
-    }
-  }
-
-  // 2. Créations dans la bibliothèque (le seul moment où cet écran y touche).
-  const crees=[];
-  if(r.seq && r.seq.etat==='creer' && r.sean){
-    const parsed={num:r.seq.num||'', titre:r.seq.titre||'Nouveau chapitre', intention:'', evalFinal:null,
-      seances:[{titre:r.sean.titre||'', taches:r.taches, docs:r.docs, ressources:r.res, tafs:r.tafs, evals:[]}]};
-    const id=_srCreateSequenceFromParsed(parsed, lv);
-    const seq=(getProgression(lv)||[]).find(s=>s.id===id);
-    if(seq){ seqId=seq.id; seanId=(seq.seances[0]||{}).id||null;
-      if(!r.sean.titre && seq.seances[0]) seq.seances[0].titre='Séance 1';
-      crees.push('le chapitre '+(r.seq.num?'SEQ'+r.seq.num:'')+' et sa séance 1'); }
-  } else if(r.seq && r.seq.etat==='existe' && r.sean && r.sean.etat==='creer'){
-    addSeance(lv, r.seq.id);
-    const seq=(getProgression(lv)||[]).find(s=>s.id===r.seq.id);
-    const sean=seq && seq.seances[seq.seances.length-1];
-    if(sean){
-      if(r.sean.titre) sean.titre=r.sean.titre;
-      if(r.taches.length){ sean.modeOp=r.taches.map(t=>t.label); sean.modeOpDurees=r.taches.map(t=>t.duree||0); }
-      if(r.docs.length) sean.docs=r.docs.slice();
-      if(r.res.length) sean.ressources=r.res.slice();
-      if(r.tafs.length) sean.tafs=r.tafs.slice();
-      seanId=sean.id; crees.push('la séance '+seq.seances.length+' dans SEQ'+(r.seq.num||''));
-    }
-  }
-
-  // 3. Planning d'affectation : CE cours seulement.
-  let deplaces=0;
-  if(seqId && seanId){
-    if(typeof pushUndo==='function') try{ pushUndo(); }catch(e){}
-    if(choix==='deplacer'){
-      const parSlot={}; _sdcCoursDeClasse(cls).forEach(c=>{ parSlot[c.slotKey]=c; });
-      _sdcAutresPlacements(S.edtProgMapping, cls, slotKey, seqId, seanId).forEach(a=>{
-        const c=parSlot[a.slotKey];
-        if(c && (c.saved || c.rempli)) return;       // jamais un cours enregistré ou déjà saisi
-        const e=S.edtProgMapping[a.key]; if(!e) return;
-        e.seances=e.seances.filter(s=>!(s.seqId===seqId && s.seanId===seanId));
-        if(!e.seances.length && !(e.freeItems||[]).length && !(e.isolatedOps||[]).length) delete S.edtProgMapping[a.key];
-        deplaces++;
-      });
-    }
-    const key=_sdcMapKey(slotKey, cls);
-    const entry=getMapEntry(key);
-    const deja=entry.seances.length===1 && entry.seances[0].seqId===seqId && entry.seances[0].seanId===seanId;
-    if(!deja) entry.seances=[{seqId, seanId}];
-    S.edtProgMapping[key]=entry;
-    if(typeof invalidateLayoutCache==='function') try{ invalidateLayoutCache(cls); }catch(e){}
-  }
-
-  // 4. Contenu prévu, lu par le modal Séance (même magasin que son brouillon).
-  if(!S.seanceContentDraft) S.seanceContentDraft={};
-  const k=cls+'|'+slotKey;
-  const d=S.seanceContentDraft[k]||{};
-  const vs=_sdcVersSeance(r);
-  d.saisie=String(text||''); d.saisieEnreg=d.saisie;
-  d.contenu=vs.contenu; d.taf=vs.taf;
-  S.seanceContentDraft[k]=d;
-  if(_sdcSaisieT){ clearTimeout(_sdcSaisieT); _sdcSaisieT=null; }
-  saveS();
-
-  const bouts=['Cours enregistré'];
-  if(crees.length) bouts.push('créé : '+crees.join(', '));
-  if(deplaces) bouts.push(deplaces===1?'la séance a quitté 1 autre cours':'la séance a quitté '+deplaces+' autres cours');
-  if(!seqId) bouts.push('sans séance de la bibliothèque');
-  return {ok:true, message:bouts.join(' · ')};
+function _sdcFlushSaisie(){ if(_sdcSaisieT){ clearTimeout(_sdcSaisieT); _sdcSaisieT=null; saveS(); } }
+function _sdcTexteInitial(cls, slotKey){
+  const d=_sdcDraft(cls, slotKey);
+  if(d && typeof d.saisie==='string' && d.saisie.trim()) return d.saisie;
+  // Brouillon tapé dans le modal Séance : gardé à la bascule, proposé tel quel
+  // (lignes nues → propres au cours).
+  if(d && typeof d.contenu==='string' && d.contenu.trim()) return d.contenu;
+  return '';
 }
 
 /* ── Rendu ─────────────────────────────────────────────────────────────── */
@@ -28854,9 +28935,7 @@ function _sdcDateLongue(dateStr){
   try{ return new Date(dateStr+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}); }
   catch(e){ return dateStr; }
 }
-
-function _sdcRendre(){
-  if(!_sdc) return;
+function _sdcFond(){
   let bg=document.getElementById('sdc-bg');
   if(!bg){
     bg=_sdcEl('div','sdc-bg'); bg.id='sdc-bg';
@@ -28867,20 +28946,59 @@ function _sdcRendre(){
   }
   bg.textContent='';
   const pan=_sdcEl('div','sdc-pan'); bg.appendChild(pan);
+  return pan;
+}
+
+/** Tant que la bascule n'est pas faite, l'écran l'explique et la propose. */
+function _sdcRendreBascule(pan){
+  const head=_sdcEl('div','sdc-head'); pan.appendChild(head);
+  head.appendChild(_sdcEl('div','sdc-titre','🗓️ Saisir mes cours'));
+  const bF=_sdcEl('button','bs sdc-fermer','Fermer'); bF.onclick=closeSaisieCours; head.appendChild(bF);
+  const corps=_sdcEl('div','sdc-bascule'); pan.appendChild(corps);
+  const {today}=_sdcMaintenant();
+  const plan=_sdcApercuBascule(today);
+  corps.appendChild(_sdcEl('div','sdc-h2','Passer au nouveau planning'));
+  [ 'À partir d’aujourd’hui, c’est cet écran qui remplit le planning d’affectation, cours par cours.',
+    'Chaque cours devient une suite de lignes, prises dans la bibliothèque, dans un autre cours, ou propres à ce cours. Rien n’entre dans la bibliothèque sans que vous le demandiez.',
+    'Plus de débordement automatique d’un cours sur le suivant.',
+    'Ce qui est déjà placé dans le planning pour les cours à venir non enregistrés sera RETIRÉ : vous recomposerez au fil des cours. Les cours passés et les cours enregistrés ne sont pas touchés. Les vérifications de TAF et les reports de séances enregistrées sont gardés. Vos brouillons du modal Séance aussi.'
+  ].forEach(t=>corps.appendChild(_sdcEl('p',null,t)));
+  const cls=Object.keys(plan.rapport).sort();
+  if(cls.length){
+    corps.appendChild(_sdcEl('div','sdc-h2','Ce qui sera retiré'));
+    cls.forEach(c=>{ const r=plan.rapport[c];
+      corps.appendChild(_sdcEl('div','sdc-rap', c+' : '+r.cours+' cours — '+r.seances+' séance(s) ou ligne(s) placée(s)'
+        +(r.evals?', '+r.evals+' évaluation(s)':'')+(r.libres?', '+r.libres+' tâche(s) libre(s)':''))); });
+  } else corps.appendChild(_sdcEl('p','sdc-rap','Rien n’est placé dans les cours à venir : rien ne sera retiré.'));
+  corps.appendChild(_sdcEl('p','sdc-pref-n','Une sauvegarde complète est téléchargée juste avant, et ce qui est retiré reste archivé : la bascule peut être annulée tant qu’aucun cours n’a été composé.'));
+  const btns=_sdcEl('div','sdc-choix-b'); corps.appendChild(btns);
+  const bGo=_sdcEl('button','bp','Faire la bascule aujourd’hui');
+  bGo.onclick=()=>{
+    try{ if(typeof exportData==='function') exportData(); }catch(e){ console.warn('[sdc] export avant bascule', e); }
+    _sdcBasculer(today);
+    openSaisieCours();
+  };
+  const bNon=_sdcEl('button','bs','Plus tard'); bNon.onclick=closeSaisieCours;
+  btns.appendChild(bGo); btns.appendChild(bNon);
+}
+
+function _sdcRendre(){
+  if(!_sdc) return;
+  const pan=_sdcFond();
+  if(!S.planningBascule){ _sdcRendreBascule(pan); return; }
   const {cls, slotKey}=_sdc;
 
   // ── Bandeau
   const head=_sdcEl('div','sdc-head'); pan.appendChild(head);
-  const titre=_sdcEl('div','sdc-titre','🗓️ Saisir mes cours'); head.appendChild(titre);
+  head.appendChild(_sdcEl('div','sdc-titre','🗓️ Saisir mes cours'));
   const selCls=_sdcEl('select','sdc-cls'); selCls.title='Classe';
   _sdcClasses().forEach(c=>{ const o=_sdcEl('option',null,c); o.value=c; if(c===cls) o.selected=true; selCls.appendChild(o); });
   selCls.onchange=()=>{ _sdcFlushSaisie(); openSaisieCours({cls:selCls.value}); };
   head.appendChild(selCls);
-
   const cours=cls?_sdcCoursDeClasse(cls).filter(c=>!c.annule):[];
   const i=cours.findIndex(c=>c.slotKey===slotKey);
   const cur=i>=0?cours[i]:null;
-  const nav=(j)=>{ if(j<0||j>=cours.length) return; _sdcFlushSaisie(); _sdc.slotKey=cours[j].slotKey; _sdc.conflit=null; _sdcRendre(); };
+  const nav=(j)=>{ if(j<0||j>=cours.length) return; _sdcFlushSaisie(); _sdc.slotKey=cours[j].slotKey; _sdcRendre(); };
   const bPrev=_sdcEl('button','bs sdc-nav','◀'); bPrev.title='Cours précédent de la classe'; bPrev.disabled=i<=0; bPrev.onclick=()=>nav(i-1);
   const bNext=_sdcEl('button','bs sdc-nav','▶'); bNext.title='Cours suivant de la classe'; bNext.disabled=i<0||i>=cours.length-1; bNext.onclick=()=>nav(i+1);
   head.appendChild(bPrev);
@@ -28893,90 +29011,108 @@ function _sdcRendre(){
   head.appendChild(quand);
   head.appendChild(bNext);
   const bVide=_sdcEl('button','bs sdc-vide','Prochain cours vide');
-  bVide.title='Aller au prochain cours sans contenu de cette classe';
   bVide.onclick=()=>{ _sdcFlushSaisie(); openSaisieCours({cls}); };
   head.appendChild(bVide);
   const bFermer=_sdcEl('button','bs sdc-fermer','Fermer'); bFermer.onclick=closeSaisieCours; head.appendChild(bFermer);
   if(!cur) return;
 
   const enregistre=!!cur.saved;
-  const d=_sdcDraft(cls, slotKey);
-  const texte0=enregistre ? (String(cur.saved.contenu||'')) : _sdcTexteInitial(cls, slotKey);
-
-  // ── Sélecteurs chapitre / séance
+  const avant=!_sdcApresBascule(cur.dateStr, cls);
+  const lectureSeule=enregistre||avant;
+  const texte0=enregistre ? String(cur.saved.contenu||'') : _sdcTexteInitial(cls, slotKey);
+  const dureeCours=_sdcDureeCours(cur.debut, cur.fin);
   const lv=_sdcNiveau(cls);
   const prog=getProgression(lv)||[];
+
+  // ── Bibliothèque : choisir une séance, en prendre tout ou partie
   const sels=_sdcEl('div','sdc-sels'); pan.appendChild(sels);
   const selSeq=_sdcEl('select'); const selSean=_sdcEl('select');
   const lab=(t,el)=>{ const w=_sdcEl('label','sdc-lab'); w.appendChild(_sdcEl('span',null,t)); w.appendChild(el); return w; };
-  sels.appendChild(lab('Chapitre', selSeq)); sels.appendChild(lab('Séance', selSean));
+  sels.appendChild(lab('Bibliothèque — chapitre', selSeq)); sels.appendChild(lab('Séance', selSean));
+  const biblio=_sdcEl('div','sdc-biblio'); pan.appendChild(biblio);
+  const o0=_sdcEl('option',null,'— choisir —'); o0.value=''; selSeq.appendChild(o0);
+  prog.forEach((s,k)=>{ const o=_sdcEl('option',null,'SEQ'+_sdcSeqNum(s,k)+' — '+(s.titre||'')); o.value=String(k); selSeq.appendChild(o); });
+  const remplirSean=()=>{
+    selSean.textContent='';
+    const oz=_sdcEl('option',null,selSeq.value===''?'— le chapitre d’abord —':'— choisir —'); oz.value=''; selSean.appendChild(oz);
+    const seq=prog[+selSeq.value];
+    if(selSeq.value!=='' && seq) (seq.seances||[]).forEach((s,k)=>{ const t=_sdcTitreSeance(s); const o=_sdcEl('option',null,'Séance '+(k+1)+(t?' — '+t:'')); o.value=String(k); selSean.appendChild(o); });
+    selSean.disabled=lectureSeule || selSeq.value==='';
+  };
+  const ajouter=(lignesAjout)=>{
+    const seq=prog[+selSeq.value], sean=seq&&(seq.seances||[])[+selSean.value];
+    if(!sean || lectureSeule) return;
+    ta.value=_sdcAjouterDepuisBiblio(ta.value, _sdcLigneSeq(seq,+selSeq.value), _sdcLigneSean(sean,+selSean.value), lignesAjout);
+    maj(true); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+  };
+  const remplirBiblio=()=>{
+    biblio.textContent='';
+    const seq=prog[+selSeq.value], sean=seq&&(seq.seances||[])[+selSean.value];
+    if(selSeq.value==='' || selSean.value==='' || !sean) return;
+    const corpsB=_sdcCorpsSeance(sean);
+    if(!corpsB.length){ biblio.appendChild(_sdcEl('span','sdc-pref-n','Cette séance est vide dans la bibliothèque.')); return; }
+    const bTout=_sdcEl('button','sdc-chip sdc-tout','＋ Toute la séance'); bTout.type='button'; bTout.disabled=lectureSeule;
+    bTout.onclick=()=>ajouter(corpsB); biblio.appendChild(bTout);
+    corpsB.forEach(l=>{ const b=_sdcEl('button','sdc-chip sdc-bl','＋ '+l); b.type='button'; b.disabled=lectureSeule; b.title='Ajouter cette ligne au cours'; b.onclick=()=>ajouter([l]); biblio.appendChild(b); });
+  };
+  selSeq.onchange=()=>{ remplirSean(); remplirBiblio(); };
+  selSean.onchange=remplirBiblio;
+  selSeq.disabled=lectureSeule; remplirSean();
 
   // ── Corps : saisie | interprétation
   const corps=_sdcEl('div','sdc-corps'); pan.appendChild(corps);
   const colG=_sdcEl('div','sdc-col'); const colD=_sdcEl('div','sdc-col'); corps.appendChild(colG); corps.appendChild(colD);
   colG.appendChild(_sdcEl('div','sdc-h','Ce qu’on fait — une ligne par élément'));
-  const ta=_sdcEl('textarea','sdc-ta'); ta.value=texte0; ta.spellcheck=true;
-  ta.placeholder='/SEQ4 L’habitat connecté\n/Séance 3 Programmer un éclairage\nRappel : entrée → traitement → sortie - 10 min\nPrise en main de la carte - 15 min\n/Doc Fiche activité 4.3\n/TAF Terminer l’algorigramme p. 3';
+  const ta=_sdcEl('textarea','sdc-ta'); ta.value=texte0; ta.spellcheck=true; ta.readOnly=lectureSeule;
+  ta.placeholder='Choisissez une séance au-dessus pour en prendre des lignes,\nou écrivez directement :\nCorrection de l’exercice de vendredi - 15 min\n/TAF Terminer l’algorigramme p. 3';
   colG.appendChild(ta);
   const pref=_sdcEl('div','sdc-pref'); colG.appendChild(pref);
   pref.appendChild(_sdcEl('span','sdc-pref-l','Insérer'));
   ['/SEQ','/Séance','/Doc','/Res','/TAF','/Eval','- 15 min'].forEach(p=>{
-    const b=_sdcEl('button','sdc-chip',p); b.type='button';
-    b.onmousedown=(e)=>e.preventDefault();       // garder le curseur dans la zone
+    const b=_sdcEl('button','sdc-chip',p); b.type='button'; b.disabled=lectureSeule;
+    b.onmousedown=(e)=>e.preventDefault();
     b.onclick=()=>{ if(ta.readOnly) return; const r=_sdcInsererPrefixe(ta.value, ta.selectionStart, p); ta.value=r.text; ta.focus(); ta.setSelectionRange(r.pos, r.pos); maj(true); };
     pref.appendChild(b);
   });
-  pref.appendChild(_sdcEl('span','sdc-pref-n','Une ligne sans préfixe est une tâche.'));
+  pref.appendChild(_sdcEl('span','sdc-pref-n','Une ligne sans préfixe est une tâche. Sous un /SEQ + /Séance connus, une ligne proche d’une ligne de la bibliothèque y est reliée ; sinon elle est propre à ce cours.'));
 
   colD.appendChild(_sdcEl('div','sdc-h','Interprétation'));
+  const jauge=_sdcEl('div','sdc-jauge'); colD.appendChild(jauge);
   const resume=_sdcEl('div','sdc-resume'); colD.appendChild(resume);
   const liste=_sdcEl('div','sdc-liste'); colD.appendChild(liste);
   const effets=_sdcEl('div','sdc-effets'); colD.appendChild(effets);
 
-  // ── Pied
   const pied=_sdcEl('div','sdc-pied'); pan.appendChild(pied);
   const bEnr=_sdcEl('button','bp sdc-enr','Enregistrer'); pied.appendChild(bEnr);
   const etat=_sdcEl('div','sdc-etat'); pied.appendChild(etat);
-  const zoneChoix=_sdcEl('div','sdc-choix'); pan.insertBefore(zoneChoix, pied);
+  bEnr.disabled=lectureSeule;
+  if(enregistre) etat.textContent='Ce cours est déjà enregistré : son contenu se modifie depuis la séance ou le cahier de texte.';
+  else if(avant) etat.textContent='Cours antérieur à la bascule du '+_sdcDateLongue(S.planningBascule)+' : il relève de l’ancien planning.';
 
-  if(enregistre){
-    ta.readOnly=true; bEnr.disabled=true; selSeq.disabled=true; selSean.disabled=true;
-    etat.textContent='Ce cours est déjà enregistré : son contenu se modifie depuis la séance ou le cahier de texte.';
-  }
-
-  const remplirSelecteurs=(r)=>{
-    selSeq.textContent=''; selSean.textContent='';
-    const o0=_sdcEl('option',null,'— aucun —'); o0.value=''; selSeq.appendChild(o0);
-    prog.forEach((s,k)=>{ const o=_sdcEl('option',null,'SEQ'+_sdcSeqNum(s,k)+' — '+(s.titre||'')); o.value=String(k); selSeq.appendChild(o); });
-    const oN=_sdcEl('option',null,'＋ Nouveau chapitre (/SEQ)'); oN.value='+'; selSeq.appendChild(oN);
-    if(r.seq && r.seq.etat==='existe') selSeq.value=String(r.seq.idx);
-    else if(r.seq){ const oc=_sdcEl('option',null,'SEQ'+(r.seq.num||'?')+' — '+(r.seq.titre||'')+' (à créer)'); oc.value='c'; selSeq.insertBefore(oc, oN); selSeq.value='c'; }
-    else selSeq.value='';
-    const oS0=_sdcEl('option',null, r.seq?'— choisir —':'— le chapitre d’abord —'); oS0.value=''; selSean.appendChild(oS0);
-    if(r.seq && r.seq.etat==='existe'){
-      (prog[r.seq.idx].seances||[]).forEach((s,k)=>{ const t=_sdcTitreSeance(s); const o=_sdcEl('option',null,'Séance '+(k+1)+(t?' — '+t:'')); o.value=String(k); selSean.appendChild(o); });
-    }
-    if(r.seq){ const oNs=_sdcEl('option',null,'＋ Nouvelle séance (/Séance)'); oNs.value='+'; selSean.appendChild(oNs); }
-    if(r.sean && r.sean.etat==='existe') selSean.value=String(r.sean.idx);
-    else if(r.sean){ const oc=_sdcEl('option',null,'Séance '+(r.sean.num||'?')+(r.sean.titre?' — '+r.sean.titre:'')+' (à créer)'); oc.value='c'; selSean.appendChild(oc); selSean.value='c'; }
-    selSean.disabled=enregistre || !r.seq;
-  };
-
-  const BADGE={seq:'SEQ', sean:'SÉANCE', tache:'TÂCHE', doc:'DOC', res:'RES', taf:'TAF', eval:'ÉVAL', intention:'INTENTION'};
+  const BADGE={seq:'SEQ', sean:'SÉANCE', tache:'TÂCHE', doc:'DOC', res:'RES', taf:'TAF', eval:'ÉVAL'};
   const maj=(persister)=>{
     const r=_sdcInterpreter(ta.value, prog);
-    remplirSelecteurs(r);
+    const tot=r.total;
+    jauge.textContent='';
+    if(dureeCours){
+      const dep=tot-dureeCours;
+      jauge.className='sdc-jauge'+(dep>0?' sdc-jauge-ko':'');
+      jauge.appendChild(_sdcEl('b',null,tot+' min'));
+      jauge.appendChild(document.createTextNode(' sur '+dureeCours+(dep>0?' — dépasse de '+dep+' min : rien ne glisse sur le cours suivant, à vous de choisir.':'')));
+    }
     resume.textContent=_sdcResume(r);
     liste.textContent='';
     r.items.forEach(it=>{
-      const row=_sdcEl('div','sdc-it sdc-t-'+it.type+(it.ignoree?' sdc-ign':''));
+      const row=_sdcEl('div','sdc-it sdc-t-'+it.type+(it.src?' sdc-src-'+it.src:''));
       row.appendChild(_sdcEl('span','sdc-badge',BADGE[it.type]||it.type));
-      const lbl=(it.type==='seq'?(it.num?it.num+' ':''):it.type==='sean'?(it.num?it.num+' ':''):'')+(it.label||'');
-      row.appendChild(_sdcEl('span','sdc-lbl',lbl||'(sans titre)'));
-      if(it.type==='seq' && r.seq) row.appendChild(_sdcEl('span','sdc-etat-'+r.seq.etat, r.seq.etat==='existe'?'existe':'à créer'));
-      if(it.type==='sean' && r.sean) row.appendChild(_sdcEl('span','sdc-etat-'+r.sean.etat, r.sean.etat==='existe'?'existe':'à créer'));
+      // En-tête sans titre tapé : on montre celui de la bibliothèque.
+      const titre=it.label || ((it.type==='seq'||it.type==='sean') && it.titreBiblio ? (it.type==='sean'?_sdcTitreSeance({titre:it.titreBiblio}):it.titreBiblio) : '');
+      const lbl=((it.type==='seq'||it.type==='sean')&&it.num?it.num+' ':'')+(titre||'');
+      row.appendChild(_sdcEl('span','sdc-lbl',lbl||'—'));
+      if(it.type==='seq'||it.type==='sean') row.appendChild(_sdcEl('span','sdc-etat-'+it.etat, it.etat==='existe'?'bibliothèque':'inconnu — repère seulement'));
+      else if(it.src) row.appendChild(_sdcEl('span','sdc-prov sdc-prov-'+it.src, _sdcProvenance(it)));
       if(it.duree) row.appendChild(_sdcEl('span','sdc-dur',it.duree+' min'));
-      if(!enregistre && it.type!=='seq' && it.type!=='sean'){
+      if(!lectureSeule && it.type!=='seq' && it.type!=='sean'){
         const up=_sdcEl('button','sdc-mv','↑'); up.title='Monter'; up.onclick=()=>{ ta.value=_sdcDeplacerLigne(ta.value, it.ligne, -1); maj(true); };
         const dn=_sdcEl('button','sdc-mv','↓'); dn.title='Descendre'; dn.onclick=()=>{ ta.value=_sdcDeplacerLigne(ta.value, it.ligne, +1); maj(true); };
         row.appendChild(up); row.appendChild(dn);
@@ -28984,92 +29120,55 @@ function _sdcRendre(){
       liste.appendChild(row);
     });
     effets.textContent='';
-    if(!enregistre){
-      const E=[];
-      r.erreurs.forEach(x=>E.push('⚠ '+x));
-      if(r.seq && r.seq.etat==='creer' && r.sean) E.push('Créer SEQ'+(r.seq.num||'')+' et sa séance dans la progression du '+lv+', avec ces lignes.');
-      else if(r.sean && r.sean.etat==='creer') E.push('Créer cette séance dans SEQ'+(r.seq.num||'')+', avec ces lignes.');
-      else if(r.seq && !r.sean) E.push('Sans ligne /Séance, ce cours n’est rattaché à aucune séance de la bibliothèque.');
-      if(r.sean) E.push('Rattacher ce cours à cette séance dans le planning d’affectation — ce cours seulement.');
-      if(!r.seq) E.push('Aucun chapitre : le contenu est enregistré, sans rattachement au planning.');
-      E.push('Préparer le contenu et les TAF du modal Séance de ce cours.');
+    if(!lectureSeule){
       effets.appendChild(_sdcEl('div','sdc-h2','Ce que « Enregistrer » va faire'));
+      const nb=r.items.filter(x=>x.src==='biblio').length, nc=r.items.filter(x=>x.src==='cours').length;
+      const E=[];
+      r.avert.forEach(x=>E.push('⚠ '+x));
+      E.push('Poser ces lignes, dans cet ordre, sur ce cours du planning — ce cours seulement.');
+      if(nb) E.push(nb+' ligne'+(nb>1?'s':'')+' reliée'+(nb>1?'s':'')+' à la bibliothèque (suivies ligne par ligne dans le modal Séance).');
+      if(nc) E.push(nc+' ligne'+(nc>1?'s':'')+' propre'+(nc>1?'s':'')+' à ce cours — rien n’entre dans la bibliothèque.');
+      E.push('Préparer le contenu et les TAF du modal Séance de ce cours.');
       E.forEach(t=>effets.appendChild(_sdcEl('div',/^⚠/.test(t)?'sdc-err':null,t)));
       const dd=_sdcDraft(cls, slotKey);
       const enreg=dd && typeof dd.saisieEnreg==='string' ? dd.saisieEnreg : null;
-      etat.textContent = enreg===null ? (ta.value.trim()?'Pas encore enregistré.':'')
+      if(!etat.classList.contains('sdc-ok')) etat.textContent = enreg===null ? (ta.value.trim()?'Pas encore enregistré.':'')
         : (enreg===ta.value ? 'Enregistré.' : 'Modifications non enregistrées (le texte est gardé).');
     }
-    if(persister && !enregistre) _sdcPersisterSaisie(cls, slotKey, ta.value);
+    if(persister && !lectureSeule){ etat.classList.remove('sdc-ok','sdc-ko'); _sdcPersisterSaisie(cls, slotKey, ta.value); }
   };
   ta.addEventListener('input', ()=>maj(true));
-
-  selSeq.onchange=()=>{
-    const v=selSeq.value;
-    if(v==='+'){
-      let n=prog.reduce((m,s,k)=>Math.max(m, parseInt(_sdcSeqNum(s,k),10)||0), 0)+1;
-      ta.value=_sdcRemplacerEntete(ta.value, '/SEQ'+n+' ', null);
-      ta.focus(); const p=('/SEQ'+n+' ').length; ta.setSelectionRange(p,p);
-    } else if(v!=='' && v!=='c'){
-      ta.value=_sdcRemplacerEntete(ta.value, _sdcLigneSeq(prog[+v], +v), null);
-    }
-    maj(true);
-  };
-  selSean.onchange=()=>{
-    const r=_sdcInterpreter(ta.value, prog);
-    if(!r.seq) return;
-    const seqL=r.seq.etat==='existe'?_sdcLigneSeq(prog[r.seq.idx], r.seq.idx):'/SEQ'+(r.seq.num||'')+(r.seq.titre?' '+r.seq.titre:'');
-    const v=selSean.value;
-    if(v==='+'){
-      const n=(r.seq.etat==='existe'?(prog[r.seq.idx].seances||[]).length:0)+1;
-      ta.value=_sdcRemplacerEntete(ta.value, seqL, '/Séance '+n+' ');
-      ta.focus(); const p=(seqL+'\n/Séance '+n+' ').length; ta.setSelectionRange(p,p);
-    } else if(v!=='' && v!=='c' && r.seq.etat==='existe'){
-      const seq=prog[r.seq.idx], sean=(seq.seances||[])[+v];
-      const corpsVide=!_sdcACorps(ta.value);
-      ta.value=_sdcRemplacerEntete(ta.value, seqL, _sdcLigneSean(sean, +v));
-      // Corps vide : on part de la version de la bibliothèque (modifiable ensuite).
-      if(corpsVide){ const c=_sdcCorpsSeance(sean); if(c.length) ta.value+= '\n'+c.join('\n'); }
-    }
-    maj(true);
-  };
-
   bEnr.onclick=()=>{
-    const faire=(choix)=>{
-      zoneChoix.textContent='';
-      const res=_sdcEnregistrer(cls, slotKey, ta.value, choix);
-      if(res.besoinChoix){ _sdcAfficherChoix(zoneChoix, res.autres, faire); return; }
-      etat.textContent=res.ok?('✓ '+res.message):('⚠ '+res.message);
-      etat.className='sdc-etat '+(res.ok?'sdc-ok':'sdc-ko');
-      if(res.ok){ const keep=etat.textContent; maj(false); etat.textContent=keep; }
-    };
-    faire(undefined);
+    const res=_sdcEnregistrer(cls, slotKey, ta.value);
+    etat.className='sdc-etat '+(res.ok?'sdc-ok':'sdc-ko');
+    etat.textContent=(res.ok?'✓ ':'⚠ ')+res.message;
+    if(res.ok) maj(false);
   };
-
   maj(false);
-  if(!enregistre) setTimeout(()=>{ try{ ta.focus(); }catch(e){} }, 0);
+  if(!lectureSeule) setTimeout(()=>{ try{ ta.focus(); }catch(e){} }, 0);
 }
 
-/** La question posée quand la séance est déjà sur un autre cours (arbitrage :
- *  « me demander à chaque fois »). Construite DANS l'écran, pas dans #mbg. */
-function _sdcAfficherChoix(zone, autres, faire){
-  zone.textContent='';
-  const box=_sdcEl('div','sdc-choix-box'); zone.appendChild(box);
-  box.appendChild(_sdcEl('div','sdc-h2','Cette séance est déjà posée sur '+(autres.length>1?autres.length+' autres cours':'un autre cours')+' de la classe'));
-  autres.forEach(a=>{
-    const t=_sdcDateLongue(a.dateStr)+(a.debut?' · '+a.debut:'')
-      +(a.enregistre?' — enregistré, il ne bougera pas':a.protege?' — contenu déjà saisi, il ne bougera pas':'');
-    box.appendChild(_sdcEl('div','sdc-choix-l','• '+t));
+/* ── Lot C : la carte du planning après la bascule (lecture, clic → écran) ── */
+function _sdcCarteLignes(inner, card, slot, cc){
+  let sl=null; try{ sl=getSlotLayout(cc, slot.slotKey); }catch(e){ sl=null; }
+  const items=(sl&&sl.items)||[];
+  const liste=_sdcEl('div','sdc-carte-l');
+  items.forEach(it=>{
+    const lbl = it.type==='task' ? it.label : (it.fi ? ((it.fi.icon?it.fi.icon+' ':'')+(it.fi.label||'')) : '');
+    if(!lbl) return;
+    const row=_sdcEl('div','sdc-carte-i'+(it.type==='task'?' sdc-carte-b':''));
+    row.appendChild(_sdcEl('span',null,lbl));
+    if(it.dureeSlot) row.appendChild(_sdcEl('span','sdc-dur',it.dureeSlot+' min'));
+    liste.appendChild(row);
   });
-  const btns=_sdcEl('div','sdc-choix-b'); box.appendChild(btns);
-  const b1=_sdcEl('button','bp','Déplacer ici');
-  b1.title='La séance quitte l’autre cours, qui devient vide. Rien d’autre ne bouge.';
-  b1.onclick=()=>faire('deplacer');
-  const b2=_sdcEl('button','bs','Doublon : la garder aussi là-bas');
-  b2.onclick=()=>faire('doublon');
-  const b3=_sdcEl('button','bs','Annuler'); b3.onclick=()=>{ zone.textContent=''; };
-  btns.appendChild(b1); btns.appendChild(b2); btns.appendChild(b3);
-  box.appendChild(_sdcEl('div','sdc-pref-n','« Déplacer » vide l’autre cours sans décaler les suivants. Rien n’a encore été écrit.'));
+  if(!liste.childNodes.length) liste.appendChild(_sdcEl('div','sdc-carte-vide','Vide — cliquer pour composer'));
+  inner.appendChild(liste);
+  const d=_sdcDureeCours(slot.debut, slot.fin||(typeof getSlotFin==='function'?getSlotFin(slot.debut):''));
+  const used=(sl&&sl.usedMn)||0;
+  if(d && used) inner.appendChild(_sdcEl('div','sdc-carte-tot'+(used>d?' sdc-jauge-ko':''), used+' / '+d+' min'));
+  card.style.cursor='pointer';
+  card.title='Ouvrir ce cours dans « Saisir mes cours »';
+  card.addEventListener('click', ()=>openSaisieCours({cls:cc, slotKey:slot.slotKey}));
 }
 
 function closeCahierTexte(){
@@ -37280,6 +37379,11 @@ function computeSlotLayout(clsCode, fromSlotKey, grpId) {
 
   // Fix AA2 : reporters avec overflow multi-slots (comme les vraies tâches)
   const pendingReporters=new Map(); // fi.id → {fi, remainingDuree}
+  // V11.3.64 — BASCULE (spec saisir-mes-cours §3.2) : à partir de cette date, un
+  // cours de CLASSE n'a que ses lignes explicites (entry.lignes, écrites par
+  // « Saisir mes cours ») ; aucune suite de séance, aucun report n'y entre.
+  // Avant elle : moteur inchangé. Les scopes groupe (« grp: ») ne basculent pas.
+  const _bascule = (!_isGrpSL && S.planningBascule) ? S.planningBascule : null;
 
   for(let si = startIdx; si < allSlots.length; si++) {
     const slot = allSlots[si];
@@ -37294,6 +37398,18 @@ function computeSlotLayout(clsCode, fromSlotKey, grpId) {
 
     const items = [];
     let usedMn = 0;
+
+    if(_bascule && slot.dateStr >= _bascule){
+      Object.keys(pending).forEach(k=>delete pending[k]);
+      Object.keys(paused).forEach(k=>delete paused[k]);
+      pendingReporters.clear();
+      (Array.isArray(entry.lignes)?entry.lignes:[]).forEach(l=>{
+        const it=_sdcLigneVersItem(l, freeItems);
+        if(it){ items.push(it); usedMn+=it.dureeSlot||0; }
+      });
+      layout[slot.slotKey] = { items, usedMn, unusedMn:0, slotD };
+      continue;
+    }
 
     // Helper : label d'une op isolée
     const _isoLabel=(op)=>{
@@ -42679,7 +42795,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
-    'Nouvel écran « Saisir mes cours » (tuile verte de l’accueil, ou onglet dans Progression) : il s’ouvre sur le prochain cours sans contenu. On y écrit ce qu’on fait avec la syntaxe de la saisie rapide (/SEQ, /Séance, /Doc, /Res, /TAF, /Eval, « - 15 min », une ligne nue = une tâche), des boutons insèrent les préfixes, et l’interprétation s’affiche à côté, réordonnable. Enregistrer rattache le cours à sa séance dans le planning d’affectation — ce cours seulement — et prépare le contenu et les TAF du modal Séance. Si la séance est déjà posée sur un autre cours, l’écran demande : la déplacer ou la garder aux deux endroits.',
+    'Nouvel écran « Saisir mes cours » (tuile verte de l’accueil, ou onglet dans Progression) : c’est désormais LA manière de remplir le planning d’affectation, cours par cours. Un cours est une suite de lignes : prises dans la bibliothèque (toute une séance ou quelques lignes), ou propres à ce cours — rien n’entre dans la bibliothèque sans que vous le demandiez. Plusieurs séances, même de séquences différentes, dans un même cours. Plus de débordement automatique : un cours trop rempli s’allonge et l’écran le signale. À la première ouverture, l’écran propose la bascule : ce qui était placé dans les cours à venir est retiré (sauvegarde téléchargée avant, annulable), le reste est intact. Le planning d’affectation devient une vue d’ensemble : un clic sur un cours l’ouvre dans l’écran.',
     'Synchronisation cloud : la copie de sécurité prise avant chaque synchronisation porte enfin sur ce qui VA ÊTRE REMPLACÉ — la version du cloud avant un envoi, celle de cet appareil avant un import. Jusqu’ici, c’est l’état de l’appareil qui lançait la synchro qui était copié, et non celui qu’il écrasait. Si cette copie échoue, rien n’est remplacé.',
     'Si la mémoire du navigateur venait à manquer, PlanClasse ne plante plus en plein enregistrement : un bandeau rouge prévient que les dernières modifications ne sont pas enregistrées sur l’appareil, avec un bouton pour exporter une sauvegarde. Il disparaît dès qu’un enregistrement réussit.',
     'Réglages des alertes du compte à rebours : un clic à côté de la fenêtre la ferme, et son bouton dit « Fermer » — chaque réglage étant pris en compte dès qu’on le touche, il n’y avait rien à annuler.',
@@ -52401,6 +52517,22 @@ function buildAnnuelleCard(slot, prog, seqColorMap, isFerie, cc, overrideColor){
   }
   inner.appendChild(r1);
 
+  // V11.3.64 — lot C : après la bascule, la carte est une VUE du cours (ses
+  // lignes, son remplissage) ; un clic ouvre « Saisir mes cours » dessus. Le ⋮
+  // garde « Annuler / Rétablir ce cours » (emploi du temps, pas planning).
+  if(!isCancelled && !isFerie && typeof _sdcApresBascule==='function' && _sdcApresBascule(slot.dateStr, cc)){
+    _sdcCarteLignes(inner, card, slot, cc);
+    card.appendChild(inner);
+    const menuBtn=document.createElement('button');
+    menuBtn.style.cssText='position:absolute;top:4px;right:4px;z-index:10;background:rgba(255,255,255,.8);border:1px solid var(--brd);border-radius:4px;font-size:12px;line-height:1;padding:2px 5px;cursor:pointer';
+    menuBtn.textContent='⋮'; menuBtn.title='Annuler / rétablir ce cours';
+    menuBtn.onclick=(e)=>{ e.stopPropagation();
+      if(_annuelleMenuEl&&_annuelleMenuEl.dataset.slotKey===slot.slotKey){ closeAnnuelleMenu(); return; }
+      closeAnnuelleMenu(); openAnnuelleCardMenu(e, slot, cc, isCancelled, seqObj, null); };
+    card.appendChild(menuBtn);
+    return card;
+  }
+
   // ── Rendu via layout engine v2 ──
   const _sl=isCancelled?{items:[],usedMn:0,unusedMn:0}:getSlotLayout(cc,slot.slotKey);
   const _items=_sl.items||[];
@@ -55118,6 +55250,12 @@ function initVaDropHandlers(){
     target.style.outline=''; target.style.background='';
     const {clsCode, slotKey}=target.dataset;
     if(!clsCode||!slotKey) return;
+    // V11.3.64 — lot C : après la bascule, le planning ne se remplit plus par
+    // glisser-déposer ; « Saisir mes cours » est la seule porte d'entrée.
+    if(typeof _sdcApresBascule==='function' && _sdcApresBascule(slotKey.slice(0,10), clsCode)){
+      if(typeof showDropToast==='function') showDropToast('Ce cours se compose dans « Saisir mes cours »');
+      return;
+    }
 
     // ── Déplacement d'un item déjà placé ──
     const rawPlaced=e.dataTransfer.getData('application/va-placed');
@@ -56874,6 +57012,9 @@ function cascadeFreeOverflow(startSlotKey, clsCode, depasseMn){
    À appeler après toute opération qui déplace des séances (cascade, insertion tâche libre). */
 function _recomputeEvals(clsCode){
   if(!S.edtProgMapping) return;
+  // V11.3.64 — après la bascule, plus aucune évaluation n'est replacée
+  // automatiquement : elles se posent par /Eval dans « Saisir mes cours ».
+  if(S.planningBascule) return;
   invalidateLayoutCache(clsCode);
   const layout=computeSlotLayout(clsCode);
   // V035-v181.15.63 — scope-aware : groupe → buildYearSlotsForGroupe + clé progression = gid.
