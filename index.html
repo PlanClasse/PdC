@@ -4055,7 +4055,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.60';
+const APP_VERSION = 'v11.3.61';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -41851,7 +41851,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
-    'Réglages des alertes du compte à rebours (bouton ⚙ dans la fenêtre du minuteur) : les cinq moments d’alerte — 5, 3, 2 et 1 minute, plus la fin du décompte — se règlent séparément. Chacun peut être coupé et recevoir SON propre son importé ; sans son importé, c’est la voix synthétisée (bips, cloche, bois, carillon ou marimba) qui est jouée. Chaque moment a aussi son propre réglage de volume (10 à 200 %), qui vaut pour la voix synthétisée comme pour le son importé — de quoi remonter un enregistrement trop faible. Le nombre de bips continue d’indiquer les minutes restantes. Les sons sont convertis à l’import pour être lisibles partout, et restent sur l’appareil où vous les importez : ils ne suivent ni la synchronisation ni l’export. Si votre navigateur ne sait pas lire le format fourni (c’est le cas de plusieurs pour le m4a), il vous le dit au moment de l’import, pas en plein cours.',
+    'Réglages des alertes du compte à rebours (bouton ⚙ dans la fenêtre du minuteur) : les cinq moments d’alerte — 5, 3, 2 et 1 minute, plus la fin du décompte — se règlent séparément. Chacun peut être coupé et recevoir SON propre son importé ; sans son importé, c’est la voix synthétisée (bips, cloche, bois, carillon ou marimba) qui est jouée. Chaque moment a aussi son propre réglage de volume (10 à 200 %), qui vaut pour la voix synthétisée comme pour le son importé — de quoi remonter un enregistrement trop faible. Une nouvelle alerte coupe toujours la précédente : régler le volume ne superpose plus plusieurs lectures décalées. Le nombre de bips continue d’indiquer les minutes restantes. Les sons sont convertis à l’import pour être lisibles partout, et restent sur l’appareil où vous les importez : ils ne suivent ni la synchronisation ni l’export. Si votre navigateur ne sait pas lire le format fourni (c’est le cas de plusieurs pour le m4a), il vous le dit au moment de l’import, pas en plein cours.',
     'Le PAI ne para\u00eet plus dans les vues EBEP du plan de classe : ni dans la liste \ud83e\udde9, ni dans le surlignage des si\u00e8ges. Un \u00e9l\u00e8ve dont la fiche porte aussi un PAP ou une adaptation continue d\u2019y figurer, pour ce motif-l\u00e0 seulement. La page EBEP et la Fiche du jour l\u2019excluaient d\u00e9j\u00e0 ; la saisie et l\u2019import, eux, ne changent pas.',
     'La barre de synchronisation reconna\u00eet le fichier JSON partag\u00e9 : si vous synchronisez par fichier local plut\u00f4t que par le cloud, elle affiche \u00ab \ud83d\udd04 Synchro. (fichier) \u00bb et la date de la derni\u00e8re \u00e9criture, au lieu d\u2019annoncer \u00e0 tort \u00ab non connect\u00e9 \u00bb.',
     'Sur ordinateur, le plan de classe porte la m\u00eame barre en version compacte : \u00ab \ud83d\udd04 Synchro. \u00bb, les deux fl\u00e8ches, et la date de la derni\u00e8re synchro sur la m\u00eame ligne. De quoi v\u00e9rifier d\u2019un coup d\u2019\u0153il, en passant de la tablette au poste, qu\u2019on ne s\u2019appr\u00eate pas \u00e0 \u00e9craser l\u2019autre appareil. Elle ne s\u2019affiche pas sur t\u00e9l\u00e9phone, o\u00f9 la place manque.',
@@ -59241,15 +59241,46 @@ async function _tmrPreparerClip(file){
           pcm:_tmrFloatVersInt16(rendu.getChannelData(0))};
 }
 
+/* ── UNE SEULE ALERTE À LA FOIS ─────────────────────────────────────────────
+   V11.3.61 — signalé le 25/09 : bouger le curseur de volume relançait la
+   lecture sans couper la précédente, d'où trois ou quatre sons décalés qui se
+   superposent. Une alerte est un signal : il ne doit jamais y en avoir deux.
+
+   Deux mécanismes, parce qu'il y a deux natures de problème :
+     • `_tmrLecture` retient ce qui sonne, pour pouvoir le COUPER net ;
+     • `_tmrJeton` numérote les demandes, parce que la lecture d'un son importé
+       passe par IndexedDB : sans lui, une demande partie AVANT mais revenue
+       APRÈS relancerait un son qu'on vient d'annuler.
+   ─────────────────────────────────────────────────────────────────────────── */
+let _tmrLecture=null;   // {ctx, src} de ce qui sonne en ce moment
+let _tmrJeton=0;        // numéro de la demande de lecture la plus récente
+
+/** Coupe ce qui sonne et ouvre une nouvelle demande. Rend son jeton : une
+ *  lecture asynchrone qui revient avec un jeton périmé doit renoncer. */
+function _tmrNouvelleLecture(){
+  const l=_tmrLecture; _tmrLecture=null;
+  if(l){
+    try{ if(l.src && l.src.stop) l.src.stop(0); }catch(e){}
+    try{ if(l.ctx && l.ctx.state!=='closed') l.ctx.close(); }catch(e){}
+  }
+  return ++_tmrJeton;
+}
+function _tmrRetenirLecture(ctx, src){ _tmrLecture={ctx:ctx, src:src||null}; }
+function _tmrOublierLecture(ctx){ if(_tmrLecture && _tmrLecture.ctx===ctx) _tmrLecture=null; }
+
 /** Joue le son personnel d'un moment. `replier` est la voix synthétisée de ce
  *  moment, jouée dès que le son n'est pas utilisable : absent, non décodé,
  *  contexte audio indisponible. Une alerte muette est le pire cas possible. */
-function _tmrPlaySon(moment, replier, gain){
+function _tmrPlaySon(moment, replier, gain, jeton){
   let repli=true;
   const secours=()=>{ if(repli){ repli=false; try{ if(replier) replier(); }catch(e){} } };
   try{
     _tmrLoadClip(moment).then(entry=>{
       try{
+        // Une demande plus récente est passée pendant la lecture d'IndexedDB :
+        // on renonce en silence, repli compris — sinon on rejouerait ce que
+        // l'utilisateur vient d'annuler en bougeant le curseur.
+        if(jeton && jeton!==_tmrJeton){ repli=false; return; }
         if(!entry || !entry.pcm || !entry.pcm.length){ secours(); return; }
         const AC=window.AudioContext||window.webkitAudioContext;
         if(!AC){ secours(); return; }
@@ -59263,7 +59294,8 @@ function _tmrPlaySon(moment, replier, gain){
         // remonté. Au-delà, le son écrête — c'est le choix de l'utilisateur.
         const g=ctx.createGain(); g.gain.value=(typeof gain==='number'&&gain>0)?gain:1;
         src.connect(g).connect(ctx.destination);
-        src.onended=()=>{ try{ ctx.close(); }catch(e){} };
+        src.onended=()=>{ _tmrOublierLecture(ctx); try{ ctx.close(); }catch(e){} };
+        _tmrRetenirLecture(ctx, src);
         src.start();
         repli=false;
       }catch(e){ secours(); }
@@ -59279,6 +59311,7 @@ function _tmrSynthPalier(timbre, level, gain){
     const cfg = _tmrVoixPalier(timbre, level);
     if(!cfg) return;
     const ctx = new AC();
+    _tmrRetenirLecture(ctx, null);
     const t0 = ctx.currentTime + 0.02;
     const ATTACK = 0.010, RELEASE = 0.040;
     // Le volume module l'enveloppe, PAS la recette : _tmrVoixPalier garde les
@@ -59306,7 +59339,7 @@ function _tmrSynthPalier(timbre, level, gain){
       });
     }
     const total = cfg.n*cfg.d + (cfg.n - 1)*cfg.gap + 0.3;
-    setTimeout(() => { try{ ctx.close(); }catch(e){} }, Math.ceil(total * 1000));
+    setTimeout(() => { _tmrOublierLecture(ctx); try{ ctx.close(); }catch(e){} }, Math.ceil(total * 1000));
   } catch(e){ /* navigateur sans Web Audio : silence */ }
 }
 
@@ -59320,9 +59353,11 @@ function _tmrPlayBeeps(level, opts){
   if(!force && !_tmrPalierActif(reglages, level)) return;
   const timbre=(opts&&opts.timbre) || reglages.tmrTimbre || 'bips';
   const vol=_tmrVolume(reglages, level);
+  // Toute nouvelle alerte coupe la précédente : on n'en superpose jamais deux.
+  const jeton=_tmrNouvelleLecture();
   const synth=()=>_tmrSynthPalier(timbre, level, vol);
   if(!(opts&&opts.synthSeul) && _tmrSonConfigure(reglages, level)){
-    _tmrPlaySon(String(level), synth, vol); return;
+    _tmrPlaySon(String(level), synth, vol, jeton); return;
   }
   synth();
 }
@@ -59717,8 +59752,11 @@ function _tmrPlayEndBeeps(opts){
   let _rg={};
   try{ _rg=(typeof S!=='undefined'&&S&&S.reglages)||{}; }catch(e){}
   const _kFin=_tmrVolume(_rg,'fin');
+  // Le repli rejoue CETTE fonction en mode synthèse : il ne doit pas rouvrir
+  // une demande, sinon il annulerait la sienne. D'où le jeton pris ici seul.
+  const _jFin=(opts&&opts.synthSeul) ? 0 : _tmrNouvelleLecture();
   if(!(opts&&opts.synthSeul) && _tmrSonConfigure(_rg,'fin')){
-    _tmrPlaySon('fin', ()=>_tmrPlayEndBeeps({synthSeul:true}), _kFin);
+    _tmrPlaySon('fin', ()=>_tmrPlayEndBeeps({synthSeul:true}), _kFin, _jFin);
     return;
   }
   // V020-v181.4.13 — Mélodie ta-da (do-mi-sol-do) en triangle, finale tenue
@@ -59729,6 +59767,7 @@ function _tmrPlayEndBeeps(opts){
     const AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) return;
     const ctx = new AC();
+    _tmrRetenirLecture(ctx, null);
     const t0 = ctx.currentTime + 0.02;
     const ATTACK = 0.020, RELEASE = 0.080;
     const play = (t, freq, dur, vol0) => {
@@ -59750,7 +59789,7 @@ function _tmrPlayEndBeeps(opts){
     play(t0 + 0.32, 784, 0.18, 0.30); // G5 (sol)
     play(t0 + 0.55, 1047, 0.90, 0.32); // C6 (do) tenu
     play(t0 + 0.55, 784,  0.90, 0.18); // G5 harmonique
-    setTimeout(() => { try{ ctx.close(); }catch(e){} }, 1700);
+    setTimeout(() => { _tmrOublierLecture(ctx); try{ ctx.close(); }catch(e){} }, 1700);
   } catch(e){ /* navigateur sans Web Audio : on laisse le toast */ }
 }
 
