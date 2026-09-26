@@ -1638,7 +1638,11 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .stp-avt-z+.stp-avt-z{border-left:1.5px dashed currentColor}
 .stp-avt-z span{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;opacity:.85}
 .stp-avt-z:hover{background:rgba(0,0,0,.06)}
-.stp-avt-z.stp-avt-on{background:rgba(0,0,0,.28)}
+.stp-avt-z.stp-avt-rempli{color:#fff}
+/* V11.3.75 — remplissage PARTIEL : seules les zones 1..n prennent la couleur ;
+   le libellé existe en deux couches (noir dessous, blanc dans la partie colorée). */
+.stp-avt-fill{position:absolute;inset:0;background:#D97706;color:#fff;padding:9px 6px 16px;pointer-events:none;border-radius:inherit}
+.stp-avt-multi.stp-avt-pose{border-color:#B45309}
 .stp-avt-z:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 /* V11.3.73 — maquette d'ordre des statuts (Paramètres) */
 .stpo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:380px;margin:6px 0 4px}
@@ -4195,7 +4199,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.74';
+const APP_VERSION = 'v11.3.75';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -32044,6 +32048,13 @@ function _avtNiveauSeance(seance, uid){
 }
 /** Libellé court : « AVT2 » si un niveau est rangé, sinon le libellé court du statut. Pure. */
 function _avtCourt(n, court){ return n>=1 ? 'AVT'+n : (court||'AVT'); }
+/** Nombre de zones à colorier. Pure. Niveau n → n zones ; posé sans niveau →
+ *  toutes ; niveau supérieur au réglage (réglage baissé depuis) → toutes. */
+function _avtZonesRemplies(pose, niveau, nb){
+  if(!pose) return 0;
+  if(!(niveau>=1)) return nb;
+  return Math.min(niveau, nb);
+}
 /** Clic sur une zone de niveau. Pure. → {pose, niveau}.
  *  Recliquer le niveau actif retire l'avertissement ; un autre niveau le remplace. */
 function _avtBasculer(estPose, niveauActuel, niveauClique){
@@ -32642,14 +32653,24 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
       // largeur, N zones cliquables (1, 2, 3) posées par-dessus.
       if(s.key==='avert' && typeof _avtNb==='function' && _avtNb()>1){
         const nb=_avtNb(), niv=isOn ? _avtNiveau(getStatutsMap(), name) : 0;
+        // V11.3.75 — seules les zones 1..n sont colorées (1 ; 1+2 ; tout). Un
+        // avertissement posé sans niveau (réglage à 1 à ce moment-là) colore tout.
+        const rempli=_avtZonesRemplies(isOn, niv, nb);
         const box=document.createElement('div');
-        box.className=btn.className+' stp-avt-multi'; box.setAttribute('role','group');
-        box.setAttribute('aria-label', s.label+' — '+nb+' niveaux');
-        { const lb=document.createElement('span'); lb.textContent=(isOn?'✓ ':'')+s.label; box.appendChild(lb); }
+        box.className='stp-btn stp-avert stp-avt-multi'+(isOn?' stp-avt-pose':''); box.setAttribute('role','group');
+        box.setAttribute('aria-label', s.label+' — '+nb+' niveaux'+(isOn?' — niveau '+(niv||nb)+' posé':''));
+        const texte=(isOn?'✓ ':'')+s.label;
+        { const lb=document.createElement('span'); lb.textContent=texte; box.appendChild(lb); }
+        if(rempli>0){
+          const fill=document.createElement('div'); fill.className='stp-avt-fill';
+          fill.style.clipPath='inset(0 '+(100-rempli*100/nb)+'% 0 0)';
+          const lb2=document.createElement('span'); lb2.textContent=texte; fill.appendChild(lb2);
+          box.appendChild(fill);
+        }
         const zones=document.createElement('div'); zones.className='stp-avt-zones';
         for(let n=1;n<=nb;n++){
           const z=document.createElement('button'); z.type='button';
-          z.className='stp-avt-z'+(isOn && niv===n?' stp-avt-on':'');
+          z.className='stp-avt-z'+(n<=rempli?' stp-avt-rempli':'');
           z.title=s.label+' — niveau '+n+(isOn && niv===n?' (cliquer pour retirer)':'');
           z.setAttribute('aria-label', s.label+' niveau '+n);
           const d=document.createElement('span'); d.textContent=String(n); z.appendChild(d);
