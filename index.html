@@ -1630,7 +1630,13 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .stp-pos{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:.4rem}
 .stp-btn{padding:9px 6px;border-radius:var(--r1);border:2px solid transparent;cursor:pointer;font-size:12px;font-weight:700;text-align:center;transition:all .12s;width:100%;letter-spacing:.02em}
 .stp-btn.on{filter:brightness(1);box-shadow:inset 0 2px 4px rgba(0,0,0,.15)}
-.stp-btn:not(.on){opacity:.4;filter:saturate(.3)}.stp-btn:not(.on):hover{opacity:.75;filter:saturate(.7)}
+.stp-btn:not(.on){opacity:1;filter:none;background:#fff;color:#111;border-color:#111}.stp-btn:not(.on):hover{background:#F3F4F6}
+/* V11.3.73 — maquette d'ordre des statuts (Paramètres) */
+.stpo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:380px;margin:6px 0 4px}
+.stpo-tile{padding:9px 6px;border:2px solid #111;border-radius:var(--r1);background:#fff;color:#111;font-size:12px;font-weight:700;text-align:center;cursor:grab;user-select:none;touch-action:none;letter-spacing:.02em}
+.stpo-tile:focus-visible{outline:3px solid var(--acc);outline-offset:1px}
+.stpo-tile.stpo-drag{cursor:grabbing;opacity:.55;border-style:dashed}
+.stpo-aide{font-size:11px;color:var(--tx3);margin-top:2px}
 .stp-absent{background:#374151;color:#fff;border-color:#1F2937}
 .stp-cahier,.stp-regle{background:#B45309;color:#fff;border-color:#92400E}
 .stp-retard{background:#78716C;color:#fff;border-color:#57534E}
@@ -4180,7 +4186,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.71';
+const APP_VERSION = 'v11.3.73';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -18276,6 +18282,15 @@ function renderParamsStatuts(body){
   intro.style.cssText='font-size:12px;color:var(--tx2);margin-bottom:1rem;line-height:1.5';
   intro.innerHTML='Modifiez les labels et codes. <b>Le toggle</b> active/désactive un statut dans le popup plan de classe.';
   pane.appendChild(intro);
+  // V11.3.73 — place de chaque statut dans la popup, par glisser-déposer.
+  { const hd=document.createElement('div');
+    hd.style.cssText='font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px;padding-bottom:4px;border-bottom:2px solid var(--brd)';
+    hd.textContent='Disposition dans la popup'; pane.appendChild(hd);
+    const rerendre=()=>renderParamsStatuts(pane);
+    if(typeof _stpMaquetteOrdre==='function'){
+      _stpMaquetteOrdre(pane, 'neg', 'Incidents & absences', rerendre);
+      _stpMaquetteOrdre(pane, 'pos', 'Points positifs', rerendre);
+    } }
 
   const groups=[
     {label:'Incidents & absences', cols:['neg-l','neg-r']},
@@ -32383,6 +32398,100 @@ function _stpSplitIncidents(statuts){
   return { gauche: neg.slice(0, moitie), droite: neg.slice(moitie) };
 }
 
+/** V11.3.73 — Ordre d'affichage d'un groupe de statuts dans la popup (grille à
+ *  2 colonnes lue ligne par ligne). Pure.
+ *  groupe : 'neg' (incidents & absences) ou 'pos' (points positifs).
+ *  ordres : S.reglages.ordreStatuts = {neg:[clés], pos:[clés]}.
+ *  Sans ordre enregistré : 'neg' reprend l'ANCIENNE disposition (colonne de
+ *  gauche = première moitié) en l'entrelaçant, 'pos' garde l'ordre des données.
+ *  Clés inconnues ignorées ; statuts absents de l'ordre ajoutés à la fin. */
+function _stpOrdre(statuts, groupe, ordres){
+  const L=(statuts||[]).filter(x=>x && (groupe==='neg' ? (x.col==='neg-l'||x.col==='neg-r') : x.col==='pos'));
+  const ordre=ordres && Array.isArray(ordres[groupe]) ? ordres[groupe] : null;
+  if(!ordre){
+    if(groupe!=='neg') return L;
+    const sp=_stpSplitIncidents(L), out=[];
+    for(let i=0;i<sp.gauche.length;i++){ out.push(sp.gauche[i]); if(sp.droite[i]) out.push(sp.droite[i]); }
+    return out;
+  }
+  const rang=(k)=>{ const i=ordre.indexOf(k); return i<0 ? 1e6 : i; };
+  return L.map((x,i)=>({x,i})).sort((a,b)=>(rang(a.x.key)-rang(b.x.key)) || (a.i-b.i)).map(o=>o.x);
+}
+/** Déplace une clé dans un ordre (avant la clé `avant`, ou à la fin). Pure. */
+function _stpDeplacer(ordre, cle, avant){
+  const o=(ordre||[]).filter(k=>k!==cle);
+  const i=avant==null ? -1 : o.indexOf(avant);
+  if(i<0) o.push(cle); else o.splice(i, 0, cle);
+  return o;
+}
+
+/** V11.3.73 — Maquette de la popup dans Paramètres : des tuiles à déplacer
+ *  (souris, doigt ou clavier) pour fixer la place de chaque statut. */
+function _stpMaquetteOrdre(parent, groupe, titre, rerendre){
+  const ord=_stpOrdre(getStatuts(), groupe, (S.reglages||{}).ordreStatuts);
+  if(!ord.length) return;
+  const box=document.createElement('div'); box.className='stpo-box';
+  const h=document.createElement('div');
+  h.style.cssText='font-size:12px;font-weight:700;color:var(--tx);margin-top:.6rem';
+  h.textContent=titre; box.appendChild(h);
+  const grid=document.createElement('div'); grid.className='stpo-grid'; grid.dataset.groupe=groupe;
+  const enregistrer=()=>{
+    if(!S.reglages) S.reglages={};
+    if(!S.reglages.ordreStatuts) S.reglages.ordreStatuts={};
+    S.reglages.ordreStatuts[groupe]=Array.from(grid.querySelectorAll('.stpo-tile')).map(t=>t.dataset.key);
+    saveS();
+  };
+  ord.forEach(st=>{
+    const t=document.createElement('div'); t.className='stpo-tile'; t.dataset.key=st.key;
+    t.textContent=st.label; t.tabIndex=0; t.setAttribute('role','button');
+    t.title='Glisser pour déplacer (ou flèches du clavier)';
+    let actif=false;
+    t.addEventListener('pointerdown', e=>{
+      if(e.button!==undefined && e.button!==0) return;
+      actif=true; t.classList.add('stpo-drag');
+      try{ t.setPointerCapture(e.pointerId); }catch(err){}
+      e.preventDefault();
+    });
+    t.addEventListener('pointermove', e=>{
+      if(!actif) return;
+      const sous=document.elementFromPoint(e.clientX, e.clientY);
+      const cible=sous && sous.closest ? sous.closest('.stpo-tile') : null;
+      if(!cible || cible===t || cible.parentNode!==grid) return;
+      const tiles=Array.from(grid.children);
+      if(tiles.indexOf(cible) < tiles.indexOf(t)) grid.insertBefore(t, cible);
+      else grid.insertBefore(t, cible.nextSibling);
+    });
+    const fin=()=>{ if(!actif) return; actif=false; t.classList.remove('stpo-drag'); enregistrer(); };
+    t.addEventListener('pointerup', fin);
+    t.addEventListener('pointercancel', fin);
+    t.addEventListener('keydown', e=>{
+      const tiles=Array.from(grid.children), i=tiles.indexOf(t);
+      let j=-1;
+      if(e.key==='ArrowLeft') j=i-1; else if(e.key==='ArrowRight') j=i+1;
+      else if(e.key==='ArrowUp') j=i-2; else if(e.key==='ArrowDown') j=i+2;
+      else return;
+      e.preventDefault();
+      if(j<0 || j>=tiles.length) return;
+      if(j<i) grid.insertBefore(t, tiles[j]); else grid.insertBefore(t, tiles[j].nextSibling);
+      enregistrer(); t.focus();
+    });
+    grid.appendChild(t);
+  });
+  box.appendChild(grid);
+  const pied=document.createElement('div'); pied.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+  const aide=document.createElement('span'); aide.className='stpo-aide';
+  aide.textContent='Comme dans la popup : deux colonnes, lues ligne par ligne. Glissez une tuile à sa place.';
+  pied.appendChild(aide);
+  if(S.reglages && S.reglages.ordreStatuts && S.reglages.ordreStatuts[groupe]){
+    const r=document.createElement('button'); r.className='bs'; r.style.cssText='font-size:11px;padding:3px 9px';
+    r.textContent='↺ Ordre par défaut';
+    r.onclick=()=>{ delete S.reglages.ordreStatuts[groupe]; saveS(); rerendre(); };
+    pied.appendChild(r);
+  }
+  box.appendChild(pied);
+  parent.appendChild(box);
+}
+
 function openStatusPopup(name, seatEl, evt, keepPos=false){
   if(evt && evt.stopPropagation) evt.stopPropagation();
   popupCurrentName=name;
@@ -32412,9 +32521,10 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
   // résultat est identique à l'ancien.
   const negEl=document.getElementById('stp-neg');
   negEl.innerHTML='';
-  const negCols=_stpSplitIncidents(getStatuts());
-  const negLeft=negCols.gauche;
-  const negRight=negCols.droite;
+  // V11.3.73 — l'ordre est celui fixé dans Paramètres (maquette à tuiles) ; la
+  // grille à 2 colonnes se lit LIGNE PAR LIGNE, comme la maquette. Sans ordre
+  // enregistré, _stpOrdre reproduit exactement l'ancienne disposition.
+  const negOrd=_stpOrdre(getStatuts(), 'neg', (S.reglages||{}).ordreStatuts);
 
   const makeCol=(statuts,title)=>{
     const col=document.createElement('div'); col.className='stp-neg-col';
@@ -32424,8 +32534,9 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
       const isOn=activeKeys.includes(s.key);
       const btn=document.createElement('button');
       btn.className='stp-btn stp-'+s.key+(isOn?' on':'');
-      // Couleur dynamique pour les statuts sans CSS dédié (custom)
-      if(s.key.startsWith('custom_')){
+      // Couleur dynamique pour les statuts sans CSS dédié (custom) — V11.3.73 :
+      // seulement à l'état actif ; inactif, le bouton est blanc cadré noir.
+      if(s.key.startsWith('custom_') && isOn){
         const bg=s.col==='neg-l'?'#78716C':s.col==='neg-r'?'#DC2626':'#0284C7';
         const bd=s.col==='neg-l'?'#57534E':s.col==='neg-r'?'#B91C1C':'#0369A1';
         btn.style.cssText='background:'+bg+';color:#fff;border-color:'+bd;
@@ -32436,17 +32547,17 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
     });
     return col;
   };
-  negEl.appendChild(makeCol(negLeft,''));
-  negEl.appendChild(makeCol(negRight,''));
+  // Les boutons sont posés directement dans la grille (2 colonnes, ligne par ligne).
+  Array.from(makeCol(negOrd,'').querySelectorAll('.stp-btn')).forEach(b=>negEl.appendChild(b));
 
   // — Statuts positifs —
   const posEl=document.getElementById('stp-pos');
   posEl.innerHTML='';
-  getStatuts().filter(s=>s.col==='pos').forEach(s=>{
+  _stpOrdre(getStatuts(), 'pos', (S.reglages||{}).ordreStatuts).forEach(s=>{
     const isOn=activeKeys.includes(s.key);
     const btn=document.createElement('button');
     btn.className='stp-btn stp-'+s.key+(isOn?' on':'');
-    if(s.key.startsWith('custom_')){
+    if(s.key.startsWith('custom_') && isOn){
       btn.style.cssText='background:#0284C7;color:#fff;border-color:#0369A1';
     }
     btn.textContent=(isOn?'✓ ':'')+s.label;
@@ -43590,6 +43701,23 @@ function _aboutNews(mois, items){
   items.forEach(t=>{ const li=document.createElement('li'); li.style.marginBottom='2px'; li.textContent=t; ul.appendChild(li); });
   wrap.appendChild(ul); return wrap;
 }
+/** V11.3.72 — nouveautés par thème : [[titre, période, texte], …]. createElement pur. */
+function _aboutRubriques(liste){
+  const wrap=document.createElement('div'); wrap.style.cssText='margin-bottom:10px';
+  const h=document.createElement('div');
+  h.style.cssText='font-size:12px;font-weight:700;color:var(--acc);margin-bottom:6px';
+  h.textContent='🆕 Nouveautés'; wrap.appendChild(h);
+  (liste||[]).forEach(r=>{
+    const d=document.createElement('div'); d.style.cssText='margin-bottom:7px;font-size:11.5px;color:var(--tx2);line-height:1.5';
+    const t=document.createElement('div'); t.style.cssText='font-weight:700;color:var(--tx)';
+    t.textContent=r[0];
+    const p=document.createElement('span'); p.style.cssText='font-weight:400;color:var(--tx3);margin-left:6px;font-size:10.5px';
+    p.textContent=r[1]; t.appendChild(p);
+    const x=document.createElement('div'); x.textContent=r[2];
+    d.appendChild(t); d.appendChild(x); wrap.appendChild(d);
+  });
+  return wrap;
+}
 function _aboutBlock(titre, node){
   const w=document.createElement('div'); w.style.cssText='margin-top:12px';
   const h=document.createElement('div');
@@ -43787,53 +43915,26 @@ function showAboutModal(){
   const info=document.createElement('div');
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
-  root.appendChild(_aboutNews('septembre 2026', [
-    'Saisir mes cours — complétion : pendant la frappe, l’écran propose sous le champ les lignes déjà écrites — celles de la séance de l’en-tête d’abord, puis du chapitre, puis de toute la bibliothèque du niveau, puis des autres cours composés. Une ligne nue cherche parmi les tâches, « /Doc », « /Res » et « /TAF » parmi leurs pareils. ↓ ↑ pour choisir, Tab ou Entrée pour prendre (avec la durée), Échap pour masquer. Et dans Progression, le bouton de suppression des listes d’une séance (mode opératoire, documents, ressources…) est désormais rouge.',
-    'Saisir mes cours — l’étoile ☆ : dans l’interprétation, une étoile par ligne propre au cours. Étoilée, la ligne est versée dans la bibliothèque à l’enregistrement, dans la séance de son en-tête ; si le chapitre ou la séance n’existent pas, ils sont créés (« à créer » s’affiche avant). Rien n’entre jamais dans la bibliothèque sans étoile. Les menus Chapitre et Séance proposent « ＋ Nouveau chapitre » et « ＋ Nouvelle séance », et un lien vers Progression pour retoucher la bibliothèque. Et les cours déjà composés tiennent bon : une séance déplacée, une ligne réordonnée ou retouchée dans Progression sont retrouvées ; une ligne dont la source a été supprimée reste dans le cours, propre à lui.',
-    'Saisir mes cours se ferme d’un clic à côté de la fenêtre. Si le cours ouvert a une saisie non enregistrée, un bandeau le signale après la fermeture, avec « Rouvrir » : rien n’est perdu, le texte reste gardé sur cet appareil. Et le planning d’affectation comme l’Agenda hebdo se mettent à jour dès l’enregistrement d’un cours, sans avoir à changer de semaine.',
-    'Saisir mes cours — « Autres cours » : sous l’interprétation, une carte par classe du niveau (et une pour les autres cours de la classe ouverte), chacune sur son cours le plus proche, avec ◀ ▶ pour en changer. On y prend une ligne (＋) ou tout le cours (« Tout prendre ») ; une ligne liée à la bibliothèque le reste. Rien n’est jamais modifié dans le cours d’où l’on prend.',
-    'Saisir mes cours et demi-groupes : l’écran affiche le groupe du cours ; un bouton « Même contenu que l’autre demi-groupe » recopie le texte du cours jumeau (le même jour, sinon le plus proche) tant que le cours est vide, à ajuster avant d’enregistrer. Et la bande « Reste des cours précédents » ne mélange plus les groupes : ce qu’un demi-groupe n’a pas fini n’est proposé qu’à lui ; ce qui reste d’un cours en classe entière est proposé à chaque groupe, avec un choix par groupe.',
-    'Saisir mes cours — « Reste des cours précédents » : une tâche partielle ou reportée à l’enregistrement d’une séance n’est plus poussée toute seule sur le cours suivant. Elle est proposée dans l’écran des cours suivants, avec « Reprendre » (elle s’ajoute au cours, reliée à la bibliothèque si elle en vient, avec ce qu’il reste à faire) ou « Ignorer ». Tant qu’on n’a pas choisi, elle reste proposée. Les TAF à vérifier restent proposés d’office dans le modal Séance.',
-    'Nouvel écran « Saisir mes cours » (tuile verte de l’accueil, ou onglet dans Progression) : c’est désormais LA manière de remplir le planning d’affectation, cours par cours. Un cours est une suite de lignes : prises dans la bibliothèque (toute une séance ou quelques lignes), ou propres à ce cours — rien n’entre dans la bibliothèque sans que vous le demandiez. Plusieurs séances, même de séquences différentes, dans un même cours. Plus de débordement automatique : un cours trop rempli s’allonge et l’écran le signale. À la première ouverture, l’écran propose la bascule : ce qui était placé dans les cours à venir est retiré (sauvegarde téléchargée avant, annulable), le reste est intact. Le planning d’affectation devient une vue d’ensemble : un clic sur un cours l’ouvre dans l’écran.',
-    'Synchronisation cloud : la copie de sécurité prise avant chaque synchronisation porte enfin sur ce qui VA ÊTRE REMPLACÉ — la version du cloud avant un envoi, celle de cet appareil avant un import. Jusqu’ici, c’est l’état de l’appareil qui lançait la synchro qui était copié, et non celui qu’il écrasait. Si cette copie échoue, rien n’est remplacé.',
-    'Si la mémoire du navigateur venait à manquer, PlanClasse ne plante plus en plein enregistrement : un bandeau rouge prévient que les dernières modifications ne sont pas enregistrées sur l’appareil, avec un bouton pour exporter une sauvegarde. Il disparaît dès qu’un enregistrement réussit.',
-    'Réglages des alertes du compte à rebours : un clic à côté de la fenêtre la ferme, et son bouton dit « Fermer » — chaque réglage étant pris en compte dès qu’on le touche, il n’y avait rien à annuler.',
-    'Réglages des alertes du compte à rebours (bouton ⚙ dans la fenêtre du minuteur) : les cinq moments d’alerte — 5, 3, 2 et 1 minute, plus la fin du décompte — se règlent séparément. Chacun peut être coupé et recevoir SON propre son importé ; sans son importé, c’est la voix synthétisée (bips, cloche, bois, carillon ou marimba) qui est jouée. Chaque moment a aussi son propre réglage de volume (10 à 200 %), qui vaut pour la voix synthétisée comme pour le son importé — de quoi remonter un enregistrement trop faible. Une nouvelle alerte coupe toujours la précédente : régler le volume ne superpose plus plusieurs lectures décalées. Le nombre de bips continue d’indiquer les minutes restantes. Les sons sont convertis à l’import pour être lisibles partout, et restent sur l’appareil où vous les importez : ils ne suivent ni la synchronisation ni l’export. Si votre navigateur ne sait pas lire le format fourni (c’est le cas de plusieurs pour le m4a), il vous le dit au moment de l’import, pas en plein cours.',
-    'Le PAI ne para\u00eet plus dans les vues EBEP du plan de classe : ni dans la liste \ud83e\udde9, ni dans le surlignage des si\u00e8ges. Un \u00e9l\u00e8ve dont la fiche porte aussi un PAP ou une adaptation continue d\u2019y figurer, pour ce motif-l\u00e0 seulement. La page EBEP et la Fiche du jour l\u2019excluaient d\u00e9j\u00e0 ; la saisie et l\u2019import, eux, ne changent pas.',
-    'La barre de synchronisation reconna\u00eet le fichier JSON partag\u00e9 : si vous synchronisez par fichier local plut\u00f4t que par le cloud, elle affiche \u00ab \ud83d\udd04 Synchro. (fichier) \u00bb et la date de la derni\u00e8re \u00e9criture, au lieu d\u2019annoncer \u00e0 tort \u00ab non connect\u00e9 \u00bb.',
-    'Sur ordinateur, le plan de classe porte la m\u00eame barre en version compacte : \u00ab \ud83d\udd04 Synchro. \u00bb, les deux fl\u00e8ches, et la date de la derni\u00e8re synchro sur la m\u00eame ligne. De quoi v\u00e9rifier d\u2019un coup d\u2019\u0153il, en passant de la tablette au poste, qu\u2019on ne s\u2019appr\u00eate pas \u00e0 \u00e9craser l\u2019autre appareil. Elle ne s\u2019affiche pas sur t\u00e9l\u00e9phone, o\u00f9 la place manque.',
-    'Sur iPad et iPhone, le plan de classe affiche en bas une barre de synchronisation : un grand bouton \u00ab Synchroniser \u00bb, les deux actions de sens explicite \u2b06 / \u2b07, et la date de la derni\u00e8re synchro \u2014 ou l\u2019avertissement qu\u2019il n\u2019y en a jamais eu sur cet appareil. Elle n\u2019appara\u00eet que sur iOS, o\u00f9 le cloud est le seul chemin possible.',
-    'S\u00e9ance pr\u00e9c\u00e9dente : les statuts personnalis\u00e9s que vous avez ajout\u00e9s s\u2019affichent enfin sous leur nom, et non plus sous leur identifiant interne. La r\u00e9solution des libell\u00e9s cherchait dans un magasin qui n\u2019existait pas.',
-    'Nouvelle op\u00e9ration dans R\u00e9glages divers : \u00ab Nettoyer les observations r\u00e9p\u00e9t\u00e9es \u00bb. Avant la version 11.3.44, une note permanente \u00e9tait recopi\u00e9e sur chaque cours enregistr\u00e9 ensuite ; cette op\u00e9ration replie ces r\u00e9p\u00e9titions en gardant la premi\u00e8re, \u00e0 sa date, et vide les notes permanentes ainsi recycl\u00e9es. Aper\u00e7u chiffr\u00e9 avant application.',
-    'Num\u00e9ro de cours et demi-groupes : les deux moiti\u00e9s d\u2019une m\u00eame le\u00e7on portent d\u00e9sormais le m\u00eame num\u00e9ro, qu\u2019elles se suivent dans la journ\u00e9e, tombent deux jours diff\u00e9rents ou alternent d\u2019une semaine \u00e0 l\u2019autre. Le num\u00e9ro r\u00e9pond \u00e0 \u00ab combien de fois ai-je vu CE groupe ? \u00bb, et un cours en classe enti\u00e8re compte pour les deux.',
-    'Le diagnostic d\u2019affichage de cette fen\u00eatre est d\u00e9sormais repli\u00e9 : sa ligne de titre annonce \u00ab rien d\u2019anormal \u00bb, ou le nombre d\u2019anomalies d\u00e9tect\u00e9es, et il suffit de la toucher pour voir le d\u00e9tail.',
-    'Le message affiché quand la synchronisation par fichier local est impossible reconnaît désormais l’appareil. Sur iPad et iPhone, il ne conseille plus d’installer Chrome — ce qui n’aurait servi à rien, Apple imposant son moteur à tous les navigateurs — mais renvoie vers la synchronisation cloud, qui fonctionne sur ces appareils, avec un bouton pour y aller directement.',
-    'Cahier de texte du jour (bouton 📋 dans l\u2019en-tête de l\u2019emploi du temps de l\u2019accueil) : tous les cours d\u2019une journée sur une page, en deux colonnes matin / après-midi, avec un bouton Copier devant chaque cours pour remplir Pronote. Navigation d\u2019un jour à l\u2019autre pour rattraper les saisies en retard.',
-    'Le contenu de chaque cours se modifie directement depuis cette page : il s\u2019écrit dans la séance enregistrée, exactement comme dans le modal Séance. Un cours oublié peut y être saisi après coup. L\u2019en-tête, les tâches faites et les documents distribués restent calculés — ils ne s\u2019inventent pas.',
-    'Observations et commentaire de séance consultables à côté de chaque cours, dans un dépliant : ils vous aident à remplir Pronote mais ne sont jamais copiés — un cahier de texte est lu par les familles.',
-    'Une observation par cours dans la popup élève : à chaque cours, un champ vierge. Les observations précédentes restent consultables, datées, sous « 🕒 n précédentes », et la note permanente de l\u2019élève a désormais son propre champ, clairement séparé.',
-    'Numéro de cours dans l\u2019emploi du temps de l\u2019accueil : une pastille à droite du nom de la classe donne le rang du cours dans l\u2019année. Les cours annulés n\u2019en consomment pas, et les deux demi-groupes d\u2019un même créneau comptent pour un seul cours.',
-    'Vérification des TAF fiabilisée : une coche suit désormais la date du cours, et modifier la liste des TAF d\u2019une séance ne décale plus les vérifications déjà programmées — chaque TAF retrouve la sienne par son libellé, et toute suppression est annoncée avant d\u2019être appliquée.',
-    'Rappel « 5 minutes avant la sonnerie » nettement plus fiable quand l\u2019application n\u2019est pas au premier plan : la fenêtre d\u2019annonce a été élargie et le rappel reprend dès le retour sur l\u2019onglet.',
-    'Deux pertes de données silencieuses corrigées : une classe pouvait se vider de ses élèves au chargement, et un plan de classe disparaître après un changement de semaine. Un contrôle au démarrage signale maintenant toute classe vidée et propose de la rétablir depuis la dernière sauvegarde.',
-    'Popup statuts : les incidents se répartissent équitablement sur les deux colonnes, quel que soit le nombre d\u2019incidents personnalisés ajoutés.',
-    'Fiche du jour : elle s\u2019affiche à la première ouverture de l\u2019application dans la journée, et non plus seulement dans les quinze minutes qui entourent un cours. Le bouton 📅 la rouvre à tout moment.',
-    'Le bouton Copier de l\u2019enregistrement de séance ajoute « (à poursuivre au prochain cours) » aux tâches commencées mais non terminées.',
-    'Impression PDF du plan de classe rempli (menu Plus → 🖨️ Imprimer / PDF) : une classe par page, prête à afficher en salle — prénom, initiale du nom, n° d’ordre alphabétique et mentions PPS/PAP/PPRE/ULIS. Disponible sur les plans classique et îlots, et désormais aussi sur tout layout personnalisé du mode universel.',
-    'Layouts personnalisés réutilisables entre classes : chaque disposition que vous créez est désormais gardée en mémoire (« 📁 Mes layouts enregistrés ») et proposée directement au moment d’en créer une nouvelle sur une autre classe — plus besoin de reconstruire à la main le même plan de salle pour chaque classe qui l’occupe.',
-    'Synchronisation multi-cloud : en plus de Dropbox, vous pouvez désormais synchroniser avec Google Drive. Chaque collègue connecte son propre compte ; un seul cloud actif à la fois (mode universel).',
-    'Placement aléatoire « Mixité Filles/Garçons » en îlots : chaque bureau mélange désormais un garçon et une fille (les îlots à deux élèves restent alignés côté mur).'
-  ]));
-  root.appendChild(_aboutNews('juillet 2026', [
-    'Le référentiel importé remplace la Technologie en mode universel : « Ma discipline » (Groupes & matières) devient le socle de la progression, de l\u2019affectation, des séances et des bilans.',
-    'Élargissement séance par séance : piocher des compétences dans d\u2019autres référentiels, sans changer la discipline de la progression.',
-    'Gestion fine des référentiels : renommer, vue détaillée modifiable, documentation du format d\u2019import et prompt IA pour générer un fichier CSV/XLSX.',
-    'Import des classes tolérant : formats variés reconnus (4e2, 4ème 2, 4°1\u2026) et fenêtre de correspondance pour les nommages inhabituels (4eA), mémorisée pour la base élèves et l\u2019emploi du temps.'
-  ]));
-  root.appendChild(_aboutNews('début 2026', [
-    'Palette d\u2019actions universelle (Ctrl+K) pour naviguer et agir au clavier.',
-    'Onglets Paramètres réorganisés : « Plans & Contraintes », « Groupes & matières », parcours de démarrage guidé.',
-    'Import de référentiels de compétences (xlsx/csv) avec rapport d\u2019analyse avant écriture.'
+  // V11.3.72 — journal des nouveautés RÉSUMÉ par thème (demande du 26/09) : ce
+  // que l'utilisateur voit ou fait, pas le récit des corrections — ce détail vit
+  // dans le mémo de passation. Une rubrique = un thème, une ou deux phrases.
+  root.appendChild(_aboutRubriques([
+    ['🗓️ Saisir mes cours', 'septembre 2026',
+     'Un écran pour composer chaque cours, ligne par ligne, en piochant dans la bibliothèque, la progression ou dans les cours déjà faits d’autres classes du niveau ; ce qui reste du cours précédent est proposé d’office, et la complétion suggère pendant la frappe. L’étoile ☆ enrichit la bibliothèque. Le planning d’affectation devient une vue d’ensemble.'],
+    ['📋 Cahier de texte du jour', 'septembre 2026',
+     'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement ; les tâches commencées portent « (à poursuivre au prochain cours) ».'],
+    ['👩‍🏫 En classe', 'septembre 2026',
+     'Une popup de statuts plus lisible, dont vous fixez la disposition dans Paramètres. Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. La Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
+    ['⏱️ Compte à rebours', 'septembre 2026',
+     'Chaque alerte (5, 3, 2, 1 min, fin) se coupe, se règle en volume et peut jouer votre propre son.'],
+    ['🔄 Synchronisation et sécurité des données', 'septembre 2026',
+     'Dropbox ou Google Drive. Une barre de synchro sur le plan de classe, grande sur iPad, compacte sur ordinateur. Avant chaque synchro, une copie de sécurité de ce qui va être remplacé. Une alerte si la mémoire du navigateur est pleine.'],
+    ['🪑 Plan de classe', 'septembre 2026',
+     'Impression PDF, une classe par page. Dispositions réutilisables d’une classe à l’autre. Placement mixte en îlots. Le PAI n’apparaît plus dans les vues EBEP.'],
+    ['📚 Référentiels et disciplines', 'juillet 2026',
+     'Votre discipline et son référentiel importé deviennent le socle de la progression ; on peut emprunter des compétences à d’autres référentiels. L’import des classes est plus tolérant.'],
+    ['⌨️ Prise en main', 'début 2026',
+     'Palette d’actions (Ctrl+K), Paramètres réorganisés avec démarrage guidé, import de référentiels avec rapport d’analyse.']
   ]));
 
   root.appendChild(_aboutBlock('Éditeur', 'N. Jeunehomme — Développé avec l\u2019aide de Claude AI.'));
