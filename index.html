@@ -2740,6 +2740,12 @@ body:has(#sdc-bg) .mobile-menu-btn{display:none}
 .sdc-prov{font-size:10px;font-weight:700;flex:none;padding:1px 5px;border-radius:4px}
 .sdc-prov-biblio{color:var(--acc);background:var(--acc-l)}
 .sdc-prov-cours{color:#6B21A8;background:#F3E8FF}
+.sdc-prov-etoile{color:#92400E;background:#FEF3C7}
+.sdc-star{border:none;background:none;cursor:pointer;font-size:16px;line-height:1;color:var(--tx3);padding:2px 4px;min-width:28px;min-height:28px;flex:none}
+.sdc-star:hover{color:#D97706}
+.sdc-star.sdc-star-on{color:#D97706}
+.sdc-star:disabled{opacity:.35;cursor:not-allowed}
+.sdc-info{font-size:12px;color:#1E40AF;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--r1);padding:6px 8px;margin-bottom:6px}
 .sdc-etat-inconnu{font-size:10px;font-weight:700;color:#92400E;background:#FEF3C7;border-radius:4px;padding:1px 5px;flex:none}
 .sdc-bascule{padding:14px 18px;overflow:auto;font-size:13.5px;line-height:1.55;color:var(--tx)}
 .sdc-bascule p{margin:6px 0}
@@ -4167,7 +4173,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.68';
+const APP_VERSION = 'v11.3.69';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -18623,6 +18629,9 @@ function getProgression(niveau){
 
 /* Rafraîchit la vue progression active (page dédiée si ouverte) */
 function refreshProgressionView(){
+  // V11.3.69 — après toute modification de la bibliothèque (réordonner, retoucher,
+  // supprimer), les cours composés retrouvent leurs lignes (cf. _sdcReparerTout).
+  try{ if(S.planningBascule && typeof _sdcReparerTout==='function') _sdcReparerTout(); }catch(e){ console.warn('[sdc] réparation des liens', e); }
   const page=document.getElementById('progression-page');
   if(page && page.classList.contains('open')){
     const annBtn=document.getElementById('prog-tab-annuelle');
@@ -28543,15 +28552,17 @@ function _sdcInterpreter(text, prog){
   const lignes=String(text||'').split('\n');
   const items=[]; const avert=[]; const seances=[];
   let seqIdx=-1, seqHdr=null, sean=null;   // sean = {seqIdx, seanIdx, obj, pris:{mo:Set,doc:Set,res:Set}}
+  let seanHdr=null;                        // V11.3.69 — dernier en-tête /Séance, même inconnu
   lignes.forEach((raw,i)=>{
     const it=_sdcClasserLigne(raw); if(!it) return;
     it.ligne=i;
     if(it.type==='seq'){
       seqIdx=_sdcTrouverSeq(prog, it.num, it.label);
-      seqHdr=it; sean=null;
+      seqHdr=it; sean=null; seanHdr=null;
       it.etat=seqIdx>=0?'existe':'inconnu';
       if(seqIdx>=0){ it.seqId=prog[seqIdx].id; it.titreBiblio=String(prog[seqIdx].titre||''); }
     } else if(it.type==='sean'){
+      seanHdr=seqHdr?it:null;
       if(!seqHdr){ it.etat='inconnu'; avert.push('Ligne '+(i+1)+' : une séance sans /SEQ au-dessus — ses lignes restent propres au cours.'); sean=null; }
       else if(seqIdx<0){ it.etat='inconnu'; sean=null; }
       else {
@@ -28566,6 +28577,10 @@ function _sdcInterpreter(text, prog){
       }
     } else {
       it.src='cours';
+      // V11.3.69 — les en-têtes sous lesquels la ligne est écrite (connus ou non) :
+      // c'est là que l'étoile la versera.
+      it.blocSeq=seqHdr?{num:seqHdr.num, label:seqHdr.label, ligne:seqHdr.ligne}:null;
+      it.blocSean=seanHdr?{num:seanHdr.num, label:seanHdr.label, ligne:seanHdr.ligne}:null;
       if(sean){
         const lier=(liste, pris)=>{
           let best=-1, score=0;
@@ -28734,11 +28749,20 @@ function _sdcVersSeance(r){
 }
 
 /** Une ligne stockée → l'élément que lisent les 36 consommateurs du moteur. Pure. */
-function _sdcLigneVersItem(l, freeItems){
+function _sdcLigneVersItem(l, freeItems, prog){
   if(!l) return null;
   if(l.src==='biblio' && l.kind==='tache'){
     const d=l.duree||0;
-    return {type:'task', seqId:l.seqId, seanId:l.seanId, taskIdx:l.moIdx, label:l.label,
+    // V11.3.69 — la ligne a pu changer de place dans la séance (mode opératoire
+    // réordonné ou retouché) : on la retrouve par son texte. Séance ou chapitre
+    // introuvables : comportement inchangé ici — c'est _sdcReparerTout qui
+    // convertit, de façon durable, les lignes dont la source a été supprimée.
+    let moIdx=l.moIdx;
+    if(Array.isArray(prog) && typeof _sdcRelocaliser==='function'){
+      const r=_sdcRelocaliser(l, prog);
+      if(r.etat==='ok' || r.etat==='deplace') moIdx=r.idx;
+    }
+    return {type:'task', seqId:l.seqId, seanId:l.seanId, taskIdx:moIdx, label:l.label,
             dureeSlot:d, dureeTotal:d, doneBeforeSlot:0, isStart:true, isEnd:true,
             taskIsLast:true, taskDoneSoFar:d, sdc:true};
   }
@@ -28749,6 +28773,314 @@ function _sdcLigneVersItem(l, freeItems){
     return {type:'free', fi, dureeSlot:fi.duree||0, isStart:true, isEnd:true, sdc:true};
   }
   return null;   // doc / res de la bibliothèque : pas d'élément de minutage
+}
+
+/* ── V11.3.69 — Lot E, 1/2 : des liens qui tiennent ─────────────────────────
+   Un cours composé garde ses liens par IDENTIFIANT de séance (seanId), qui ne
+   bouge pas quand on réordonne, et par POSITION de ligne (moIdx / idx), qui
+   bouge. Trois gestes de Progression → Construction peuvent donc le fausser :
+   réordonner le mode opératoire, retoucher une ligne, supprimer une séance ou
+   un chapitre. Règle : on retrouve la ligne par son texte dans la même séance ;
+   introuvable (ou séance / chapitre supprimés), elle devient « propre au
+   cours » avec son libellé — jamais perdue, jamais attribuée à une autre. */
+function _sdcListeDe(sean, kind){
+  if(!sean) return null;
+  if(kind==='tache') return Array.isArray(sean.modeOp)?sean.modeOp:[];
+  if(kind==='doc') return Array.isArray(sean.docs)?sean.docs:[];
+  if(kind==='res') return Array.isArray(sean.ressources)?sean.ressources:[];
+  return null;
+}
+function _sdcTrouverParId(prog, seqId, seanId){
+  const q=(Array.isArray(prog)?prog:[]).find(x=>x && x.id===seqId); if(!q) return null;
+  const sn=(q.seances||[]).find(x=>x && x.id===seanId);
+  return sn?{seq:q, sean:sn}:null;
+}
+/** Où est aujourd'hui la ligne liée `l` ? Pure. → {etat:'ok'|'deplace'|'orphelin', idx}.
+ *  `pris` : positions déjà attribuées à d'autres lignes du même cours. */
+function _sdcRelocaliser(l, prog, pris){
+  if(!l) return {etat:'orphelin', idx:-1};
+  const t=_sdcTrouverParId(prog, l.seqId, l.seanId);
+  const liste=t?_sdcListeDe(t.sean, l.kind):null;
+  if(!liste) return {etat:'orphelin', idx:-1};
+  pris=pris||new Set();
+  const idx=l.kind==='tache'?l.moIdx:l.idx;
+  if(idx!=null && idx>=0 && idx<liste.length && !pris.has(idx) && _sdcProximite(liste[idx], l.label)>=_SDC_SEUIL_PROCHE) return {etat:'ok', idx};
+  let best=-1, score=0;
+  liste.forEach((x,k)=>{ if(pris.has(k)) return; const p=_sdcProximite(x, l.label); if(p>score){ score=p; best=k; } });
+  if(best>=0 && score>=_SDC_SEUIL_PROCHE) return {etat:'deplace', idx:best};
+  return {etat:'orphelin', idx:-1};
+}
+/** Répare les liens d'UNE entrée de planning. Pure (rend une copie).
+ *  → {entry, change, deplacees, orphelines}. */
+function _sdcReparerEntree(entry, prog, idBase){
+  const rien={entry, change:false, deplacees:0, orphelines:0};
+  if(!entry || !Array.isArray(entry.lignes) || !entry.lignes.length) return rien;
+  const lignes=entry.lignes.map(l=>Object.assign({}, l));
+  const free=(Array.isArray(entry.freeItems)?entry.freeItems:[]).slice();
+  const prisPar={}; const P=(l)=>{ const k=l.seanId+'|'+l.kind; return prisPar[k]||(prisPar[k]=new Set()); };
+  const ok=lignes.map(()=>false);
+  // Passe 1 : les liens encore justes réservent leur position.
+  lignes.forEach((l,i)=>{
+    if(l.src!=='biblio') return;
+    const t=_sdcTrouverParId(prog, l.seqId, l.seanId), L=t?_sdcListeDe(t.sean, l.kind):null;
+    const idx=l.kind==='tache'?l.moIdx:l.idx;
+    if(L && idx!=null && idx>=0 && idx<L.length && !P(l).has(idx) && _sdcProximite(L[idx], l.label)>=_SDC_SEUIL_PROCHE){ P(l).add(idx); ok[i]=true; }
+  });
+  // Passe 2 : les autres sont retrouvées par leur texte, ou deviennent propres au cours.
+  let dep=0, orph=0, n=0;
+  const ids=new Set(free.map(x=>x && x.id));
+  const ICON={tache:'⚙️', doc:'📄', res:'🔗'}, TYPE={tache:'modeOp', doc:'doc', res:'ressource'};
+  lignes.forEach((l,i)=>{
+    if(l.src!=='biblio' || ok[i]) return;
+    const r=_sdcRelocaliser(l, prog, P(l));
+    if(r.etat!=='orphelin'){ P(l).add(r.idx); if(l.kind==='tache') l.moIdx=r.idx; else l.idx=r.idx; dep++; return; }
+    let id; do{ id='sdc_'+String(idBase||'').replace(/[^A-Za-z0-9]/g,'')+'_r'+(n++); }while(ids.has(id)); ids.add(id);
+    free.push({id, label:l.label||'', type:TYPE[l.kind]||'modeOp', icon:ICON[l.kind]||'📝', duree:l.duree||0, sdc:true, orpheline:true});
+    lignes[i]={src:'cours', kind:l.kind, fiId:id};
+    orph++;
+  });
+  if(!dep && !orph) return rien;
+  const seances=(Array.isArray(entry.seances)?entry.seances:[]).filter(x=>x && _sdcTrouverParId(prog, x.seqId, x.seanId));
+  return {entry:Object.assign({}, entry, {lignes, freeItems:free, seances}), change:true, deplacees:dep, orphelines:orph};
+}
+/** Répare tous les cours composés. Appelée à l'ouverture de l'écran et après
+ *  chaque modification de la bibliothèque (refreshProgressionView). */
+function _sdcReparerTout(){
+  const M=S.edtProgMapping; if(!M) return 0;
+  let n=0; const touchees=new Set();
+  Object.keys(M).forEach(k=>{
+    const e=M[k]; if(!e || !Array.isArray(e.lignes) || !e.lignes.length) return;
+    const bar=k.indexOf('|'); if(bar<0) return;
+    const slotKey=k.slice(0,bar), c=k.slice(bar+1);
+    if(!c || /^grp:/.test(c)) return;
+    // Même résolution de niveau que le moteur (computeSlotLayout).
+    const prog=getProgression(c.replace(/\d+$/,''))||[];
+    // Garde : une bibliothèque vide ou introuvable ne doit jamais tout détacher.
+    if(!prog.length) return;
+    const r=_sdcReparerEntree(e, prog, slotKey+c);
+    if(r.change){ M[k]=r.entry; n++; touchees.add(c); }
+  });
+  if(n){ touchees.forEach(c=>{ try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(c); }catch(e){} }); saveS(); }
+  return n;
+}
+/** À la réouverture d'un cours composé, les en-têtes du texte suivent la
+ *  bibliothèque : si la séance liée est passée du rang 2 au rang 3, « /Séance 2 »
+ *  devient « /Séance 3 ». Les liens stockés (par identifiant) font foi. Pure.
+ *  Ne s'applique que si le texte correspond ligne pour ligne à ce qui a été
+ *  enregistré — sinon on ne sait pas apparier, et on ne touche à rien. */
+function _sdcRecalerEntetes(text, entry, prog){
+  const out={text:String(text||''), changements:[]};
+  const L=(entry && Array.isArray(entry.lignes))?entry.lignes:[];
+  prog=Array.isArray(prog)?prog:[];
+  if(!L.length || !prog.length) return out;
+  const r=_sdcInterpreter(out.text, prog);
+  const contenu=r.items.filter(it=>['seq','sean','taf','intention'].indexOf(it.type)<0);
+  if(contenu.length!==L.length) return out;
+  const blocs={};
+  for(let i=0;i<L.length;i++){
+    const l=L[i], it=contenu[i];
+    if(l.src!=='biblio') continue;
+    if(_sdcProximite(it.label, l.label)<_SDC_SEUIL_PROCHE) return out;
+    if(!it.blocSeq || !it.blocSean) continue;
+    const b=blocs[it.blocSean.ligne]||(blocs[it.blocSean.ligne]={hq:it.blocSeq, hs:it.blocSean, ids:new Set()});
+    b.ids.add(l.seqId+'|'+l.seanId);
+  }
+  const lignes=out.text.split('\n');
+  const cibleSeq={};   // ligne d'en-tête /SEQ → rang visé (-2 = désaccord)
+  const aFaire=[];
+  Object.keys(blocs).forEach(k=>{
+    const b=blocs[k]; if(b.ids.size!==1) return;
+    const parts=Array.from(b.ids)[0].split('|');
+    const qi=prog.findIndex(x=>x && x.id===parts[0]); if(qi<0) return;
+    const si=(prog[qi].seances||[]).findIndex(x=>x && x.id===parts[1]); if(si<0) return;
+    const qCur=_sdcTrouverSeq(prog, b.hq.num, b.hq.label);
+    const sCur=qCur>=0?_sdcTrouverSean(prog[qCur], b.hs.num, b.hs.label):-1;
+    // Un numéro tapé qui ne dit plus la vérité (résolu par le titre) est aussi remis d'aplomb.
+    const seqNumFaux=!!String(b.hq.num||'').trim() && String(b.hq.num).trim()!==_sdcSeqNum(prog[qi], qi);
+    const seanNumFaux=!!String(b.hs.num||'').trim() && parseInt(b.hs.num,10)!==si+1;
+    if(qCur===qi && sCur===si && !seqNumFaux && !seanNumFaux) return;
+    if(qCur!==qi || seqNumFaux){ const v=cibleSeq[b.hq.ligne]; cibleSeq[b.hq.ligne]=(v==null||v===qi)?qi:-2; }
+    aFaire.push({b, qi, si, qCur});
+  });
+  aFaire.forEach(({b, qi, si, qCur})=>{
+    if(qCur!==qi && cibleSeq[b.hq.ligne]!==qi) return;
+    const nv='/Séance '+(si+1)+(b.hs.label?' '+b.hs.label:'');
+    if(lignes[b.hs.ligne].trim()!==nv){ out.changements.push('« '+lignes[b.hs.ligne].trim()+' » → « '+nv+' »'); lignes[b.hs.ligne]=nv; }
+  });
+  Object.keys(cibleSeq).forEach(k=>{
+    const qi=cibleSeq[k]; if(qi<0) return;
+    const hq=Object.values(blocs).find(b=>String(b.hq.ligne)===String(k)).hq;
+    const nv='/SEQ'+_sdcSeqNum(prog[qi], qi)+(hq.label?' '+hq.label:'');
+    if(lignes[k].trim()!==nv){ out.changements.push('« '+lignes[k].trim()+' » → « '+nv+' »'); lignes[k]=nv; }
+  });
+  out.text=lignes.join('\n');
+  return out;
+}
+
+/* ── V11.3.69 — Lot E, 2/2 : l'étoile ☆ ─────────────────────────────────────
+   C'est le SEUL moyen, depuis l'écran, d'écrire dans la bibliothèque : ligne par
+   ligne, décochée par défaut, appliquée à l'enregistrement. Une ligne étoilée
+   est versée dans la séance de son en-tête ; si le chapitre ou la séance
+   n'existent pas, ils sont créés (chapitre retrouvé par son NUMÉRO ; séance =
+   son RANG dans le chapitre — un numéro tapé qui ne correspond pas est signalé
+   avant, puis l'en-tête est réécrit). Sans étoile, rien n'est jamais créé. */
+function _sdcCleEtoile(it){
+  if(!it) return '';
+  const h=(x)=> x ? (String(x.num||'').trim() ? '#'+String(x.num).trim() : 't:'+_sdcNorm(x.label)) : '-';
+  return h(it.blocSeq)+'|'+h(it.blocSean)+'|'+it.type+'|'+_sdcNorm(it.label);
+}
+/** Cette ligne peut-elle recevoir l'étoile ? Pure. → {ok, raison}. */
+function _sdcEtoilable(it){
+  if(!it || ['tache','doc','res','taf'].indexOf(it.type)<0) return {ok:false, raison:'type'};
+  if(it.src==='biblio') return {ok:false, raison:'deja'};
+  if(!it.blocSeq || !it.blocSean) return {ok:false, raison:'entete'};
+  if(!String(it.label||'').trim()) return {ok:false, raison:'vide'};
+  return {ok:true, raison:''};
+}
+/** Ce que l'étoile fera à l'enregistrement. Pure : ne touche pas à `prog`. */
+function _sdcPlanEtoiles(r, etoiles, prog){
+  prog=Array.isArray(prog)?prog:[];
+  const E=(etoiles instanceof Set)?etoiles:new Set(Array.isArray(etoiles)?etoiles:[]);
+  const plan={versements:[], nouvSeq:[], nouvSean:[], entetes:{}, avis:[], aCreer:{}};
+  if(!E.size) return plan;
+  const cleH=(h)=> String(h.num||'').trim() ? '#'+String(h.num).trim() : 't:'+_sdcNorm(h.label);
+  let maxNum=0;
+  prog.forEach((x,k)=>{ const n=parseInt(_sdcSeqNum(x,k),10); if(n>maxNum) maxNum=n; });
+  (r&&r.items||[]).forEach(it=>{ if(it.type==='seq'){ const n=parseInt(it.num,10); if(n>maxNum) maxNum=n; } });
+  const seqs={}, seans={}, avis=new Set();
+  (r&&r.items||[]).forEach(it=>{
+    if(!_sdcEtoilable(it).ok || !E.has(_sdcCleEtoile(it))) return;
+    const hq=it.blocSeq, hs=it.blocSean;
+    const cq=cleH(hq);
+    if(!seqs[cq]){
+      const i=_sdcTrouverSeq(prog, hq.num, hq.label);
+      if(i>=0) seqs[cq]={idx:i};
+      else {
+        const num=String(hq.num||'').trim() || String(++maxNum);
+        const nv={cle:cq, num, titre:String(hq.label||'').trim()||('Séquence '+num)};
+        plan.nouvSeq.push(nv); seqs[cq]={nouv:nv};
+      }
+    }
+    const rq=seqs[cq];
+    if(rq.nouv){
+      plan.aCreer[hq.ligne]=true;
+      if(!String(hq.num||'').trim()) plan.entetes[hq.ligne]='/SEQ'+rq.nouv.num+' '+rq.nouv.titre;
+    }
+    const cs=cq+'@'+cleH(hs);
+    if(!seans[cs]){
+      let si=-1;
+      if(rq.idx!=null) si=_sdcTrouverSean(prog[rq.idx], hs.num, hs.label);
+      if(si>=0) seans[cs]={seqIdx:rq.idx, seanIdx:si};
+      else {
+        const deja=plan.nouvSean.filter(x=>rq.nouv ? x.seqNouv===rq.nouv : x.seqIdx===rq.idx).length;
+        const base=rq.idx!=null ? (prog[rq.idx].seances||[]).length : 0;
+        const ns={cle:cs, titre:String(hs.label||'').trim(), rang:base+deja+1};
+        if(rq.nouv) ns.seqNouv=rq.nouv; else ns.seqIdx=rq.idx;
+        plan.nouvSean.push(ns); seans[cs]={nouv:ns};
+      }
+    }
+    const rs=seans[cs];
+    if(rs.nouv){
+      plan.aCreer[hs.ligne]=true;
+      const tape=parseInt(hs.num,10);
+      if(tape!==rs.nouv.rang){
+        plan.entetes[hs.ligne]='/Séance '+rs.nouv.rang+(rs.nouv.titre?' '+rs.nouv.titre:'');
+        if(String(hs.num||'').trim()) avis.add('« /Séance '+hs.num+' » sera la séance '+rs.nouv.rang+' de ce chapitre (les séances sont numérotées par leur rang) : l’en-tête sera réécrit.');
+      }
+    }
+    plan.versements.push({type:it.type, label:String(it.label||'').trim(), duree:it.duree||0, cible:rs, ligne:it.ligne});
+  });
+  plan.avis=Array.from(avis);
+  return plan;
+}
+function _sdcIdNeuf(prefixe){ return prefixe+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+/** Même forme que addSequence / addSeance (Progression), sans l'interface. */
+function _sdcNouvelleSequence(num, titre){
+  const id=_sdcIdNeuf('seq_');
+  return {id, titre, num:String(num||''), ordre:0, evalDuree:0, evalComps:[], evalConns:[], evalContenu:'', prereqComps:[], prereqConns:[], prereqContenu:'', seances:[],
+    evals:[{id:'ev_'+id+'_F', isFinal:true, afterSeanceId:null, titre:'', duree:0, moment:'', contenu:'', comps:[], conns:[]}]};
+}
+function _sdcNouvelleSeance(titre, rang){
+  return {id:_sdcIdNeuf('sean_'), titre:titre||('Séance '+rang), contenu:'', taf:'', tafs:[], ordre:rang-1, compIds:[], connIds:[], modeOp:[], modeOpDurees:[], docs:[], ressources:[], type:'CE'};
+}
+/** Applique le plan à la bibliothèque (`prog` est modifié). → compte rendu. */
+function _sdcAppliquerEtoiles(plan, prog){
+  const res={versees:0, seqCreees:0, seanCreees:0};
+  if(!plan || !plan.versements.length) return res;
+  const oSeq=new Map(), oSean=new Map();
+  plan.nouvSeq.forEach(nv=>{ const o=_sdcNouvelleSequence(nv.num, nv.titre); o.ordre=prog.length; prog.push(o); oSeq.set(nv,o); res.seqCreees++; });
+  plan.nouvSean.forEach(ns=>{
+    const seq=ns.seqNouv?oSeq.get(ns.seqNouv):prog[ns.seqIdx]; if(!seq) return;
+    if(!Array.isArray(seq.seances)) seq.seances=[];
+    const o=_sdcNouvelleSeance(ns.titre, seq.seances.length+1); seq.seances.push(o); oSean.set(ns,o); res.seanCreees++;
+  });
+  const deja=(liste, lbl)=>liste.some(x=>_sdcNorm(x)===_sdcNorm(lbl));
+  plan.versements.forEach(v=>{
+    const sean=v.cible.nouv ? oSean.get(v.cible.nouv) : ((prog[v.cible.seqIdx]||{}).seances||[])[v.cible.seanIdx];
+    if(!sean || !v.label) return;
+    if(v.type==='tache'){
+      if(!Array.isArray(sean.modeOp)) sean.modeOp=[];
+      if(!Array.isArray(sean.modeOpDurees)) sean.modeOpDurees=[];
+      if(deja(sean.modeOp, v.label)) return;
+      while(sean.modeOpDurees.length<sean.modeOp.length) sean.modeOpDurees.push(0);
+      sean.modeOp.push(v.label); sean.modeOpDurees.push(v.duree||0); res.versees++;
+    } else {
+      const cle=v.type==='doc'?'docs':(v.type==='res'?'ressources':'tafs');
+      if(cle==='tafs' && (!Array.isArray(sean.tafs) || !sean.tafs.length)) sean.tafs=sean.taf?[String(sean.taf)]:[];
+      if(!Array.isArray(sean[cle])) sean[cle]=[];
+      if(deja(sean[cle], v.label)) return;
+      sean[cle].push(v.label); res.versees++;
+    }
+  });
+  return res;
+}
+/** Remplace des lignes entières du texte ({indice: nouvelle ligne}). Pure. */
+function _sdcReecrireEntetes(text, entetes){
+  const L=String(text||'').split('\n');
+  Object.keys(entetes||{}).forEach(k=>{ const i=+k; if(i>=0 && i<L.length) L[i]=entetes[k]; });
+  return L.join('\n');
+}
+/** Menus « ＋ Nouveau chapitre » / « ＋ Nouvelle séance ». Purs. */
+function _sdcNumNouveauChapitre(prog, text){
+  let m=0;
+  (Array.isArray(prog)?prog:[]).forEach((x,k)=>{ const n=parseInt(_sdcSeqNum(x,k),10); if(n>m) m=n; });
+  String(text||'').split('\n').forEach(l=>{ const it=_sdcClasserLigne(l); if(it && it.type==='seq'){ const n=parseInt(it.num,10); if(n>m) m=n; } });
+  return m+1;
+}
+function _sdcNumNouvelleSeance(text, seqNum, nbBiblio){
+  let m=nbBiblio|0, cur=null;
+  String(text||'').split('\n').forEach(l=>{ const it=_sdcClasserLigne(l); if(!it) return;
+    if(it.type==='seq') cur=String(it.num||'').trim();
+    else if(it.type==='sean' && cur===String(seqNum)){ const n=parseInt(it.num,10); if(n>m) m=n; } });
+  return m+1;
+}
+/** Ajoute des lignes en fin de texte ; le curseur ira après. Pure. */
+function _sdcAjouterEnFin(text, lignes){
+  const s=String(text||'').replace(/\s+$/,'');
+  return (s?s+'\n':'')+lignes.join('\n');
+}
+/** « ＋ Nouvelle séance » : sous le chapitre s'il est le dernier en-tête du texte,
+ *  sinon avec son en-tête /SEQ. Pure. */
+function _sdcAjouterNouvelleSeance(text, seqLigne, seqNum, n){
+  let dernier=null;
+  String(text||'').split('\n').forEach(l=>{ const it=_sdcClasserLigne(l); if(it && it.type==='seq') dernier=String(it.num||'').trim(); });
+  const L = dernier===String(seqNum) ? ['/Séance '+n+' '] : [seqLigne, '/Séance '+n+' '];
+  return _sdcAjouterEnFin(text, L);
+}
+/** Les étoiles posées sur un cours (gardées dans son brouillon). */
+function _sdcEtoiles(cls, slotKey){
+  const d=_sdcDraft(cls, slotKey);
+  return new Set((d && Array.isArray(d.etoiles))?d.etoiles:[]);
+}
+function _sdcBasculerEtoile(cls, slotKey, cle){
+  if(!S.seanceContentDraft) S.seanceContentDraft={};
+  const k=cls+'|'+slotKey, d=S.seanceContentDraft[k]||{};
+  const E=new Set(Array.isArray(d.etoiles)?d.etoiles:[]);
+  if(E.has(cle)) E.delete(cle); else E.add(cle);
+  if(E.size) d.etoiles=Array.from(E); else delete d.etoiles;
+  S.seanceContentDraft[k]=d;
+  saveS();
+  return E.has(cle);
 }
 
 /** Un cours est « rempli » s'il a un contenu (saisi ou enregistré). Pure. */
@@ -28882,15 +29214,24 @@ function _sdcAnnulerBascule(){
 }
 
 /* ── Écriture d'un cours ───────────────────────────────────────────────── */
-function _sdcEnregistrer(cls, slotKey, text){
+function _sdcEnregistrer(cls, slotKey, text, etoiles){
   cls=_sdcClsCanon(cls);
   const cours=_sdcCoursDeClasse(cls).find(c=>c.slotKey===slotKey);
   if(!cours) return {ok:false, message:'Cours introuvable.'};
   if(cours.saved) return {ok:false, message:'Ce cours est déjà enregistré : modifiez-le depuis la séance ou le cahier de texte.'};
   if(!_sdcApresBascule(cours.dateStr, cls)) return {ok:false, message:'Ce cours est antérieur à la bascule : il relève de l’ancien planning.'};
-  const r=_sdcInterpreter(text, getProgression(_sdcNiveau(cls))||[]);
-  if(!S.edtProgMapping) S.edtProgMapping={};
+  const progE=getProgression(_sdcNiveau(cls))||[];
   if(typeof pushUndo==='function') try{ pushUndo(); }catch(e){}
+  // V11.3.69 — lot E : les lignes ☆ vont dans la bibliothèque AVANT
+  // l'interprétation, qui les retrouve alors reliées.
+  let verse=null;
+  const E=(etoiles instanceof Set)?etoiles:new Set(Array.isArray(etoiles)?etoiles:[]);
+  if(E.size){
+    const plan=_sdcPlanEtoiles(_sdcInterpreter(text, progE), E, progE);
+    if(plan.versements.length){ verse=_sdcAppliquerEtoiles(plan, progE); text=_sdcReecrireEntetes(text, plan.entetes); }
+  }
+  const r=_sdcInterpreter(text, progE);
+  if(!S.edtProgMapping) S.edtProgMapping={};
   const key=_sdcMapKey(slotKey, cls);
   const e=_sdcConstruireEntree(r, S.edtProgMapping[key], slotKey+cls);
   if(!e.lignes.length && !e.freeItems.length) delete S.edtProgMapping[key];
@@ -28901,11 +29242,19 @@ function _sdcEnregistrer(cls, slotKey, text){
   const d=S.seanceContentDraft[dk]||{};
   const vs=_sdcVersSeance(r);
   d.saisie=String(text||''); d.saisieEnreg=d.saisie; d.contenu=vs.contenu; d.taf=vs.taf;
+  delete d.etoiles;
   S.seanceContentDraft[dk]=d;
   if(_sdcSaisieT){ clearTimeout(_sdcSaisieT); _sdcSaisieT=null; }
   saveS();
   const nb=r.items.filter(i=>i.src==='biblio').length, nc=r.items.filter(i=>i.src==='cours').length;
-  return {ok:true, message:'Cours enregistré · '+nb+' ligne'+(nb>1?'s':'')+' de la bibliothèque, '+nc+' propre'+(nc>1?'s':'')+' au cours'};
+  let msg='Cours enregistré · '+nb+' ligne'+(nb>1?'s':'')+' de la bibliothèque, '+nc+' propre'+(nc>1?'s':'')+' au cours';
+  if(verse && verse.versees){
+    msg+=' · ☆ '+verse.versees+' versée'+(verse.versees>1?'s':'')+' dans la bibliothèque';
+    const cr=[]; if(verse.seqCreees) cr.push(verse.seqCreees+' chapitre'+(verse.seqCreees>1?'s':''));
+    if(verse.seanCreees) cr.push(verse.seanCreees+' séance'+(verse.seanCreees>1?'s':''));
+    if(cr.length) msg+=' ('+cr.join(' et ')+' créé'+((verse.seqCreees+verse.seanCreees)>1?'s':'')+')';
+  }
+  return {ok:true, message:msg, texte:text, verse};
 }
 
 /* ── État et ouverture ─────────────────────────────────────────────────── */
@@ -28928,6 +29277,7 @@ function openSaisieCours(opts){
   }
   _sdc={cls, slotKey};
   _sdcRetirerAvert();
+  try{ _sdcReparerTout(); }catch(e){ console.warn('[sdc] réparation des liens', e); }
   _sdcRendre();
 }
 function closeSaisieCours(){
@@ -29110,10 +29460,22 @@ function _sdcRendre(){
   const enregistre=!!cur.saved;
   const avant=!_sdcApresBascule(cur.dateStr, cls);
   const lectureSeule=enregistre||avant;
-  const texte0=enregistre ? String(cur.saved.contenu||'') : _sdcTexteInitial(cls, slotKey);
+  let texte0=enregistre ? String(cur.saved.contenu||'') : _sdcTexteInitial(cls, slotKey);
   const dureeCours=_sdcDureeCours(cur.debut, cur.fin);
   const lv=_sdcNiveau(cls);
   const prog=getProgression(lv)||[];
+  // V11.3.69 — texte inchangé depuis l'enregistrement : ses en-têtes suivent la
+  // bibliothèque (séance déplacée dans Progression → Construction).
+  let recale=[];
+  if(!lectureSeule){
+    try{
+      const dd=_sdcDraft(cls, slotKey), ent=S.edtProgMapping && S.edtProgMapping[_sdcMapKey(slotKey, cls)];
+      if(dd && typeof dd.saisie==='string' && dd.saisie===dd.saisieEnreg && ent){
+        const rc=_sdcRecalerEntetes(texte0, ent, prog);
+        if(rc.changements.length){ texte0=rc.text; dd.saisie=rc.text; dd.saisieEnreg=rc.text; saveS(); recale=rc.changements; }
+      }
+    }catch(e){ console.warn('[sdc] recalage des en-têtes', e); }
+  }
 
   // ── Lot B : ce qui reste des cours précédents (proposé, jamais imposé)
   if(!lectureSeule) _sdcZoneRestes(pan, cls, slotKey, prog, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
@@ -29126,11 +29488,15 @@ function _sdcRendre(){
   const biblio=_sdcEl('div','sdc-biblio'); pan.appendChild(biblio);
   const o0=_sdcEl('option',null,'— choisir —'); o0.value=''; selSeq.appendChild(o0);
   prog.forEach((s,k)=>{ const o=_sdcEl('option',null,'SEQ'+_sdcSeqNum(s,k)+' — '+(s.titre||'')); o.value=String(k); selSeq.appendChild(o); });
+  // V11.3.69 — créer par le texte (l'étoile fera le reste), ou aller retoucher la bibliothèque.
+  { const oN=_sdcEl('option',null,'＋ Nouveau chapitre'); oN.value='__nouveau'; selSeq.appendChild(oN);
+    const oM=_sdcEl('option',null,'✎ Modifier la bibliothèque (Progression)…'); oM.value='__modifier'; selSeq.appendChild(oM); }
   const remplirSean=()=>{
     selSean.textContent='';
     const oz=_sdcEl('option',null,selSeq.value===''?'— le chapitre d’abord —':'— choisir —'); oz.value=''; selSean.appendChild(oz);
     const seq=prog[+selSeq.value];
     if(selSeq.value!=='' && seq) (seq.seances||[]).forEach((s,k)=>{ const t=_sdcTitreSeance(s); const o=_sdcEl('option',null,'Séance '+(k+1)+(t?' — '+t:'')); o.value=String(k); selSean.appendChild(o); });
+    if(selSeq.value!=='' && seq){ const oN=_sdcEl('option',null,'＋ Nouvelle séance'); oN.value='__nouvelle'; selSean.appendChild(oN); }
     selSean.disabled=lectureSeule || selSeq.value==='';
   };
   const ajouter=(lignesAjout)=>{
@@ -29149,14 +29515,43 @@ function _sdcRendre(){
     bTout.onclick=()=>ajouter(corpsB); biblio.appendChild(bTout);
     corpsB.forEach(l=>{ const b=_sdcEl('button','sdc-chip sdc-bl','＋ '+l); b.type='button'; b.disabled=lectureSeule; b.title='Ajouter cette ligne au cours'; b.onclick=()=>ajouter([l]); biblio.appendChild(b); });
   };
-  selSeq.onchange=()=>{ remplirSean(); remplirBiblio(); };
-  selSean.onchange=remplirBiblio;
+  const finDeTexte=()=>{ maj(true); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); };
+  selSeq.onchange=()=>{
+    if(selSeq.value==='__nouveau'){
+      selSeq.value=''; remplirSean(); remplirBiblio();
+      ta.value=_sdcAjouterEnFin(ta.value, ['/SEQ'+_sdcNumNouveauChapitre(prog, ta.value)+' ']);
+      finDeTexte(); return;
+    }
+    if(selSeq.value==='__modifier'){
+      selSeq.value='';
+      closeSaisieCours();
+      setTimeout(()=>{ try{ if(typeof openProgression==='function') openProgression(); showProgTab('construction'); }catch(e){ console.warn('[sdc] Progression', e); } }, 0);
+      return;
+    }
+    remplirSean(); remplirBiblio();
+  };
+  selSean.onchange=()=>{
+    if(selSean.value==='__nouvelle'){
+      const k=+selSeq.value, seq=prog[k];
+      selSean.value=''; remplirBiblio();
+      if(seq){
+        const num=_sdcSeqNum(seq,k);
+        const n=_sdcNumNouvelleSeance(ta.value, num, (seq.seances||[]).length);
+        ta.value=_sdcAjouterNouvelleSeance(ta.value, _sdcLigneSeq(seq,k), num, n);
+        finDeTexte();
+      }
+      return;
+    }
+    remplirBiblio();
+  };
   selSeq.disabled=lectureSeule; remplirSean();
+  if(lectureSeule) Array.from(selSeq.options).forEach(o=>{ if(o.value==='__nouveau') o.remove(); });
 
   // ── Corps : saisie | interprétation
   const corps=_sdcEl('div','sdc-corps'); pan.appendChild(corps);
   const colG=_sdcEl('div','sdc-col'); const colD=_sdcEl('div','sdc-col'); corps.appendChild(colG); corps.appendChild(colD);
   colG.appendChild(_sdcEl('div','sdc-h','Ce qu’on fait — une ligne par élément'));
+  if(recale.length) colG.appendChild(_sdcEl('div','sdc-info','ℹ La bibliothèque a changé depuis l’enregistrement de ce cours ; ses en-têtes ont été remis à jour : '+recale.join(' ; ')+'.'));
   const ta=_sdcEl('textarea','sdc-ta'); ta.value=texte0; ta.spellcheck=true; ta.readOnly=lectureSeule;
   ta.placeholder='Choisissez une séance au-dessus pour en prendre des lignes,\nou écrivez directement :\nCorrection de l’exercice de vendredi - 15 min\n/TAF Terminer l’algorigramme p. 3';
   colG.appendChild(ta);
@@ -29168,7 +29563,7 @@ function _sdcRendre(){
     b.onclick=()=>{ if(ta.readOnly) return; const r=_sdcInsererPrefixe(ta.value, ta.selectionStart, p); ta.value=r.text; ta.focus(); ta.setSelectionRange(r.pos, r.pos); maj(true); };
     pref.appendChild(b);
   });
-  pref.appendChild(_sdcEl('span','sdc-pref-n','Une ligne sans préfixe est une tâche. Sous un /SEQ + /Séance connus, une ligne proche d’une ligne de la bibliothèque y est reliée ; sinon elle est propre à ce cours.'));
+  pref.appendChild(_sdcEl('span','sdc-pref-n','Une ligne sans préfixe est une tâche. Sous un /SEQ + /Séance connus, une ligne proche d’une ligne de la bibliothèque y est reliée ; sinon elle est propre à ce cours. L’étoile ☆ d’une ligne la verse dans la bibliothèque à l’enregistrement (et crée le chapitre ou la séance s’ils manquent).'))
 
   // V11.3.66 — demi-groupes : reprendre le contenu du cours jumeau, seulement
   // si CE cours est encore vide (on n'écrase jamais une saisie).
@@ -29200,12 +29595,15 @@ function _sdcRendre(){
   const bEnr=_sdcEl('button','bp sdc-enr','Enregistrer'); pied.appendChild(bEnr);
   const etat=_sdcEl('div','sdc-etat'); pied.appendChild(etat);
   bEnr.disabled=lectureSeule;
+  if(_sdc.msg){ etat.className='sdc-etat sdc-ok'; etat.textContent='✓ '+_sdc.msg; _sdc.msg=null; }
   if(enregistre) etat.textContent='Ce cours est déjà enregistré : son contenu se modifie depuis la séance ou le cahier de texte.';
   else if(avant) etat.textContent='Cours antérieur à la bascule du '+_sdcDateLongue(S.planningBascule)+' : il relève de l’ancien planning.';
 
   const BADGE={seq:'SEQ', sean:'SÉANCE', tache:'TÂCHE', doc:'DOC', res:'RES', taf:'TAF', eval:'ÉVAL'};
   const maj=(persister)=>{
     const r=_sdcInterpreter(ta.value, prog);
+    const E=lectureSeule ? new Set() : _sdcEtoiles(cls, slotKey);
+    const planE=_sdcPlanEtoiles(r, E, prog);
     const tot=r.total;
     jauge.textContent='';
     if(dureeCours){
@@ -29223,9 +29621,27 @@ function _sdcRendre(){
       const titre=it.label || ((it.type==='seq'||it.type==='sean') && it.titreBiblio ? (it.type==='sean'?_sdcTitreSeance({titre:it.titreBiblio}):it.titreBiblio) : '');
       const lbl=((it.type==='seq'||it.type==='sean')&&it.num?it.num+' ':'')+(titre||'');
       row.appendChild(_sdcEl('span','sdc-lbl',lbl||'—'));
-      if(it.type==='seq'||it.type==='sean') row.appendChild(_sdcEl('span','sdc-etat-'+it.etat, it.etat==='existe'?'bibliothèque':'inconnu — repère seulement'));
+      const etoilee = !lectureSeule && _sdcEtoilable(it).ok && E.has(_sdcCleEtoile(it));
+      if(it.type==='seq'||it.type==='sean'){
+        if(it.etat!=='existe' && planE.aCreer[it.ligne]) row.appendChild(_sdcEl('span','sdc-etat-creer','à créer (☆)'));
+        else row.appendChild(_sdcEl('span','sdc-etat-'+it.etat, it.etat==='existe'?'bibliothèque':'inconnu — repère seulement'));
+      }
+      else if(etoilee) row.appendChild(_sdcEl('span','sdc-prov sdc-prov-etoile','☆ ira dans la bibliothèque'));
       else if(it.src) row.appendChild(_sdcEl('span','sdc-prov sdc-prov-'+it.src, _sdcProvenance(it)));
       if(it.duree) row.appendChild(_sdcEl('span','sdc-dur',it.duree+' min'));
+      if(!lectureSeule && ['tache','doc','res','taf'].indexOf(it.type)>=0 && it.src!=='biblio'){
+        const el=_sdcEtoilable(it);
+        const bE=_sdcEl('button','sdc-star'+(etoilee?' sdc-star-on':''), etoilee?'★':'☆'); bE.type='button';
+        if(el.ok){
+          bE.title=etoilee?'Sera versée dans la bibliothèque à l’enregistrement — cliquer pour ne pas la verser'
+                          :'Verser cette ligne dans la bibliothèque (à l’enregistrement)';
+          bE.onclick=()=>{ _sdcBasculerEtoile(cls, slotKey, _sdcCleEtoile(it)); maj(false); };
+        } else {
+          bE.disabled=true;
+          bE.title=el.raison==='entete'?'Pour la verser dans la bibliothèque, placez cette ligne sous un /SEQ et une /Séance.':'Ligne vide.';
+        }
+        row.appendChild(bE);
+      }
       if(!lectureSeule && it.type!=='seq' && it.type!=='sean'){
         const up=_sdcEl('button','sdc-mv','↑'); up.title='Monter'; up.onclick=()=>{ ta.value=_sdcDeplacerLigne(ta.value, it.ligne, -1); maj(true); };
         const dn=_sdcEl('button','sdc-mv','↓'); dn.title='Descendre'; dn.onclick=()=>{ ta.value=_sdcDeplacerLigne(ta.value, it.ligne, +1); maj(true); };
@@ -29241,7 +29657,14 @@ function _sdcRendre(){
       r.avert.forEach(x=>E.push('⚠ '+x));
       E.push('Poser ces lignes, dans cet ordre, sur ce cours du planning — ce cours seulement.');
       if(nb) E.push(nb+' ligne'+(nb>1?'s':'')+' reliée'+(nb>1?'s':'')+' à la bibliothèque (suivies ligne par ligne dans le modal Séance).');
-      if(nc) E.push(nc+' ligne'+(nc>1?'s':'')+' propre'+(nc>1?'s':'')+' à ce cours — rien n’entre dans la bibliothèque.');
+      const nv=planE.versements.length, ncp=Math.max(0, nc-nv);
+      if(ncp) E.push(ncp+' ligne'+(ncp>1?'s':'')+' propre'+(ncp>1?'s':'')+' à ce cours'+(nv?'.':' — rien n’entre dans la bibliothèque.'));
+      if(nv){
+        E.push('☆ '+nv+' ligne'+(nv>1?'s':'')+' versée'+(nv>1?'s':'')+' dans la bibliothèque, puis reliée'+(nv>1?'s':'')+' à ce cours.');
+        planE.nouvSeq.forEach(x=>E.push('Créer le chapitre SEQ'+x.num+' « '+x.titre+' ».'));
+        planE.nouvSean.forEach(x=>E.push('Créer la séance '+x.rang+(x.titre?' « '+x.titre+' »':'')+' dans '+(x.seqNouv?'SEQ'+x.seqNouv.num:'SEQ'+_sdcSeqNum(prog[x.seqIdx], x.seqIdx))+'.'));
+      }
+      planE.avis.forEach(x=>E.push('⚠ '+x));
       E.push('Préparer le contenu et les TAF du modal Séance de ce cours.');
       E.forEach(t=>effets.appendChild(_sdcEl('div',/^⚠/.test(t)?'sdc-err':null,t)));
       const dd=_sdcDraft(cls, slotKey);
@@ -29253,7 +29676,10 @@ function _sdcRendre(){
   };
   ta.addEventListener('input', ()=>maj(true));
   bEnr.onclick=()=>{
-    const res=_sdcEnregistrer(cls, slotKey, ta.value);
+    const res=_sdcEnregistrer(cls, slotKey, ta.value, _sdcEtoiles(cls, slotKey));
+    // V11.3.69 — la bibliothèque a changé (lignes ☆) : on redessine tout l'écran
+    // (menus, provenances), en gardant le message.
+    if(res.ok && res.verse && res.verse.versees){ _sdc.msg=res.message; _sdcRendre(); _sdcRafraichirVues(); return; }
     etat.className='sdc-etat '+(res.ok?'sdc-ok':'sdc-ko');
     etat.textContent=(res.ok?'✓ ':'⚠ ')+res.message;
     if(res.ok){ maj(false); _sdcRafraichirVues(); }
@@ -37787,7 +38213,7 @@ function computeSlotLayout(clsCode, fromSlotKey, grpId) {
       Object.keys(paused).forEach(k=>delete paused[k]);
       pendingReporters.clear();
       (Array.isArray(entry.lignes)?entry.lignes:[]).forEach(l=>{
-        const it=_sdcLigneVersItem(l, freeItems);
+        const it=_sdcLigneVersItem(l, freeItems, prog);
         if(it){ items.push(it); usedMn+=it.dureeSlot||0; }
       });
       layout[slot.slotKey] = { items, usedMn, unusedMn:0, slotD };
@@ -43178,6 +43604,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Saisir mes cours — l’étoile ☆ : dans l’interprétation, une étoile par ligne propre au cours. Étoilée, la ligne est versée dans la bibliothèque à l’enregistrement, dans la séance de son en-tête ; si le chapitre ou la séance n’existent pas, ils sont créés (« à créer » s’affiche avant). Rien n’entre jamais dans la bibliothèque sans étoile. Les menus Chapitre et Séance proposent « ＋ Nouveau chapitre » et « ＋ Nouvelle séance », et un lien vers Progression pour retoucher la bibliothèque. Et les cours déjà composés tiennent bon : une séance déplacée, une ligne réordonnée ou retouchée dans Progression sont retrouvées ; une ligne dont la source a été supprimée reste dans le cours, propre à lui.',
     'Saisir mes cours se ferme d’un clic à côté de la fenêtre. Si le cours ouvert a une saisie non enregistrée, un bandeau le signale après la fermeture, avec « Rouvrir » : rien n’est perdu, le texte reste gardé sur cet appareil. Et le planning d’affectation comme l’Agenda hebdo se mettent à jour dès l’enregistrement d’un cours, sans avoir à changer de semaine.',
     'Saisir mes cours — « Autres cours » : sous l’interprétation, une carte par classe du niveau (et une pour les autres cours de la classe ouverte), chacune sur son cours le plus proche, avec ◀ ▶ pour en changer. On y prend une ligne (＋) ou tout le cours (« Tout prendre ») ; une ligne liée à la bibliothèque le reste. Rien n’est jamais modifié dans le cours d’où l’on prend.',
     'Saisir mes cours et demi-groupes : l’écran affiche le groupe du cours ; un bouton « Même contenu que l’autre demi-groupe » recopie le texte du cours jumeau (le même jour, sinon le plus proche) tant que le cours est vide, à ajuster avant d’enregistrer. Et la bande « Reste des cours précédents » ne mélange plus les groupes : ce qu’un demi-groupe n’a pas fini n’est proposé qu’à lui ; ce qui reste d’un cours en classe entière est proposé à chaque groupe, avec un choix par groupe.',
