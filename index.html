@@ -4208,7 +4208,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.76';
+const APP_VERSION = 'v11.3.77';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -10757,6 +10757,8 @@ function _ytpExecuteTransition(){
     Snext.evalEcrit           = {};
     Snext.suiviProg           = {};   // Q4 cadrage : effacer le suivi prog (lié aux classes)
     Snext.absences            = [];   // Année écoulée
+    Snext.tirageHistory       = {};   // V11.3.77 — tirages de l'an passé (uid d'élèves partis)
+    Snext.tirageAnneeTag      = String(anneeNew||'');
 
     // EDT : remis à zéro avec une période DATÉE (1er sept → 10 juillet suivant),
     // libellée nouvelle année. L'utilisateur ré-importera son ICS et ses vacances.
@@ -31280,6 +31282,7 @@ function resetAll(){
       if(S.nickNames) S.nickNames={};
       if(S.observations) S.observations={};
       if(S.obsCours) S.obsCours={};   // V11.3.44
+      S.tirageHistory={};             // V11.3.77 — historique de tirage (uid d'élèves)
       S.uidCounter=0;
     },
     comps:   ()=>{ const d=defaultState(); S.liveComps=d.liveComps; S.evalComps=d.evalComps; S.groupesComps=d.groupesComps; S.seanceCompsAffect=d.seanceCompsAffect; S.evalEcrit=d.evalEcrit; S.slotEvalCompPlans=d.slotEvalCompPlans; S.compsAffectations=d.compsAffectations; S.customComps=d.customComps; S.customConns=d.customConns; S.groupeCompsParCls=d.groupeCompsParCls; },
@@ -44213,7 +44216,7 @@ function showAboutModal(){
     ['📋 Cahier de texte du jour', 'septembre 2026',
      'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement ; les tâches commencées portent « (à poursuivre au prochain cours) ».'],
     ['👩‍🏫 En classe', 'septembre 2026',
-     'Une popup de statuts plus lisible, dont vous fixez la disposition dans Paramètres, avec des avertissements à deux ou trois niveaux (AVT1, AVT2, AVT3), et un statut rapide ⚡ : on en arme un, chaque appui sur un élève le pose. Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. La Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
+     'Une popup de statuts plus lisible, dont vous fixez la disposition dans Paramètres, avec des avertissements à deux ou trois niveaux (AVT1, AVT2, AVT3), et un statut rapide ⚡ : on en arme un, chaque appui sur un élève le pose. Une observation vierge à chaque cours, l’historique à portée de main. Le tirage au sort accepte vos propres types ; après une interrogation ou une vérification de cahier, quelques appuis notent chaque élève dans l’observation du cours. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. La Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
     ['⏱️ Compte à rebours', 'septembre 2026',
      'Chaque alerte (5, 3, 2, 1 min, fin) se coupe, se règle en volume et peut jouer votre propre son.'],
     ['🔄 Synchronisation et sécurité des données', 'septembre 2026',
@@ -61063,8 +61066,279 @@ const TIRAGE_CATS=[
   {id:'cahier',       label:'📓 Cahier à vérifier'},
 ];
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   V11.3.77 — Tirage au sort personnalisable + saisie rapide après tirage
+   ───────────────────────────────────────────────────────────────────────────
+   • Types de tirage PERSONNELS (S.tirageTypes, globaux : valables pour toutes
+     les classes) ajoutés depuis la popup, à côté des 4 types d'origine
+     (TIRAGE_CATS, inchangé). Chaque type porte un mode de saisie :
+       'aucune' · 'interro' (niveaux + remarque) · 'cahier' (grille critères ×
+       niveaux) · 'niveaux' (type perso : niveaux + remarque, préfixé du nom).
+   • Après le tirage, pour les types avec saisie : un panneau de saisie rapide
+     (5 élèves au plus) qui AJOUTE une ligne à l'observation du cours
+     (S.obsCours, via readObsCours / writeObsCoursEleve — même cible que la
+     popup élève : _obsSlotCible).
+   • Historique : purgé au changement d'année (wizard) et, une fois, pour les
+     données existantes (tampon S.tirageAnneeTag).
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TIRAGE_SAISIE_MAX=5;
+const TIRAGE_NIVEAUX=[
+  {id:'I',  label:'Insuffisant', court:'I',  col:'#DC2626'},
+  {id:'P',  label:'Partiel',     court:'P',  col:'#D97706'},
+  {id:'AB', label:'Assez bien',  court:'AB', col:'#2563EB'},
+  {id:'PF', label:'Parfait',     court:'✓',  col:'#16A34A'},
+];
+const TIRAGE_CAHIER_CRIT_DEF=['Soigné','Complet','Feuilles collées','Sans dessin'];
+
+/** Types d'origine + types personnels, avec leur mode de saisie. Pure sur S. */
+function _tirageCats(){
+  const base=TIRAGE_CATS.map(c=>({id:c.id, label:c.label, perso:false,
+    saisie: c.id==='interrogation' ? 'interro' : (c.id==='cahier' ? 'cahier' : 'aucune')}));
+  const perso=(Array.isArray(S.tirageTypes)?S.tirageTypes:[])
+    .filter(t=>t && t.id && String(t.label||'').trim())
+    .map(t=>({id:t.id, label:String(t.label).trim(), perso:true,
+      saisie: t.saisie==='niveaux' ? 'niveaux' : 'aucune'}));
+  return base.concat(perso);
+}
+
+/** Ajoute un type personnel. Renvoie son id, ou '' si le libellé est vide ou
+ *  déjà pris (comparaison sans casse). Ne sauvegarde pas. */
+function _tirageAjouterType(label, saisie){
+  const lab=String(label||'').trim().slice(0,40);
+  if(!lab) return '';
+  const deja=_tirageCats().some(c=>c.label.toLowerCase()===lab.toLowerCase());
+  if(deja) return '';
+  if(!Array.isArray(S.tirageTypes)) S.tirageTypes=[];
+  let id='t_'+Date.now().toString(36);
+  while(_tirageCats().some(c=>c.id===id)) id+='x';
+  S.tirageTypes.push({id, label:lab, saisie: saisie==='niveaux'?'niveaux':'aucune'});
+  return id;
+}
+
+/** Retire un type personnel ET son historique dans toutes les classes. Les
+ *  types d'origine ne sont jamais retirés. Renvoie true si retiré. */
+function _tirageSupprimerType(id){
+  if(!Array.isArray(S.tirageTypes)) return false;
+  const i=S.tirageTypes.findIndex(t=>t && t.id===id);
+  if(i<0) return false;
+  S.tirageTypes.splice(i,1);
+  Object.values(S.tirageHistory||{}).forEach(h=>{ if(h && typeof h==='object') delete h[id]; });
+  return true;
+}
+
+/** Historique du tirage : vidé quand l'année scolaire enregistrée a changé
+ *  depuis le dernier passage (le wizard le vide aussi directement). Le premier
+ *  passage (tampon absent) vide une fois l'historique hérité. Renvoie true si
+ *  une purge a eu lieu. Ne sauvegarde pas. */
+function _tirageEnsureAnnee(){
+  const an=String(S.anneeScolaire||'');
+  if(S.tirageAnneeTag===an) return false;
+  S.tirageHistory={};
+  S.tirageAnneeTag=an;
+  return true;
+}
+
+function _tirageNiveau(id){ return TIRAGE_NIVEAUX.find(n=>n.id===id)||null; }
+
+/** Libellé d'un type sans l'émoji de tête : « 🧪 Expérience » → « Expérience ». */
+function _tirageNomSansEmoji(label){
+  return String(label||'').replace(/^[^\p{L}\p{N}]+/u,'').trim() || String(label||'').trim();
+}
+
+/** Ligne d'interrogation (ou de type perso à niveaux). Pure.
+ *  « Interrogé : Assez bien » (+ « \n » + remarque si remplie). '' si rien. */
+function _tirageTexteNiveaux(prefixe, niveauId, remarque){
+  const n=_tirageNiveau(niveauId);
+  const rq=String(remarque||'').trim();
+  if(!n && !rq) return '';
+  const tete=String(prefixe||'Interrogé')+' : '+(n?n.label:'—');
+  return rq ? (tete+'\n'+rq) : tete;
+}
+
+/** Ligne de cahier. Pure. crits = [{nom, niv}] (niv = id de niveau ou vide).
+ *  « Cahier : Soigné (Assez bien), Complet (Partiel) » (+ remarque).
+ *  Oubli : « Cahier : oublié ». '' si rien n'a été saisi. */
+function _tirageTexteCahier(crits, oubli, remarque){
+  const rq=String(remarque||'').trim();
+  if(oubli) return rq ? ('Cahier : oublié\n'+rq) : 'Cahier : oublié';
+  const parts=(Array.isArray(crits)?crits:[])
+    .map(c=>{ const n=_tirageNiveau(c&&c.niv); return n ? (String(c.nom)+' ('+n.label+')') : ''; })
+    .filter(Boolean);
+  if(!parts.length && !rq) return '';
+  // Tous les critères au même niveau → une seule mention, plus lisible
+  const nivs=(Array.isArray(crits)?crits:[]).map(c=>c&&c.niv);
+  const unique=(nivs.length>1 && nivs.every(v=>v && v===nivs[0])) ? _tirageNiveau(nivs[0]) : null;
+  const tete=unique ? ('Cahier : '+unique.label+' sur tous les critères')
+    : (parts.length ? ('Cahier : '+parts.join(', ')) : 'Cahier vérifié');
+  return rq ? (tete+'\n'+rq) : tete;
+}
+
+/** Ajoute une ligne à une observation existante, sans rien écraser. Pure. */
+function _tirageAjoutObs(existant, ajout){
+  const a=String(ajout||'').trim();
+  const e=String(existant||'').replace(/\s+$/,'');
+  if(!a) return e;
+  return e ? (e+'\n'+a) : a;
+}
+
+/** Critères du cahier (réglage global, modifiable depuis le panneau). */
+function _tirageCahierCrit(){
+  const l=Array.isArray(S.tirageCahierCrit)?S.tirageCahierCrit.map(x=>String(x||'').trim()).filter(Boolean):[];
+  return l.length ? l : TIRAGE_CAHIER_CRIT_DEF.slice();
+}
+
+/** Écrit les lignes dans l'observation DU COURS (même cible que la popup
+ *  élève). entries = [{uid, texte}]. Renvoie {n, cible} ou null s'il n'y a
+ *  aucun cours où rattacher la saisie. Sauvegarde si au moins une écriture. */
+function _tirageEnregistrerObs(entries){
+  const cible=(typeof _obsSlotCible==='function')?_obsSlotCible(curCls):null;
+  if(!cible) return null;
+  const gi=(typeof _isScopeGrpInter==='function' && _isScopeGrpInter())?curGrpInter:'';
+  const grp=(!gi && typeof getCurrentGrpId==='function')?(getCurrentGrpId(curCls, cible.slotKey)||''):'';
+  let n=0;
+  (entries||[]).forEach(e=>{
+    if(!e || !e.uid || !String(e.texte||'').trim()) return;
+    const cur=(readObsCours(cible.slotKey, curCls, grp, gi)||{})[e.uid]||'';
+    if(writeObsCoursEleve(cible.slotKey, curCls, grp, gi, e.uid, _tirageAjoutObs(cur, e.texte))) n++;
+  });
+  if(n) saveS();
+  return {n, cible};
+}
+
+/* ── Éléments d'interface (createElement uniquement) ─────────────────────── */
+function _tasEl(tag, css, txt){ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
+
+/** Commande segmentée à 4 niveaux. court=true → I / P / AB / ✓ (grille).
+ *  onChange(idOuVide). Renvoie {el, get, set}. Un second appui désélectionne. */
+function _tasSegNiveaux(court, onChange){
+  let val='';
+  const el=_tasEl('div','display:flex;border:1.5px solid var(--brd);border-radius:var(--r1);overflow:hidden;background:var(--sur);flex:none;'+(court?'width:100%;max-width:112px':''));
+  const btns=TIRAGE_NIVEAUX.map((n,i)=>{
+    const b=_tasEl('button',(court?'flex:1;min-width:0;':'flex:1 1 auto;')+'border:none;'+(i?'border-left:1px solid var(--brd);':'')+'background:transparent;color:var(--tx2);font-family:inherit;cursor:pointer;'+(court?'height:28px;font-size:12px;padding:0':'height:30px;font-size:12px;padding:0 9px;white-space:nowrap'), court?n.court:n.label);
+    b.type='button'; b.title=n.label;
+    b.onclick=()=>{ set(val===n.id?'':n.id); if(onChange) onChange(val); };
+    el.appendChild(b); return b;
+  });
+  const set=(id)=>{
+    val=_tirageNiveau(id)?id:'';
+    btns.forEach((b,i)=>{ const n=TIRAGE_NIVEAUX[i], on=n.id===val;
+      b.style.background=on?n.col:'transparent'; b.style.color=on?'#fff':'var(--tx2)'; b.style.fontWeight=on?'700':'500'; });
+  };
+  return {el, get:()=>val, set};
+}
+
+/** Panneau de saisie rapide après tirage. cat = type courant ; eleves =
+ *  [{uid,name}] (tronqué à TIRAGE_SAISIE_MAX). onDirty(bool) prévient la popup
+ *  qu'il y a quelque chose à perdre ; onDone() quand c'est enregistré/ignoré. */
+function _tirageRenderSaisie(box, cat, eleves, onDirty, onDone){
+  box.innerHTML='';
+  const els=(eleves||[]).slice(0,TIRAGE_SAISIE_MAX);
+  if(!els.length || !cat || cat.saisie==='aucune') return;
+  const cahier=cat.saisie==='cahier';
+  const wrap=_tasEl('div','border:1.5px solid var(--acc);border-radius:var(--r2);padding:10px 12px;margin:4px 0 12px;background:var(--sur);text-align:left');
+  box.appendChild(wrap);
+
+  const cible=(typeof _obsSlotCible==='function')?_obsSlotCible(curCls):null;
+  const hd=_tasEl('div','display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px');
+  hd.appendChild(_tasEl('span','font-size:13px;font-weight:700;color:var(--tx)', cahier?'Vérification des cahiers':(cat.saisie==='interro'?'Interrogation':_tirageNomSansEmoji(cat.label))));
+  hd.appendChild(_tasEl('span','font-size:11px;color:var(--tx3)', cible
+    ? ('→ observation du cours'+(cible.retro?(' du '+_obsDateCourte(cible.dateStr)):''))
+    : '→ aucun cours pour cette classe'));
+  wrap.appendChild(hd);
+
+  let dirty=false;
+  const touch=()=>{ if(!dirty){ dirty=true; if(onDirty) onDirty(true); } };
+  const inputCss='height:30px;min-width:0;padding:0 8px;border:1.5px solid var(--brd);border-radius:var(--r1);font-size:12px;font-family:inherit;background:var(--bg);color:var(--tx);box-sizing:border-box';
+  let collect;
+
+  if(!cahier){
+    const rows=els.map(s=>{
+      const r=_tasEl('div','display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--brd)');
+      r.appendChild(_tasEl('span','flex:0 0 118px;font-size:13px;font-weight:700;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', s.name));
+      const seg=_tasSegNiveaux(false, touch); r.appendChild(seg.el);
+      const rq=_tasEl('input', inputCss+';flex:1 1 140px'); rq.placeholder='Remarque (facultatif)'; rq.oninput=touch;
+      r.appendChild(rq); wrap.appendChild(r);
+      return {uid:s.uid, seg, rq};
+    });
+    const pref=cat.saisie==='interro'?'Interrogé':_tirageNomSansEmoji(cat.label);
+    collect=()=>rows.map(x=>({uid:x.uid, texte:_tirageTexteNiveaux(pref, x.seg.get(), x.rq.value)}));
+  } else {
+    const crits=_tirageCahierCrit();
+    // — barre : tout remplir + critères —
+    const bar=_tasEl('div','display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px');
+    bar.appendChild(_tasEl('span','font-size:11px;color:var(--tx3)','Tout remplir'));
+    const all=_tasSegNiveaux(true, v=>{ touch(); cells.forEach(c=>{ if(!oubli[c.i]) c.seg.set(v); }); all.set(''); });
+    all.el.style.width='112px'; bar.appendChild(all.el);
+    const critBtn=_tasEl('button','margin-left:auto;font-size:11px;padding:3px 9px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','Critères…');
+    critBtn.type='button'; bar.appendChild(critBtn);
+    wrap.appendChild(bar);
+    const critEd=_tasEl('div','display:none;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap');
+    const critIn=_tasEl('input', inputCss+';flex:1 1 220px'); critIn.value=crits.join(', ');
+    critIn.title='Critères séparés par des virgules (8 au plus), valables pour toutes les classes';
+    const critOk=_tasEl('button','font-size:12px;padding:5px 12px','Valider'); critOk.className='bp'; critOk.type='button';
+    const critDef=_tasEl('button','font-size:11px;padding:4px 9px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','Par défaut'); critDef.type='button';
+    critEd.appendChild(critIn); critEd.appendChild(critOk); critEd.appendChild(critDef); wrap.appendChild(critEd);
+    critBtn.onclick=()=>{ critEd.style.display=critEd.style.display==='none'?'flex':'none'; };
+    const applyCrit=(liste)=>{ S.tirageCahierCrit=liste; saveS(); _tirageRenderSaisie(box, cat, eleves, onDirty, onDone); };
+    critOk.onclick=()=>applyCrit(critIn.value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,8));
+    critDef.onclick=()=>applyCrit([]);
+
+    // — grille : critères en lignes, élèves en colonnes —
+    const sc=_tasEl('div','overflow-x:auto;-webkit-overflow-scrolling:touch');
+    const grid=_tasEl('div','display:grid;grid-template-columns:106px repeat('+els.length+',minmax(96px,1fr));align-items:stretch;min-width:'+(106+els.length*100)+'px');
+    sc.appendChild(grid); wrap.appendChild(sc);
+    const cellCss='display:flex;align-items:center;justify-content:center;min-height:38px;padding:0 3px;border-top:1px solid var(--brd)';
+    // Libellés figés à gauche : sur téléphone, la grille défile sous eux.
+    const rowLbl='display:flex;align-items:center;min-height:38px;border-top:1px solid var(--brd);font-size:12px;color:var(--tx2);position:sticky;left:0;z-index:1;background:var(--sur)';
+    grid.appendChild(_tasEl('div',''));
+    els.forEach(s=>grid.appendChild(_tasEl('div','font-size:12px;font-weight:700;color:var(--tx);text-align:center;padding-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', s.name)));
+    const cells=[]; const cols=els.map(()=>[]); const oubli=els.map(()=>false);
+    crits.forEach(nom=>{
+      grid.appendChild(_tasEl('div',rowLbl,nom));
+      els.forEach((s,i)=>{ const c=_tasEl('div',cellCss); const seg=_tasSegNiveaux(true, touch); c.appendChild(seg.el); grid.appendChild(c);
+        cells.push({i, nom, seg}); cols[i].push(c); });
+    });
+    grid.appendChild(_tasEl('div',rowLbl,'Oubli'));
+    els.forEach((s,i)=>{
+      const c=_tasEl('div',cellCss);
+      const b=_tasEl('button','height:26px;padding:0 12px;border:1.5px solid var(--brd);border-radius:13px;background:var(--sur);color:var(--tx2);font-size:11px;cursor:pointer;font-family:inherit','Oublié');
+      b.type='button';
+      b.onclick=()=>{ touch(); oubli[i]=!oubli[i];
+        b.style.background=oubli[i]?'#D97706':'var(--sur)'; b.style.color=oubli[i]?'#fff':'var(--tx2)'; b.style.borderColor=oubli[i]?'#D97706':'var(--brd)';
+        cols[i].forEach(x=>{ x.style.opacity=oubli[i]?'.3':'1'; x.style.pointerEvents=oubli[i]?'none':''; }); };
+      c.appendChild(b); grid.appendChild(c);
+    });
+    grid.appendChild(_tasEl('div',rowLbl,'Remarque'));
+    const rqs=els.map(()=>{ const c=_tasEl('div',cellCss); const rq=_tasEl('input', inputCss+';width:100%'); rq.placeholder='…'; rq.oninput=touch; c.appendChild(rq); grid.appendChild(c); return rq; });
+    const lg=_tasEl('div','display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--tx3);margin-top:8px');
+    TIRAGE_NIVEAUX.forEach(n=>{ const it=_tasEl('span','display:inline-flex;align-items:center;gap:4px'); it.appendChild(_tasEl('span','display:inline-block;width:9px;height:9px;border-radius:2px;background:'+n.col)); it.appendChild(document.createTextNode(n.court+' '+n.label)); lg.appendChild(it); });
+    wrap.appendChild(lg);
+    collect=()=>els.map((s,i)=>({uid:s.uid, texte:_tirageTexteCahier(cells.filter(c=>c.i===i).map(c=>({nom:c.nom, niv:c.seg.get()})), oubli[i], rqs[i].value)}));
+  }
+
+  // — pied —
+  const ft=_tasEl('div','display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-top:10px');
+  const msg=_tasEl('span','margin-right:auto;font-size:11px;color:#DC2626'); ft.appendChild(msg);
+  const ign=_tasEl('button','font-size:12px;padding:6px 12px','Ignorer'); ign.className='bs'; ign.type='button';
+  const ok=_tasEl('button','font-size:12px;padding:6px 14px','Enregistrer'); ok.className='bp'; ok.type='button';
+  ft.appendChild(ign); ft.appendChild(ok); wrap.appendChild(ft);
+  ign.onclick=()=>{ box.innerHTML=''; if(onDirty) onDirty(false); if(onDone) onDone(null); };
+  ok.onclick=()=>{
+    const entries=collect().filter(e=>e.texte);
+    if(!entries.length){ msg.textContent='Rien à enregistrer.'; return; }
+    const r=_tirageEnregistrerObs(entries);
+    if(!r){ msg.textContent='Aucun cours où rattacher l’observation.'; return; }
+    box.innerHTML='';
+    box.appendChild(_tasEl('div','font-size:12px;color:var(--acc);font-weight:600;text-align:center;margin:2px 0 10px',
+      '✓ Noté dans l’observation'+(r.cible.retro?(' du cours du '+_obsDateCourte(r.cible.dateStr)):' du cours')+' — '+r.n+' élève'+(r.n>1?'s':'')));
+    if(onDirty) onDirty(false); if(onDone) onDone(r);
+  };
+}
+
 function openTirageModal(){
   if(!S.tirageHistory) S.tirageHistory={};
+  // V11.3.77 — historique vidé au changement d'année (données héritées comprises)
+  if(_tirageEnsureAnnee()) saveS();
   // v145 — Exclusion des absents : si un cours est ouvert (curSlotKey),
   // on filtre les uids qui ont le statut 'absent' dans S.statutsCours.
   // Sinon (pas de cours actif), comportement inchangé : tous les assis.
@@ -61091,24 +61365,83 @@ function openTirageModal(){
   document.getElementById('mok').style.display='none';
   const extra=document.getElementById('modal-extra'); extra.innerHTML='';
 
-  // ── Sélecteur de catégorie ──
+  // V11.3.62 (C1) — rien à annuler tant qu'aucune saisie n'est en cours.
+  const _tasFermer=document.querySelector('#mbg .modal-acts .bs');
+  const _tasDirty=(d)=>{ if(_tasFermer) _tasFermer.textContent=d?'Annuler':'Fermer'; };
+  _tasDirty(false);
+  const _tasModal=document.querySelector('#mbg .modal');
+
+  // ── Sélecteur de catégorie ── (V11.3.77 : types d'origine + types personnels)
   let curCat=TIRAGE_CATS[0].id;
+  let cats=_tirageCats();
+  const curCatObj=()=>cats.find(c=>c.id===curCat)||cats[0];
   const catRow=document.createElement('div');
   catRow.style.cssText='display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap';
   const catBtns={};
-  TIRAGE_CATS.forEach(cat=>{
-    const b=document.createElement('button');
-    b.style.cssText='flex:1;padding:6px 8px;border:1.5px solid var(--brd);border-radius:var(--r1);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;background:var(--sur2);color:var(--tx);min-width:80px';
-    b.textContent=cat.label;
-    b.onclick=()=>{ curCat=cat.id; refreshCat(); };
-    catRow.appendChild(b); catBtns[cat.id]=b;
-  });
+  const buildCatRow=()=>{
+    catRow.innerHTML='';
+    Object.keys(catBtns).forEach(k=>delete catBtns[k]);
+    cats=_tirageCats();
+    cats.forEach(cat=>{
+      const b=document.createElement('button');
+      b.style.cssText='flex:1;padding:6px 8px;border:1.5px solid var(--brd);border-radius:var(--r1);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;background:var(--sur2);color:var(--tx);min-width:80px';
+      b.textContent=cat.label;
+      b.onclick=()=>{ curCat=cat.id; refreshCat(); };
+      catRow.appendChild(b); catBtns[cat.id]=b;
+    });
+    const plus=document.createElement('button');
+    plus.style.cssText='flex:0 0 34px;padding:6px 0;border:1.5px dashed var(--brd2);border-radius:var(--r1);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;background:transparent;color:var(--tx2)';
+    plus.textContent='＋'; plus.title='Nouveau type de tirage (pour toutes les classes)';
+    plus.onclick=()=>{ addForm.style.display=addForm.style.display==='none'?'flex':'none'; if(addForm.style.display==='flex') addIn.focus(); };
+    catRow.appendChild(plus);
+  };
   extra.appendChild(catRow);
+
+  // ── Ajout d'un type personnel (en ligne, pas de seconde modale) ──
+  const addForm=document.createElement('div');
+  addForm.style.cssText='display:none;gap:6px;align-items:center;flex-wrap:wrap;margin:-4px 0 10px;padding:8px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur2)';
+  const addIn=document.createElement('input');
+  addIn.placeholder='Nom du type (ex. 🧪 Expérience)'; addIn.maxLength=40;
+  addIn.style.cssText='flex:1 1 160px;min-width:0;height:30px;padding:0 8px;border:1.5px solid var(--brd);border-radius:var(--r1);font-size:12px;font-family:inherit;background:var(--bg);color:var(--tx)';
+  const addSel=document.createElement('select');
+  addSel.style.cssText='height:30px;border:1.5px solid var(--brd);border-radius:var(--r1);font-size:12px;font-family:inherit;background:var(--bg);color:var(--tx)';
+  [['aucune','Tirage seul'],['niveaux','Puis niveaux + remarque']].forEach(([v,t])=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; addSel.appendChild(o); });
+  const addOk=document.createElement('button'); addOk.className='bp'; addOk.style.cssText='font-size:12px;padding:6px 12px'; addOk.textContent='Ajouter';
+  const addMsg=document.createElement('span'); addMsg.style.cssText='flex-basis:100%;font-size:11px;color:#DC2626;min-height:0';
+  addForm.appendChild(addIn); addForm.appendChild(addSel); addForm.appendChild(addOk); addForm.appendChild(addMsg);
+  extra.appendChild(addForm);
+  addIn.oninput=()=>{ addMsg.textContent=''; };
+  addOk.onclick=()=>{
+    const id=_tirageAjouterType(addIn.value, addSel.value);
+    if(!id){ addMsg.textContent=addIn.value.trim()?'Ce nom existe déjà.':'Donnez un nom au type.'; return; }
+    saveS(); addIn.value=''; addForm.style.display='none';
+    curCat=id; buildCatRow(); refreshCat();
+  };
+  addIn.onkeydown=(e)=>{ if(e.key==='Enter') addOk.onclick(); };
+
+  // ── Type personnel actif : suppression en deux temps ──
+  const persoRow=document.createElement('div');
+  persoRow.style.cssText='display:none;align-items:center;gap:8px;justify-content:flex-end;margin:-4px 0 8px;font-size:11px;color:var(--tx3)';
+  const persoLbl=document.createElement('span'); persoLbl.textContent='Type personnel, commun à toutes les classes';
+  const persoDel=document.createElement('button');
+  persoDel.style.cssText='font-size:11px;padding:2px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx3);cursor:pointer;font-family:inherit';
+  persoRow.appendChild(persoLbl); persoRow.appendChild(persoDel); extra.appendChild(persoRow);
+  let _delArme=false;
+  persoDel.onclick=()=>{
+    if(!_delArme){ _delArme=true; persoDel.textContent='Confirmer la suppression'; persoDel.style.color='#DC2626'; persoDel.style.borderColor='#DC2626'; return; }
+    if(_tirageSupprimerType(curCat)){ saveS(); curCat=TIRAGE_CATS[0].id; buildCatRow(); refreshCat(); }
+  };
 
   // ── Résultat ──
   const rWrap=document.createElement('div');
   rWrap.style.cssText='min-height:48px;text-align:center;padding:6px 0 2px';
   extra.appendChild(rWrap);
+
+  // ── V11.3.77 — Saisie rapide après tirage (interrogation, cahier, types à niveaux) ──
+  const saisieBox=document.createElement('div');
+  extra.appendChild(saisieBox);
+  const _tasLargeur=(px)=>{ if(_tasModal){ _tasModal.style.width=px?(px+'px'):''; _tasModal.style.maxWidth=px?'96vw':''; } };
+  const clearSaisie=()=>{ saisieBox.innerHTML=''; _tasDirty(false); _tasLargeur(0); rWrap.style.display=''; };
 
   // ── Sélecteur nombre ──
   const nbRow=document.createElement('div');
@@ -61116,7 +61449,8 @@ function openTirageModal(){
   const nbLbl=document.createElement('span'); nbLbl.style.cssText='font-size:12px;color:var(--tx3)'; nbLbl.textContent='Nombre à tirer :';
   const nbIn=document.createElement('input'); nbIn.type='number'; nbIn.min='1'; nbIn.max='10'; nbIn.value='1';
   nbIn.style.cssText='width:52px;padding:4px 6px;border:1.5px solid var(--brd);border-radius:var(--r1);font-size:14px;font-weight:700;text-align:center;background:var(--bg);color:var(--tx)';
-  nbRow.appendChild(nbLbl); nbRow.appendChild(nbIn); extra.appendChild(nbRow);
+  const nbHint=document.createElement('span'); nbHint.style.cssText='font-size:11px;color:var(--tx3)';
+  nbRow.appendChild(nbLbl); nbRow.appendChild(nbIn); nbRow.appendChild(nbHint); extra.appendChild(nbRow);
 
   // ── Bouton tirer ──
   const tirBtn=document.createElement('button'); tirBtn.className='bp';
@@ -61153,17 +61487,28 @@ function openTirageModal(){
   };
 
   const refreshCat=()=>{
+    if(!cats.some(c=>c.id===curCat)) curCat=TIRAGE_CATS[0].id;
     // Highlight bouton actif
-    TIRAGE_CATS.forEach(c=>{
-      const b=catBtns[c.id];
+    cats.forEach(c=>{
+      const b=catBtns[c.id]; if(!b) return;
       const active=c.id===curCat;
       b.style.borderColor=active?'var(--acc)':'var(--brd)';
       b.style.background=active?'var(--acc-l)':'var(--sur2)';
       b.style.color=active?'var(--acc)':'var(--tx)';
     });
+    const co=curCatObj();
+    persoRow.style.display=co.perso?'flex':'none';
+    _delArme=false; persoDel.textContent='Supprimer ce type'; persoDel.style.color='var(--tx3)'; persoDel.style.borderColor='var(--brd)';
+    // Avec saisie : 5 élèves au plus (la grille doit rester lisible)
+    const avecSaisie=co.saisie!=='aucune';
+    nbIn.max=String(avecSaisie?TIRAGE_SAISIE_MAX:10);
+    if((parseInt(nbIn.value)||1)>+nbIn.max) nbIn.value=nbIn.max;
+    nbHint.textContent=avecSaisie?('puis saisie ('+TIRAGE_SAISIE_MAX+' max.)'):'';
     rWrap.innerHTML='';
+    clearSaisie();
     renderHist();
   };
+  buildCatRow();
   refreshCat();
 
   hReset.onclick=()=>{ setHist([]); saveS(); renderHist(); rWrap.innerHTML=''; };
@@ -61171,7 +61516,9 @@ function openTirageModal(){
   let _anim=null;
   tirBtn.onclick=()=>{
     if(_anim) return;
-    const nb=Math.max(1,Math.min(10,parseInt(nbIn.value)||1));
+    const nb=Math.max(1,Math.min(+nbIn.max||10,parseInt(nbIn.value)||1));
+    const catTirage=curCatObj();
+    clearSaisie();
     const hist=getHist();
     const drawnUids=new Set(hist.flatMap(g=>Array.isArray(g)?g:[g]));
     let pool=all.filter(s=>!drawnUids.has(s.uid));
@@ -61180,7 +61527,7 @@ function openTirageModal(){
     tirBtn.disabled=true; nbIn.disabled=true;
 
     // ── Overlay plein écran ──────────────────────────────────────
-    const catLabel=TIRAGE_CATS.find(c=>c.id===curCat)?.label||'';
+    const catLabel=catTirage.label||'';
     const ov=document.createElement('div');
     ov.style.cssText='position:fixed;inset:0;background:rgba(10,15,30,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;overflow:hidden';
 
@@ -61244,6 +61591,13 @@ function openTirageModal(){
             rWrap.appendChild(d);
           });
           tirBtn.disabled=false; nbIn.disabled=false;
+          // V11.3.77 — saisie rapide dans l'observation du cours
+          if(catTirage.saisie!=='aucune' && catTirage.id===curCat){
+            // Les noms sont dans le panneau : la liste des résultats ferait doublon.
+            rWrap.style.display='none';
+            _tasLargeur(catTirage.saisie==='cahier' ? (chosen.length>2?720:560) : 620);
+            _tirageRenderSaisie(saisieBox, catTirage, chosen, _tasDirty, ()=>{ _tasLargeur(0); rWrap.style.display=''; });
+          }
         }
       };
     };
