@@ -950,6 +950,15 @@ body.mode-prof #prof-act-col-right{display:flex;flex-direction:column;gap:10px;m
 .psw:hover{opacity:.85}
 .psw.psw-off{border-color:var(--brd);background:var(--sur2);color:var(--tx3)}
 .psw.psw-off:hover{border-color:var(--tx2);color:var(--tx2)}
+/* V11.3.76 — statut rapide */
+.psw.psw-rapide-arme{background:#D97706;border-color:#B45309;color:#fff}
+.srp-menu{position:fixed;z-index:495;background:var(--sur);border:1px solid var(--brd);border-radius:var(--r2);box-shadow:var(--sh2);padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:5px;width:300px;max-width:calc(100vw - 16px);max-height:70vh;overflow:auto}
+.srp-menu .srp-t{grid-column:1/-1;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);margin:2px 0}
+.srp-menu button{padding:7px 6px;border:2px solid #111;border-radius:var(--r1);background:#fff;color:#111;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit}
+.srp-menu button:hover{background:#F3F4F6}
+.srp-menu button.srp-aucun{grid-column:1/-1;border-color:var(--brd);color:var(--tx2);font-weight:600}
+.seat.occupied.rapide-mode,.pcm-seat.rapide-mode,.pcm-row.rapide-mode{outline:2px dashed #D97706;outline-offset:-3px;cursor:pointer}
+.seat.rapide-flash,.pcm-seat.rapide-flash,.pcm-row.rapide-flash{box-shadow:0 0 0 3px #D97706 inset}
 /* Grille 2 lignes × 3 colonnes */
 .popup-switches-grid{display:grid;grid-template-columns:repeat(3,auto);gap:3px 4px;margin-right:10px;padding-right:10px;border-right:1px solid var(--brd)}
 
@@ -4199,7 +4208,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.75';
+const APP_VERSION = 'v11.3.76';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -6350,6 +6359,11 @@ function _pcmStuClick(stuId, evt){
   const isTaf    = (typeof tafMode!=='undefined' && tafMode);
   const sw       = (typeof getPopupSwitches==='function') ? getPopupSwitches() : null;
   const anchor   = (evt && evt.currentTarget) ? evt.currentTarget : null;
+  // V11.3.76 — Statut rapide armé
+  if(typeof _statutRapide!=='undefined' && _statutRapide){
+    if(evt && evt.stopPropagation) evt.stopPropagation();
+    _srpAppuyer(stuId, anchor); return;
+  }
   // Mode Participations actif → +1 partic et flash
   if(!isAbsent && !isTaf && sw && sw.partic){
     if(evt && evt.stopPropagation) evt.stopPropagation();
@@ -32099,7 +32113,8 @@ function toggleStatut(name,key,niveau){
     _checkSeuilForStudent(name, key);
   }
   const anchor=document.querySelector(`[data-popup-anchor="${CSS.escape(name)}"]`);
-  if(anchor) openStatusPopup(name, anchor, {stopPropagation:()=>{}}, true);
+  // V11.3.76 — en statut rapide, la popup reste fermée.
+  if(anchor && !(typeof _statutRapide!=='undefined' && _statutRapide)) openStatusPopup(name, anchor, {stopPropagation:()=>{}}, true);
 }
 
 function clearStatuts(name){
@@ -32267,6 +32282,8 @@ function getPopupSwitches(){
 }
 
 function togglePopupSwitch(key){
+  // V11.3.76 — un appui sur un autre bouton désarme le statut rapide (sans restaurer).
+  if(typeof _statutRapide!=='undefined' && _statutRapide) _srpDesarmer(false);
   const sw=getPopupSwitches();
   // V020-v181.6.6 — Exclusivité partic vs (statuts, comps, num, taf).
   // Quand on active partic, on mémorise l'état des autres modes dans
@@ -32322,6 +32339,9 @@ function togglePopupSwitch(key){
 }
 
 function applyPopupSwitches(){
+  // V11.3.76 — statut rapide : désarmé si l'on a changé de cours ou de classe ;
+  // mémoire orpheline (rechargement pendant qu'il était armé) : on restaure.
+  if(typeof _srpVerifierContexte==='function') _srpVerifierContexte();
   const sw=getPopupSwitches();
   // Statuts / comps / num : directs
   ['statuts','comps','num'].forEach(k=>{
@@ -32359,6 +32379,10 @@ function applyPopupSwitches(){
   document.querySelectorAll('.pcm-seat[data-popup-anchor], .pcm-row[data-popup-anchor]').forEach(el=>{
     el.classList.toggle('partic-mode', !!showPartic);
   });
+  // V11.3.76 — liseré du statut rapide + bouton
+  { const arme=(typeof _statutRapide!=='undefined') && !!_statutRapide;
+    document.querySelectorAll('.seat.occupied, .pcm-seat[data-popup-anchor], .pcm-row[data-popup-anchor]').forEach(el=>el.classList.toggle('rapide-mode', arme));
+    if(typeof _srpBouton==='function') _srpBouton(); }
   // TAF wraps : visibles seulement si tafMode ON
   document.querySelectorAll('.seat-taf-wrap').forEach(el=>{
     el.style.display=tafMode?'flex':'none';
@@ -32376,6 +32400,126 @@ function applyPopupSwitches(){
       btn.classList.toggle('psw-off', isOff);
     }
   });
+}
+
+/* ── V11.3.76 — Statut rapide (demande du 26/09) ─────────────────────────────
+   Un bouton de la barre ouvre la liste des statuts ; on en arme un, et un appui
+   sur une tuile élève le pose (ou le retire) sans ouvrir la popup.
+   Avertissement à niveaux : chaque appui = +1 ; au maximum, l'appui suivant
+   remet à zéro.
+   – EXCLUSIF de tous les autres modes, comme Partic. : l'armer éteint Statuts,
+     Comp., NUM, Partic., TAF (état mémorisé, rendu au désarmement) ; appuyer sur
+     un autre bouton le désarme sans rien rendre (l'utilisateur reprend la main).
+   – Désarmé automatiquement quand on change de cours ou de classe.
+   – Tant qu'il est armé, la popup ne s'ouvre pas. */
+var _statutRapide=null, _srpCtx=null;   // var : pas de zone morte si un appel précède cette ligne
+function _srpContexte(){ return String(typeof curCls!=='undefined'?curCls:'')+'|'+String(typeof curSlotKey!=='undefined'?curSlotKey:'')+'|'+String(typeof curGroupeId!=='undefined'?(curGroupeId||''):''); }
+/** Les statuts proposés, dans l'ordre de la popup. */
+function _srpListe(){
+  const st=getStatuts(), o=(S.reglages||{}).ordreStatuts;
+  const f=(typeof _stpOrdre==='function') ? _stpOrdre : ((l,g)=>l.filter(x=>g==='neg'?(x.col==='neg-l'||x.col==='neg-r'):x.col==='pos'));
+  return {neg:f(st,'neg',o), pos:f(st,'pos',o), appel:st.filter(x=>x.col==='appel')};
+}
+/** Que fait un appui sur la tuile ? Pure. → {action:'basculer'|'niveau'|'refus', niveau?}.
+ *  keys : statuts de l'élève ; niv : son niveau d'avertissement (0 = aucun rangé) ; nb : niveaux réglés. */
+function _srpAction(cle, keys, niv, nb){
+  keys=Array.isArray(keys)?keys:[];
+  if(keys.indexOf('absent')>=0 && cle!=='absent' && cle!=='retard') return {action:'refus'};
+  if(cle==='avert' && nb>1){
+    const pose=keys.indexOf('avert')>=0;
+    if(!pose) return {action:'niveau', niveau:1};
+    if(!(niv>=1)) return {action:'basculer'};          // posé sans niveau : l'appui le retire
+    if(niv<nb) return {action:'niveau', niveau:niv+1};
+    return {action:'niveau', niveau:niv};              // au maximum : même niveau = remise à zéro
+  }
+  return {action:'basculer'};
+}
+function _srpArmer(cle){
+  // Exclusif de TOUS les modes, y compris Contraintes (sinon il intercepterait
+  // l'appui). On le quitte D'ABORD : sa sortie remet en place ses propres réglages.
+  if(typeof contraintesMode!=='undefined' && contraintesMode && typeof _exitContraintesMode==='function'){ try{ _exitContraintesMode(); }catch(e){} }
+  const sw=getPopupSwitches();
+  if(!_statutRapide){
+    S._swMemoAvantRapide={statuts:!!sw.statuts, comps:!!sw.comps, num:!!sw.num, partic:!!sw.partic, taf:!!tafMode};
+  }
+  sw.statuts=false; sw.comps=false; sw.num=false; sw.partic=false;
+  if(tafMode){ tafMode=false; }
+  _statutRapide=cle; _srpCtx=_srpContexte();
+  try{ closeStatusPopup(); }catch(e){}
+  saveS(); applyPopupSwitches();
+  if(typeof renderClassroom==='function') try{ renderClassroom(); }catch(e){}
+}
+/** restaurer=true : on rend les modes d'avant (désarmement volontaire ou automatique). */
+function _srpDesarmer(restaurer){
+  const sw=getPopupSwitches(), memo=S._swMemoAvantRapide;
+  _statutRapide=null; _srpCtx=null;
+  if(restaurer && memo){
+    sw.statuts=!!memo.statuts; sw.comps=!!memo.comps; sw.num=!!memo.num; sw.partic=!!memo.partic;
+    if(memo.taf && !tafMode){ tafMode=true; if(typeof ensureActiveTafSelection==='function') ensureActiveTafSelection(); }
+  }
+  delete S._swMemoAvantRapide;
+  saveS(); applyPopupSwitches();
+  if(typeof renderClassroom==='function') try{ renderClassroom(); }catch(e){}
+}
+function _srpVerifierContexte(){
+  if(_statutRapide && _srpCtx!==_srpContexte()){ _srpDesarmer(true); return; }
+  if(!_statutRapide && S && S._swMemoAvantRapide){
+    // Rechargé pendant qu'il était armé : on rend les modes d'avant.
+    const sw=getPopupSwitches(), m=S._swMemoAvantRapide;
+    sw.statuts=!!m.statuts; sw.comps=!!m.comps; sw.num=!!m.num; sw.partic=!!m.partic;
+    delete S._swMemoAvantRapide; saveS();
+  }
+}
+/** Appui sur une tuile en mode armé. Renvoie true si l'appui a été consommé. */
+function _srpAppuyer(uid, el){
+  if(!_statutRapide || !uid) return false;
+  if(!curSlotKey){ if(typeof showDropToast==='function') showDropToast('Statut rapide : ouvrez le plan depuis un cours'); return true; }
+  const map=getStatutsMap(), keys=getStatutKeys(uid);
+  const nb=(typeof _avtNb==='function')?_avtNb():1;
+  const niv=(typeof _avtNiveau==='function')?_avtNiveau(map, uid):0;
+  const a=_srpAction(_statutRapide, keys, niv, nb);
+  if(a.action==='refus'){ if(typeof showDropToast==='function') showDropToast('Élève absent : statut non posé'); return true; }
+  if(a.action==='niveau') toggleStatut(uid, 'avert', a.niveau);
+  else toggleStatut(uid, _statutRapide);
+  const cible=el || document.querySelector('[data-popup-anchor="'+(window.CSS&&CSS.escape?CSS.escape(uid):uid)+'"]');
+  if(cible){ cible.classList.add('rapide-flash'); setTimeout(()=>{ try{ cible.classList.remove('rapide-flash'); }catch(e){} }, 180); }
+  return true;
+}
+/** Le bouton ⚡ de la barre (créé en createElement, une seule fois). */
+function _srpBouton(){
+  const bar=document.getElementById('popup-switches'); if(!bar) return;
+  let b=document.getElementById('psw-rapide');
+  if(!b){
+    b=document.createElement('button'); b.id='psw-rapide'; b.type='button';
+    b.onclick=(e)=>{ e.stopPropagation(); if(_statutRapide) _srpDesarmer(true); else _srpOuvrirMenu(b); };
+    const taf=document.getElementById('psw-taf');
+    if(taf && taf.parentNode===bar) bar.insertBefore(b, taf); else bar.appendChild(b);
+  }
+  const st=_statutRapide ? getStatuts().find(x=>x.key===_statutRapide) : null;
+  b.className='psw'+(_statutRapide?' psw-rapide-arme':' psw-off');
+  b.textContent=_statutRapide ? '⚡ '+(st?st.label:_statutRapide) : '⚡ Statut';
+  b.title=_statutRapide ? 'Statut rapide armé : un appui sur un élève le pose ou le retire. Cliquer pour désarmer.'
+                        : 'Statut rapide : choisir un statut, puis un appui sur un élève le pose';
+}
+function _srpFermerMenu(){ const m=document.getElementById('srp-menu'); if(m) m.remove(); document.removeEventListener('pointerdown', _srpClicDehors, true); }
+function _srpClicDehors(e){ const m=document.getElementById('srp-menu'); if(m && !m.contains(e.target) && e.target.id!=='psw-rapide') _srpFermerMenu(); }
+function _srpOuvrirMenu(btn){
+  _srpFermerMenu();
+  const m=document.createElement('div'); m.id='srp-menu'; m.className='srp-menu'; m.setAttribute('role','menu');
+  const L=_srpListe();
+  const titre=(t)=>{ const d=document.createElement('div'); d.className='srp-t'; d.textContent=t; m.appendChild(d); };
+  const choix=(x)=>{ const b=document.createElement('button'); b.type='button'; b.textContent=x.label+(x.key==='avert' && typeof _avtNb==='function' && _avtNb()>1 ? ' (+1 par appui)' : '');
+    b.onclick=()=>{ _srpFermerMenu(); _srpArmer(x.key); }; m.appendChild(b); };
+  if(L.neg.length){ titre('Incidents & absences'); L.neg.forEach(choix); }
+  if(L.pos.length){ titre('Points positifs'); L.pos.forEach(choix); }
+  if(L.appel.length){ titre('Contact & suivi'); L.appel.forEach(choix); }
+  const aucun=document.createElement('button'); aucun.type='button'; aucun.className='srp-aucun'; aucun.textContent='Aucun';
+  aucun.onclick=()=>_srpFermerMenu(); m.appendChild(aucun);
+  document.body.appendChild(m);
+  const r=btn.getBoundingClientRect(), w=m.offsetWidth;
+  m.style.top=Math.round(r.bottom+4)+'px';
+  m.style.left=Math.round(Math.max(8, Math.min(window.innerWidth-w-8, r.right-w)))+'px';
+  setTimeout(()=>document.addEventListener('pointerdown', _srpClicDehors, true), 0);
 }
 
 function ensureActiveTafSelection(){
@@ -32404,6 +32548,7 @@ function setActiveTafPointIndex(idx){
 }
 
 function toggleTafMode(){
+  if(typeof _statutRapide!=='undefined' && _statutRapide) _srpDesarmer(false);   // V11.3.76
   // V020-v181.6.6 — Si on active TAF et que partic était ON, désactiver
   // partic SANS restaurer la memo (cohérent avec togglePopupSwitch).
   const willActivate = !tafMode;
@@ -34539,6 +34684,10 @@ function makeSeat(idx,name,extraCls){
         e.stopPropagation();
         if(!_contrainteType){ showDropToast('⚠️ Sélectionne d\'abord un type de contrainte'); return; }
         _applyContrainte(name); return;
+      }
+      // V11.3.76 — Statut rapide armé : l'appui pose le statut, jamais la popup.
+      if(name && typeof _statutRapide!=='undefined' && _statutRapide){
+        e.stopPropagation(); _srpAppuyer(name, seat); return;
       }
       // V018-v148 — Mode Partic actif : tap sur la tuile = +1 (sauf élève absent)
       // Le bouton − et la croix × stoppent déjà la propagation (e.stopPropagation()).
@@ -44064,7 +44213,7 @@ function showAboutModal(){
     ['📋 Cahier de texte du jour', 'septembre 2026',
      'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement ; les tâches commencées portent « (à poursuivre au prochain cours) ».'],
     ['👩‍🏫 En classe', 'septembre 2026',
-     'Une popup de statuts plus lisible, dont vous fixez la disposition dans Paramètres, avec des avertissements à deux ou trois niveaux (AVT1, AVT2, AVT3). Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. La Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
+     'Une popup de statuts plus lisible, dont vous fixez la disposition dans Paramètres, avec des avertissements à deux ou trois niveaux (AVT1, AVT2, AVT3), et un statut rapide ⚡ : on en arme un, chaque appui sur un élève le pose. Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. La Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
     ['⏱️ Compte à rebours', 'septembre 2026',
      'Chaque alerte (5, 3, 2, 1 min, fin) se coupe, se règle en volume et peut jouer votre propre son.'],
     ['🔄 Synchronisation et sécurité des données', 'septembre 2026',
@@ -60689,6 +60838,7 @@ function _getContraintes(){
 }
 
 function toggleContraintesMode(){
+  if(typeof _statutRapide!=='undefined' && _statutRapide) _srpDesarmer(false);   // V11.3.76
   if(contraintesMode) _exitContraintesMode();
   else _enterContraintesMode();
 }
