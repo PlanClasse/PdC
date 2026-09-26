@@ -2746,6 +2746,15 @@ body:has(#sdc-bg) .mobile-menu-btn{display:none}
 .sdc-carte-b{color:var(--tx)}
 .sdc-carte-vide{font-size:11px;color:var(--tx3);font-style:italic}
 .sdc-restes{padding:8px 14px;border-bottom:1px solid var(--brd);background:#FFFBEB}
+.sdc-autres{margin-top:14px}
+.sdc-autre{border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur);margin-bottom:8px;overflow:hidden}
+.sdc-autre-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 8px;background:var(--sur2);font-size:12px}
+.sdc-autre-d{color:var(--tx2);font-size:11.5px}
+.sdc-autre-t .sdc-tout{margin-left:auto;min-height:26px;padding:3px 9px;font-size:11px}
+.sdc-autre-c{padding:4px 6px;max-height:180px;overflow-y:auto}
+.sdc-autre-l{display:flex;align-items:center;gap:4px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--tx2)}
+.sdc-grp{font-size:11px;font-weight:800;color:#fff;background:#6B21A8;border-radius:10px;padding:2px 8px}
+.sdc-jumeau{align-self:flex-start;margin-bottom:6px;font-family:inherit;font-weight:700;color:#6B21A8;border-color:#C4B5FD;background:#F5F3FF}
 .sdc-reste{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;font-size:12.5px}
 .sdc-reste-meta{font-size:11px;color:#92400E}
 .sdc-reste-b{font-size:11.5px;padding:4px 10px;margin-left:auto}
@@ -4155,7 +4164,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.65';
+const APP_VERSION = 'v11.3.67';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28798,6 +28807,7 @@ function _sdcCoursDeClasse(cls){
   let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ slots=[]; }
   return slots.map(s=>({
     cls, slotKey:s.slotKey, dateStr:s.dateStr, debut:s.debut, fin:s.fin, saved:s.saved||null,
+    demi:!!s.isDemi, grpIds:Array.isArray(s.grpIds)?s.grpIds.slice():[],
     annule: (typeof isSlotCancelled==='function') ? !!isSlotCancelled(s.dateStr, s.debut, cls) : false,
     rempli: _sdcEstRempli(s.saved, _sdcDraft(cls, s.slotKey))
   })).filter(c=>c.slotKey && c.dateStr);
@@ -29020,6 +29030,7 @@ function _sdcRendre(){
     const n=(typeof _edtNumeroCours==='function')?_edtNumeroCours(cls, slotKey):0;
     if(n){ const pas=_sdcEl('span','sdc-num',String(n)); pas.title=n+'ᵉ cours de l’année avec '+cls; quand.appendChild(pas); }
     quand.appendChild(_sdcEl('span',null,_sdcDateLongue(cur.dateStr)+' · '+cur.debut+(cur.fin?' – '+cur.fin:'')));
+    if(cur.demi){ const lg=_sdcLibelleGroupe(cls, cur.grpIds); if(lg) quand.appendChild(_sdcEl('span','sdc-grp',lg)); }
   } else quand.textContent='Aucun cours à venir pour cette classe.';
   head.appendChild(quand);
   head.appendChild(bNext);
@@ -29092,11 +29103,31 @@ function _sdcRendre(){
   });
   pref.appendChild(_sdcEl('span','sdc-pref-n','Une ligne sans préfixe est une tâche. Sous un /SEQ + /Séance connus, une ligne proche d’une ligne de la bibliothèque y est reliée ; sinon elle est propre à ce cours.'));
 
+  // V11.3.66 — demi-groupes : reprendre le contenu du cours jumeau, seulement
+  // si CE cours est encore vide (on n'écrase jamais une saisie).
+  if(!lectureSeule && cur.demi){
+    const jum=_sdcJumeau(cours, slotKey);
+    const texteJum = jum ? (_sdcTexteInitial(cls, jum.slotKey) || (jum.saved && String(jum.saved.contenu||'')) || '') : '';
+    if(jum && texteJum.trim()){
+      const bJ=_sdcEl('button','sdc-chip sdc-jumeau','⇆ Même contenu que '+(_sdcLibelleGroupe(cls, jum.grpIds)||'l’autre demi-groupe')
+        +' ('+(()=>{ try{ return new Date(jum.dateStr+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return jum.dateStr; } })()+')');
+      bJ.type='button';
+      bJ.title='Recopier le texte de ce cours ; vous pourrez l’ajuster avant d’enregistrer.';
+      const majBtn=()=>{ bJ.style.display=ta.value.trim()?'none':''; };
+      bJ.onclick=()=>{ if(ta.value.trim()) return; ta.value=texteJum; maj(true); majBtn(); ta.focus(); };
+      ta.addEventListener('input', majBtn);
+      colG.insertBefore(bJ, ta);
+      majBtn();
+    }
+  }
+
   colD.appendChild(_sdcEl('div','sdc-h','Interprétation'));
   const jauge=_sdcEl('div','sdc-jauge'); colD.appendChild(jauge);
   const resume=_sdcEl('div','sdc-resume'); colD.appendChild(resume);
   const liste=_sdcEl('div','sdc-liste'); colD.appendChild(liste);
   const effets=_sdcEl('div','sdc-effets'); colD.appendChild(effets);
+  // ── Lot D : prendre des lignes dans d'autres cours (jamais d'écriture chez eux)
+  if(!lectureSeule) _sdcZoneAutresCours(colD, cls, cur, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
 
   const pied=_sdcEl('div','sdc-pied'); pan.appendChild(pied);
   const bEnr=_sdcEl('button','bp sdc-enr','Enregistrer'); pied.appendChild(bEnr);
@@ -29196,10 +29227,16 @@ function _sdcCarteLignes(inner, card, slot, cc){
    (se.sdcRestes[clé] = {etat, vers, at}) : aucun nouveau magasin, et une tâche
    non traitée reste proposée aux cours suivants tant qu'on n'a pas choisi. */
 
-/** Les restes à proposer avant le cours `avantSlotKey`. Pure. */
-function _sdcRestes(seances, prog, bascule, avantSlotKey){
+/** Les restes à proposer avant le cours `avantSlotKey`. Pure.
+ *  V11.3.66 — DEMI-GROUPES : `grpDe(slotKey)` donne le groupe d'un cours ('' =
+ *  classe entière). Un reste d'un demi-groupe n'est proposé qu'aux cours de CE
+ *  groupe (et en classe entière) ; un reste de classe entière est proposé à
+ *  chaque groupe, et le choix est alors noté PAR GROUPE (clé « <clé>@<gid> »). */
+function _sdcRestes(seances, prog, bascule, avantSlotKey, grpDe){
   prog=Array.isArray(prog)?prog:[];
   const out=[];
+  const gOf=(sk)=>{ try{ return (typeof grpDe==='function' && grpDe(sk)) || ''; }catch(e){ return ''; } };
+  const gCible=gOf(avantSlotKey);
   const trouverSean=(seanId)=>{
     for(let i=0;i<prog.length;i++){
       const L=(prog[i]&&prog[i].seances)||[];
@@ -29213,6 +29250,9 @@ function _sdcRestes(seances, prog, bascule, avantSlotKey){
     if(bascule && String(se.slotKey).slice(0,10)<bascule) return;
     if(avantSlotKey && !(String(se.slotKey)<String(avantSlotKey))) return;
     const faits=se.sdcRestes||{};
+    const gSrc=gOf(se.slotKey);
+    if(gSrc && gCible && gSrc!==gCible) return;          // l'autre demi-groupe : pas le nôtre
+    const parGroupe = !gSrc && !!gCible;                  // classe entière → choix noté par groupe
     const vus=new Set();
     const lignes=[];
     (Array.isArray(se.taskRows)?se.taskRows:[]).forEach(tr=>{
@@ -29229,7 +29269,8 @@ function _sdcRestes(seances, prog, bascule, avantSlotKey){
       else if(dec==='reporter') lignes.push({key, etat:'reportée', tr:null});
     });
     lignes.forEach(({key, etat, tr})=>{
-      if(faits[key]) return;
+      const cleNote = parGroupe ? key+'@'+gCible : key;
+      if(faits[key] || faits[cleNote]) return;
       let ref=null, label='';
       const m1=String(key).match(/^mo_(\d+)$/), m2=String(key).match(/^mo_(.+)_(\d+)$/);
       const f = m1 ? (se.seanId?trouverSean(se.seanId):null) : (m2?trouverSean(m2[1]):null);
@@ -29244,7 +29285,7 @@ function _sdcRestes(seances, prog, bascule, avantSlotKey){
         const r=(tr&&tr.remainingMn)!=null&&(tr&&tr.remainingMn)!=='' ? tr.remainingMn : (se.tachePartiels||{})[key];
         duree=parseInt(r,10)||0;
       } else duree=parseInt((tr&&tr.duree)||0,10)||0;
-      out.push({id:se.slotKey+'#'+key, srcSlot:se.slotKey, key, label, etat, duree, ref});
+      out.push({id:se.slotKey+'#'+cleNote, srcSlot:se.slotKey, key, cleNote, label, etat, duree, ref});
     });
   });
   out.sort((a,b)=>a.srcSlot.localeCompare(b.srcSlot));
@@ -29267,6 +29308,36 @@ function _sdcReprendreDansTexte(text, p, prog){
   return (s?s+'\n':'')+ligne;
 }
 
+/** V11.3.66 — le jumeau d'un cours de demi-groupe : l'AUTRE groupe, d'abord le
+ *  même jour, sinon le plus proche AVANT (c'est ce qu'on veut recopier), sinon
+ *  le plus proche après. cours : [{slotKey, dateStr, demi, grpIds}]. Pure.
+ *  (getJumelSlot, existant, ne cherche qu'en avant quand ce n'est pas le même jour.) */
+function _sdcJumeau(cours, slotKey){
+  const L=Array.isArray(cours)?cours:[];
+  const i=L.findIndex(c=>c && c.slotKey===slotKey);
+  if(i<0) return null;
+  const cur=L[i];
+  if(!cur.demi || !(cur.grpIds||[]).length) return null;
+  const autre=(c)=>c && c.slotKey!==slotKey && c.demi && (c.grpIds||[]).length
+    && !(c.grpIds||[]).some(g=>(cur.grpIds||[]).indexOf(g)>=0);
+  const memeJour=L.find(c=>autre(c) && c.dateStr===cur.dateStr);
+  if(memeJour) return memeJour;
+  for(let j=i-1;j>=0;j--) if(autre(L[j])) return L[j];
+  for(let j=i+1;j<L.length;j++) if(autre(L[j])) return L[j];
+  return null;
+}
+/** Groupe d'un cours ('' = classe entière), pour _sdcRestes. Impur. */
+function _sdcGrpResolveur(cls){
+  const idx={};
+  _sdcCoursDeClasse(cls).forEach(c=>{ idx[c.slotKey]=c.demi ? (c.grpIds||[]).slice().sort().join('+') : ''; });
+  return (sk)=>idx[sk]||'';
+}
+function _sdcLibelleGroupe(cls, grpIds){
+  if(!(grpIds||[]).length) return '';
+  let defs=[]; try{ defs=(typeof listGroupesDef==='function')?listGroupesDef(cls):[]; }catch(e){}
+  return grpIds.map(g=>{ const d=defs.find(x=>x.id===g); return d?d.label:g; }).join(' + ');
+}
+
 /* Impur : lecture / écriture du choix sur la séance enregistrée. */
 function _sdcSeancesEnregistrees(cls){
   try{ return (typeof readAllSeancesForClass==='function') ? (readAllSeancesForClass(cls)||[]) : []; }catch(e){ return []; }
@@ -29275,8 +29346,9 @@ function _sdcMarquerReste(cls, p, etat, versSlotKey){
   const se=_sdcSeancesEnregistrees(cls).find(x=>x && x.slotKey===p.srcSlot);
   if(!se) return false;
   if(!se.sdcRestes) se.sdcRestes={};
-  if(etat) se.sdcRestes[p.key]={etat, vers:versSlotKey||'', at:Date.now()};
-  else delete se.sdcRestes[p.key];
+  const cle=p.cleNote||p.key;
+  if(etat) se.sdcRestes[cle]={etat, vers:versSlotKey||'', at:Date.now()};
+  else delete se.sdcRestes[cle];
   saveS();
   return true;
 }
@@ -29297,7 +29369,7 @@ function _sdcRetirerReportHerite(cls, slotKey, fiId){
 /** La zone, construite dans l'écran. `ajouter(ligneOuFn)` modifie le texte. */
 function _sdcZoneRestes(parent, cls, slotKey, prog, lectureSeule, ajouter){
   const zone=_sdcEl('div','sdc-restes'); parent.appendChild(zone);
-  const restes=_sdcRestes(_sdcSeancesEnregistrees(cls), prog, S.planningBascule, slotKey);
+  const restes=_sdcRestes(_sdcSeancesEnregistrees(cls), prog, S.planningBascule, slotKey, _sdcGrpResolveur(cls));
   const herites=_sdcReportsHerites(cls, slotKey);
   let nTaf=0;
   try{ nTaf=(typeof getTafVerifsForTargetSlot==='function') ? (getTafVerifsForTargetSlot(slotKey, cls)||[]).length : 0; }catch(e){}
@@ -29328,6 +29400,92 @@ function _sdcZoneRestes(parent, cls, slotKey, prog, lectureSeule, ajouter){
   });
   if(nTaf) zone.appendChild(_sdcEl('div','sdc-pref-n','📌 '+nTaf+' TAF à vérifier pendant ce cours — proposé'+(nTaf>1?'s':'')+' d’office dans le modal Séance.'));
 }
+
+/* ── Lot D (v11.3.67) : « Autres cours » — prendre des lignes ailleurs ────
+   Décision du 25/09 (modularité) : on compose un cours en prenant des lignes
+   d'AUTRES cours — d'une autre classe du niveau, ou d'un autre cours de la même
+   classe — sans jamais écrire dans le cours source. Une ligne reliée à la
+   bibliothèque reste reliée (son en-tête l'accompagne). */
+
+/** Les lignes qu'on peut prendre dans un texte de cours, avec leur en-tête
+ *  (le /SEQ et le /Séance sous lesquels elles sont écrites). Pure. */
+function _sdcLignesPrenables(text){
+  const out=[]; let seqL=null, seanL=null;
+  String(text||'').split('\n').forEach(raw=>{
+    const it=_sdcClasserLigne(raw); if(!it) return;
+    if(it.type==='seq'){ seqL=raw.trim(); seanL=null; return; }
+    if(it.type==='sean'){ seanL=raw.trim(); return; }
+    out.push({ligne:raw.trim(), type:it.type, seqLigne:seqL, seanLigne:(seqL&&seanL)?seanL:null});
+  });
+  return out;
+}
+/** Ajoute une ligne prise ailleurs : sous son en-tête s'il en a un (elle garde
+ *  ainsi sa provenance), sinon en fin de texte. Pure. */
+function _sdcPrendreLigne(text, p){
+  if(p && p.seqLigne && p.seanLigne) return _sdcAjouterDepuisBiblio(text, p.seqLigne, p.seanLigne, [p.ligne]);
+  const s=String(text||'').replace(/\s+$/,'');
+  return (s?s+'\n':'')+String((p&&p.ligne)||'');
+}
+/** Le cours d'une liste le plus proche d'une date : le premier à partir de
+ *  cette date, sinon le dernier avant. Pure. */
+function _sdcCoursProche(cours, dateStr){
+  const L=(Array.isArray(cours)?cours:[]).filter(c=>c && !c.annule);
+  return L.find(c=>c.dateStr>=dateStr) || L[L.length-1] || null;
+}
+/** Texte d'un cours tel qu'on peut le lire : sa saisie, sinon son brouillon,
+ *  sinon le contenu enregistré. Impur (lecture). */
+function _sdcTexteLisible(cls, c){
+  return _sdcTexteInitial(cls, c.slotKey) || (c.saved && String(c.saved.contenu||'')) || '';
+}
+
+/** La section, construite dans l'écran. `prendre(fn)` modifie le texte. */
+function _sdcZoneAutresCours(parent, cls, cur, lectureSeule, prendre){
+  const lv=_sdcNiveau(cls);
+  const classes=_sdcClasses().filter(c=>_sdcNiveau(c).toLowerCase()===lv.toLowerCase());
+  if(!classes.length) return;
+  const zone=_sdcEl('div','sdc-autres'); parent.appendChild(zone);
+  zone.appendChild(_sdcEl('div','sdc-h','Autres cours — prendre des lignes'));
+  if(!_sdcAutresPos) _sdcAutresPos={};
+  classes.forEach(c2=>{
+    const cours=_sdcCoursDeClasse(c2).filter(x=>!x.annule && !(c2===cls && x.slotKey===cur.slotKey));
+    if(!cours.length) return;
+    const cleP=c2+'|'+cur.slotKey;
+    let i=cours.findIndex(x=>x.slotKey===_sdcAutresPos[cleP]);
+    if(i<0){ const p=_sdcCoursProche(cours, cur.dateStr); i=p?cours.indexOf(p):0; }
+    const carte=_sdcEl('div','sdc-autre'); zone.appendChild(carte);
+    const tete=_sdcEl('div','sdc-autre-t'); carte.appendChild(tete);
+    const corpsC=_sdcEl('div','sdc-autre-c'); carte.appendChild(corpsC);
+    const dessiner=()=>{
+      const c=cours[i];
+      tete.textContent=''; corpsC.textContent='';
+      tete.appendChild(_sdcEl('b',null,c2===cls?c2+' · autres cours':c2));
+      const bP=_sdcEl('button','sdc-mv','◀'); bP.title='Cours précédent'; bP.disabled=i<=0;
+      const bN=_sdcEl('button','sdc-mv','▶'); bN.title='Cours suivant'; bN.disabled=i>=cours.length-1;
+      bP.onclick=()=>{ i--; _sdcAutresPos[cleP]=cours[i].slotKey; dessiner(); };
+      bN.onclick=()=>{ i++; _sdcAutresPos[cleP]=cours[i].slotKey; dessiner(); };
+      tete.appendChild(bP);
+      let dl=''; try{ dl=new Date(c.dateStr+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ dl=c.dateStr; }
+      tete.appendChild(_sdcEl('span','sdc-autre-d',dl+' · '+c.debut+(c.demi?' · '+_sdcLibelleGroupe(c2, c.grpIds):'')+(c.saved?' · enregistré':'')));
+      tete.appendChild(bN);
+      const prenables=_sdcLignesPrenables(_sdcTexteLisible(c2, c));
+      if(!prenables.length){ corpsC.appendChild(_sdcEl('div','sdc-carte-vide','Rien de saisi pour ce cours.')); return; }
+      const bT=_sdcEl('button','sdc-chip sdc-tout','＋ Tout prendre'); bT.type='button'; bT.disabled=lectureSeule;
+      bT.onclick=()=>prendre(t=>prenables.reduce((acc,p)=>_sdcPrendreLigne(acc,p), t));
+      tete.appendChild(bT);
+      prenables.forEach(p=>{
+        const row=_sdcEl('div','sdc-autre-l');
+        const b=_sdcEl('button','sdc-mv','＋'); b.title='Prendre cette ligne'; b.disabled=lectureSeule;
+        b.onclick=()=>prendre(t=>_sdcPrendreLigne(t, p));
+        row.appendChild(b);
+        row.appendChild(_sdcEl('span','sdc-lbl',p.ligne));
+        corpsC.appendChild(row);
+      });
+    };
+    dessiner();
+  });
+  if(zone.childNodes.length<=1) zone.remove();
+}
+let _sdcAutresPos=null;   // position choisie dans chaque carte, le temps de la session
 
 function closeCahierTexte(){
   const bg=document.getElementById('cdt-bg');
@@ -42953,6 +43111,8 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Saisir mes cours — « Autres cours » : sous l’interprétation, une carte par classe du niveau (et une pour les autres cours de la classe ouverte), chacune sur son cours le plus proche, avec ◀ ▶ pour en changer. On y prend une ligne (＋) ou tout le cours (« Tout prendre ») ; une ligne liée à la bibliothèque le reste. Rien n’est jamais modifié dans le cours d’où l’on prend.',
+    'Saisir mes cours et demi-groupes : l’écran affiche le groupe du cours ; un bouton « Même contenu que l’autre demi-groupe » recopie le texte du cours jumeau (le même jour, sinon le plus proche) tant que le cours est vide, à ajuster avant d’enregistrer. Et la bande « Reste des cours précédents » ne mélange plus les groupes : ce qu’un demi-groupe n’a pas fini n’est proposé qu’à lui ; ce qui reste d’un cours en classe entière est proposé à chaque groupe, avec un choix par groupe.',
     'Saisir mes cours — « Reste des cours précédents » : une tâche partielle ou reportée à l’enregistrement d’une séance n’est plus poussée toute seule sur le cours suivant. Elle est proposée dans l’écran des cours suivants, avec « Reprendre » (elle s’ajoute au cours, reliée à la bibliothèque si elle en vient, avec ce qu’il reste à faire) ou « Ignorer ». Tant qu’on n’a pas choisi, elle reste proposée. Les TAF à vérifier restent proposés d’office dans le modal Séance.',
     'Nouvel écran « Saisir mes cours » (tuile verte de l’accueil, ou onglet dans Progression) : c’est désormais LA manière de remplir le planning d’affectation, cours par cours. Un cours est une suite de lignes : prises dans la bibliothèque (toute une séance ou quelques lignes), ou propres à ce cours — rien n’entre dans la bibliothèque sans que vous le demandiez. Plusieurs séances, même de séquences différentes, dans un même cours. Plus de débordement automatique : un cours trop rempli s’allonge et l’écran le signale. À la première ouverture, l’écran propose la bascule : ce qui était placé dans les cours à venir est retiré (sauvegarde téléchargée avant, annulable), le reste est intact. Le planning d’affectation devient une vue d’ensemble : un clic sur un cours l’ouvre dans l’écran.',
     'Synchronisation cloud : la copie de sécurité prise avant chaque synchronisation porte enfin sur ce qui VA ÊTRE REMPLACÉ — la version du cloud avant un envoi, celle de cet appareil avant un import. Jusqu’ici, c’est l’état de l’appareil qui lançait la synchro qui était copié, et non celui qu’il écrasait. Si cette copie échoue, rien n’est remplacé.',
