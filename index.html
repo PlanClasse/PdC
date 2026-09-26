@@ -4208,7 +4208,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.78';
+const APP_VERSION = 'v11.3.79';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -46937,8 +46937,24 @@ const SUIVI_FILTER_DEFAULTS=['absent','retard','exclusion','tnf','cahier','regle
 const SUIVI_FILTER_GROUPS=[
   {id:'g1', label:'ABS · RET · EXC', title:'Absence, retard, exclusion', keys:['absent','retard','exclusion']},
   {id:'g2', label:'TNF · OC · OR · AVT · PUN · RET', title:'Travail non fait, oublis et sanctions', keys:['tnf','cahier','regle','avert','punition','retenue']},
-  {id:'g3', label:'PAR · RES · ENT · AUT · Partic', title:'Statuts positifs et compteur de participations', keys:['particip','respect','entraide','autonome','participation']},
+  {id:'g3', label:'PAR · RES · ENT · AUT · ✋ Nb', title:'Statuts positifs et compteur de participations', keys:['particip','respect','entraide','autonome','participation']},
 ];
+/* V11.3.79 — Filtres réellement disponibles d'un groupe : le compteur de
+   participations et le TNF toujours ; un statut seulement s'il est activé dans
+   Paramètres (sinon son filtre ne pourrait rien montrer et s'affichait sous son
+   nom technique). */
+function _suiviGrpKeys(grp){
+  const actifs=new Set(getStatuts().map(st=>st.key));
+  return (grp&&grp.keys||[]).filter(k=>k==='participation'||k==='tnf'||actifs.has(k));
+}
+/* Libellé d'un bouton de filtre. Le compteur de participations est « ✋ Nb »
+   pour ne plus se confondre avec le STATUT « Participation » (PAR, renommable). */
+function _suiviFiltreLibelle(key){
+  if(key==='participation') return '✋ Nb';
+  if(key==='tnf') return 'TNF';
+  const st=getStatuts().find(x=>x.key===key);
+  return (st&&st.short)||key;
+}
 let suiviFilters=new Set(SUIVI_FILTER_DEFAULTS); // filtres actifs : statut keys + 'participation' + 'tnf'
 let suiviPeriod=0; // offset période courante
 let suiviHideEmpty=false; // masquer les élèves sans aucune donnée
@@ -47033,7 +47049,7 @@ function suiviRefreshFilterButtons(){
   fg.querySelectorAll('[data-group-id]').forEach(b=>{
     const grp=SUIVI_FILTER_GROUPS.find(g=>g.id===b.dataset.groupId);
     if(!grp) return;
-    const on=suiviIsGroupActive(grp.keys);
+    const on=suiviIsGroupActive(_suiviGrpKeys(grp));
     b.classList.toggle('act',on);
     b.textContent=on?'':'Tout';
     b.title=on?'Désactiver ce groupe de filtres':'Activer tout ce groupe de filtres';
@@ -50491,8 +50507,13 @@ function openSuivi(){
   }
   // Construire filtres dynamiques (statuts individuels + partic + TNF)
   const fg=document.getElementById('suivi-filter-grp');
-  if(fg&&!fg.children.length){
-    suiviResetDefaultFilters();
+  // V11.3.79 — reconstruite si les statuts ont changé dans Paramètres (activés,
+  // renommés) ; les filtres par défaut ne sont posés qu'à la première fois.
+  const _fgSig=getStatuts().map(st=>st.key+':'+(st.short||'')).join('|');
+  if(fg && fg.dataset.sig!==_fgSig){
+    const _premiere=!fg.children.length;
+    fg.innerHTML=''; fg.dataset.sig=_fgSig;
+    if(_premiere) suiviResetDefaultFilters();
     const addCmdBtn=(label,title,onclick)=>{
       const b=document.createElement('button');
       b.className='suivi-filter-btn';
@@ -50526,17 +50547,19 @@ function openSuivi(){
       toggle.className='suivi-group-toggle';
       toggle.dataset.groupId=grp.id;
       toggle.onclick=()=>{
-        suiviToggleGroup(grp.keys);
+        suiviToggleGroup(_suiviGrpKeys(grp));
         suiviApplyFiltersAndRender();
       };
       wrap.appendChild(toggle);
-      grp.keys.forEach(key=>{
+      _suiviGrpKeys(grp).forEach(key=>{
         const st=allStatuts.find(x=>x.key===key);
         const b=document.createElement('button');
         b.className='suivi-filter-btn';
         b.dataset.filter=key;
-        b.textContent=key==='participation' ? 'Partic' : ((st&&st.short) || key);
-        b.title=key==='participation' ? 'Compteur de participations' : ((st&&st.label) || key);
+        b.textContent=_suiviFiltreLibelle(key);
+        b.title=key==='participation' ? 'Compteur de participations (appuis +1)'
+          : key==='tnf' ? 'Travail non fait'
+          : ('Statut « '+((st&&st.label) || key)+' »');
         b.onclick=()=>{
           if(suiviFilters.has(key)) suiviFilters.delete(key); else suiviFilters.add(key);
           suiviApplyFiltersAndRender();
