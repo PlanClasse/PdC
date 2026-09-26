@@ -2676,6 +2676,9 @@ body.is-touch .v169-source{
 .cdt-bg.open{display:flex}
 /* V11.3.63 — Saisir mes cours */
 .sdc-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:450;display:flex;justify-content:center;align-items:stretch;padding:max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px))}
+.sdc-avert{position:fixed;left:50%;transform:translateX(-50%);bottom:max(16px,env(safe-area-inset-bottom,0px));z-index:490;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 280px);background:#FEF3C7;color:#78350F;border:1px solid #F59E0B;border-radius:var(--r2);box-shadow:var(--sh2);padding:8px 10px;font-size:13px;line-height:1.35}
+.sdc-avert button{flex:none}
+@media (max-width:760px){ .sdc-avert{left:8px;right:8px;transform:none;max-width:none;bottom:max(56px,env(safe-area-inset-bottom,0px))} }
 .sdc-pan{background:var(--sur);border-radius:var(--r3);box-shadow:var(--sh2);width:min(1280px,100%);display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .sdc-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--brd);background:var(--sur2)}
 .sdc-titre{font-weight:800;font-size:14px;color:var(--acc);margin-right:6px}
@@ -4164,7 +4167,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.67';
+const APP_VERSION = 'v11.3.68';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28924,13 +28927,71 @@ function openSaisieCours(opts){
     }
   }
   _sdc={cls, slotKey};
+  _sdcRetirerAvert();
   _sdcRendre();
 }
 function closeSaisieCours(){
   _sdcFlushSaisie();
+  // V11.3.68 — relevé AVANT de fermer : le cours ouvert a-t-il une saisie non
+  // enregistrée ? On ferme quand même (le texte reste dans le brouillon, sur cet
+  // appareil) ; on le dit seulement, sans rien bloquer.
+  let avert=null;
+  try{ if(_sdc && _sdc.cls && _sdc.slotKey && _sdcNonEnregistre(_sdcDraft(_sdc.cls, _sdc.slotKey))) avert={cls:_sdc.cls, slotKey:_sdc.slotKey}; }catch(e){}
   const bg=document.getElementById('sdc-bg'); if(bg) bg.remove();
   _sdc=null;
-  try{ if(typeof renderVueAnnuelle==='function' && document.getElementById('prog-pane-annuelle') && document.getElementById('prog-pane-annuelle').style.display!=='none') renderVueAnnuelle(); }catch(e){}
+  _sdcRafraichirVues();
+  if(avert){
+    let quand='';
+    try{ const c=_sdcCoursDeClasse(avert.cls).find(x=>x.slotKey===avert.slotKey); if(c) quand=_sdcDateLongue(c.dateStr)+' · '+c.debut; }catch(e){}
+    _sdcAvertirNonEnregistre(avert.cls, avert.slotKey, quand);
+  }
+}
+
+/* V11.3.68 — Fermeture de l'écran (demande du 26/09).
+   – Clic sur le fond : ferme, comme les autres fenêtres de consultation (C2).
+     Ce n'est PAS une fenêtre à enjeu : le texte tapé est gardé à chaque frappe
+     dans le brouillon, fermer ne perd rien.
+   – S'il reste une saisie non enregistrée, un bandeau le dit APRÈS la
+     fermeture, avec « Rouvrir » : averti, jamais bloqué.
+   – Les vues du planning ouvertes derrière (Planning d'affectation ET Agenda
+     hebdo) sont redessinées à l'enregistrement et à la fermeture. Avant, seul
+     le Planning d'affectation l'était, et seulement à la fermeture : l'Agenda
+     hebdo gardait ses cartes vides jusqu'à un changement de semaine. */
+
+/** Le cours a-t-il une saisie non enregistrée ? Pure.
+ *  Seul compte ce qui a été TAPÉ dans l'écran (`saisie`) : un brouillon du
+ *  modal Séance, proposé comme texte de départ, n'est pas une saisie d'ici.
+ *  Les blancs de fin sont ignorés. */
+function _sdcNonEnregistre(d){
+  if(!d || typeof d.saisie!=='string') return false;
+  const net=(x)=>String(x||'').replace(/\s+$/,'');
+  return net(d.saisie)!==net(typeof d.saisieEnreg==='string' ? d.saisieEnreg : '');
+}
+/** Redessine les vues du planning qui sont à l'écran. */
+function _sdcRafraichirVues(){
+  const visible=(id)=>{ const el=document.getElementById(id);
+    return !!el && el.style.display!=='none' && el.getClientRects().length>0; };
+  try{ if(typeof renderVueAnnuelle==='function' && visible('prog-pane-annuelle')) renderVueAnnuelle(); }catch(e){ console.warn('[sdc] rafraîchissement du planning', e); }
+  try{ if(typeof renderAgenda==='function' && visible('prog-pane-agenda')) renderAgenda(); }catch(e){ console.warn('[sdc] rafraîchissement de l’agenda', e); }
+}
+let _sdcAvertT=null;
+function _sdcRetirerAvert(){
+  if(_sdcAvertT){ clearTimeout(_sdcAvertT); _sdcAvertT=null; }
+  const t=document.getElementById('sdc-avert'); if(t) t.remove();
+}
+/** Bandeau non bloquant, après fermeture : la saisie n'est pas enregistrée,
+ *  mais elle est gardée ici. Un seul à la fois ; il part seul au bout de 10 s. */
+function _sdcAvertirNonEnregistre(cls, slotKey, quand){
+  _sdcRetirerAvert();
+  const t=_sdcEl('div','sdc-avert'); t.id='sdc-avert'; t.setAttribute('role','status');
+  t.appendChild(_sdcEl('span',null,'Saisie non enregistrée — '+String(cls).toUpperCase()+(quand?', '+quand:'')
+    +'. Elle reste gardée sur cet appareil, dans ce navigateur.'));
+  const bR=_sdcEl('button','bp','Rouvrir');
+  bR.onclick=()=>{ _sdcRetirerAvert(); openSaisieCours({cls, slotKey}); };
+  const bF=_sdcEl('button','bs','Fermer'); bF.onclick=_sdcRetirerAvert;
+  t.appendChild(bR); t.appendChild(bF);
+  document.body.appendChild(t);
+  _sdcAvertT=setTimeout(_sdcRetirerAvert, 10000);
 }
 function _sdcPersisterSaisie(cls, slotKey, text){
   if(!cls || !slotKey) return;
@@ -28962,6 +29023,12 @@ function _sdcFond(){
   let bg=document.getElementById('sdc-bg');
   if(!bg){
     bg=_sdcEl('div','sdc-bg'); bg.id='sdc-bg';
+    // V11.3.68 — clic sur le fond = Fermer. On exige que le geste COMMENCE aussi
+    // sur le fond : une sélection de texte partie du champ et relâchée dehors
+    // produit un « click » sur le fond (ancêtre commun), qui ne doit pas fermer.
+    let _sdcDownFond=false;
+    bg.addEventListener('pointerdown', e=>{ _sdcDownFond=(e.target===bg); });
+    bg.addEventListener('click', e=>{ const ok=_sdcDownFond && e.target===bg; _sdcDownFond=false; if(ok) closeSaisieCours(); });
     bg.addEventListener('keydown', e=>{
       if(e.key==='Escape'){ const mbg=document.getElementById('mbg'); if(!(mbg&&mbg.classList.contains('open'))){ e.stopPropagation(); closeSaisieCours(); } }
     });
@@ -29189,7 +29256,7 @@ function _sdcRendre(){
     const res=_sdcEnregistrer(cls, slotKey, ta.value);
     etat.className='sdc-etat '+(res.ok?'sdc-ok':'sdc-ko');
     etat.textContent=(res.ok?'✓ ':'⚠ ')+res.message;
-    if(res.ok) maj(false);
+    if(res.ok){ maj(false); _sdcRafraichirVues(); }
   };
   maj(false);
   if(!lectureSeule) setTimeout(()=>{ try{ ta.focus(); }catch(e){} }, 0);
@@ -43111,6 +43178,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Saisir mes cours se ferme d’un clic à côté de la fenêtre. Si le cours ouvert a une saisie non enregistrée, un bandeau le signale après la fermeture, avec « Rouvrir » : rien n’est perdu, le texte reste gardé sur cet appareil. Et le planning d’affectation comme l’Agenda hebdo se mettent à jour dès l’enregistrement d’un cours, sans avoir à changer de semaine.',
     'Saisir mes cours — « Autres cours » : sous l’interprétation, une carte par classe du niveau (et une pour les autres cours de la classe ouverte), chacune sur son cours le plus proche, avec ◀ ▶ pour en changer. On y prend une ligne (＋) ou tout le cours (« Tout prendre ») ; une ligne liée à la bibliothèque le reste. Rien n’est jamais modifié dans le cours d’où l’on prend.',
     'Saisir mes cours et demi-groupes : l’écran affiche le groupe du cours ; un bouton « Même contenu que l’autre demi-groupe » recopie le texte du cours jumeau (le même jour, sinon le plus proche) tant que le cours est vide, à ajuster avant d’enregistrer. Et la bande « Reste des cours précédents » ne mélange plus les groupes : ce qu’un demi-groupe n’a pas fini n’est proposé qu’à lui ; ce qui reste d’un cours en classe entière est proposé à chaque groupe, avec un choix par groupe.',
     'Saisir mes cours — « Reste des cours précédents » : une tâche partielle ou reportée à l’enregistrement d’une séance n’est plus poussée toute seule sur le cours suivant. Elle est proposée dans l’écran des cours suivants, avec « Reprendre » (elle s’ajoute au cours, reliée à la bibliothèque si elle en vient, avec ce qu’il reste à faire) ou « Ignorer ». Tant qu’on n’a pas choisi, elle reste proposée. Les TAF à vérifier restent proposés d’office dans le modal Séance.',
