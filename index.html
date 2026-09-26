@@ -2744,6 +2744,7 @@ body.is-touch .v169-source{
 .sdc-it.sdc-ign{opacity:.45;text-decoration:line-through}
 .sdc-badge{font-size:9.5px;font-weight:800;letter-spacing:.04em;padding:2px 6px;border-radius:4px;background:var(--sur2);color:var(--tx2);flex:none}
 .sdc-t-seq .sdc-badge,.sdc-t-sean .sdc-badge{background:var(--acc);color:#fff}
+.sdc-numseq{font-size:13.5px;font-weight:800;line-height:1.2;padding:1px 8px;border-radius:4px;background:var(--acc-l);color:var(--acc);border:1px solid var(--acc);flex:none}
 .sdc-t-taf .sdc-badge{background:#FEF3C7;color:#92400E}
 .sdc-t-doc .sdc-badge,.sdc-t-res .sdc-badge{background:#E0E7FF;color:#3730A3}
 .sdc-t-eval .sdc-badge{background:#FCE7F3;color:#9D174D}
@@ -4208,7 +4209,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.80';
+const APP_VERSION = 'v11.3.81';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29905,8 +29906,9 @@ function _sdcRendre(){
       row.appendChild(_sdcEl('span','sdc-badge',BADGE[it.type]||it.type));
       // En-tête sans titre tapé : on montre celui de la bibliothèque.
       const titre=it.label || ((it.type==='seq'||it.type==='sean') && it.titreBiblio ? (it.type==='sean'?_sdcTitreSeance({titre:it.titreBiblio}):it.titreBiblio) : '');
-      const lbl=((it.type==='seq'||it.type==='sean')&&it.num?it.num+' ':'')+(titre||'');
-      row.appendChild(_sdcEl('span','sdc-lbl',lbl||'—'));
+      // V11.3.81 — numéro de SEQ / séance détaché du titre, dans sa propre pastille.
+      if((it.type==='seq'||it.type==='sean') && it.num) row.appendChild(_sdcEl('span','sdc-numseq',String(it.num)));
+      row.appendChild(_sdcEl('span','sdc-lbl',titre||'—'));
       const etoilee = !lectureSeule && _sdcEtoilable(it).ok && E.has(_sdcCleEtoile(it));
       if(it.type==='seq'||it.type==='sean'){
         if(it.etat!=='existe' && planE.aCreer[it.ligne]) row.appendChild(_sdcEl('span','sdc-etat-creer','à créer (☆)'));
