@@ -2701,6 +2701,13 @@ body.is-touch .v169-source{
 .sdc-pref{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:8px}
 .sdc-pref-l{font-size:11px;font-weight:700;color:var(--tx3)}
 .sdc-pref-n{font-size:11px;color:var(--tx3);flex-basis:100%}
+.sdc-sugg{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:6px}
+.sdc-sugg-l{font-size:11px;font-weight:700;color:var(--tx3)}
+.sdc-sugg-i{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;padding:5px 9px;min-height:30px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur);color:var(--tx);cursor:pointer;text-align:left;max-width:100%;overflow-wrap:anywhere}
+.sdc-sugg-i:hover,.sdc-sugg-i.sdc-sugg-on{border-color:var(--acc);background:var(--acc-l)}
+.sdc-sugg-src{font-family:inherit;font-size:10px;font-weight:700;color:var(--tx3);margin-left:6px}
+.sdc-sugg-i.sdc-sugg-biblio .sdc-sugg-src{color:var(--acc)}
+.sdc-sugg-n{font-size:10.5px;color:var(--tx3)}
 .sdc-chip{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;padding:5px 9px;min-height:30px;border:1px solid var(--brd);border-radius:14px;background:var(--sur);color:var(--tx2);cursor:pointer}
 .sdc-chip:hover{border-color:var(--acc);color:var(--acc)}
 .sdc-resume{font-size:12px;font-weight:700;color:var(--tx);margin-bottom:6px}
@@ -4173,7 +4180,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.69';
+const APP_VERSION = 'v11.3.71';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -19747,11 +19754,17 @@ function buildCollapsibleList(obj, key, label, icon, placeholder, refresh, opts)
       };
       const del=document.createElement('button');
       del.style.cssText='flex-shrink:0;padding:3px 6px;font-size:11px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur2);color:var(--tx3);cursor:pointer;margin-top:2px';
+      // V11.3.70 — bouton supprimer en fond rouge ; V11.3.71 — dans TOUTES les listes
+      // (mode opératoire, documents, ressources…), demande du 26/09.
+      del.style.background='#DC2626'; del.style.borderColor='#B91C1C'; del.style.color='#fff'; del.style.fontWeight='700';
+      del.title=key==='modeOp'?'Supprimer cette tâche':'Supprimer cette ligne';
       del.textContent='×';
       del.onclick=()=>{
         obj[key].splice(i,1);
         if(key==='modeOp'&&obj.modeOpDurees) obj.modeOpDurees.splice(i,1);
         rebuildList(); updCount(); saveS();
+        // V11.3.70 — les cours composés qui prenaient cette ligne la gardent, propre à eux.
+        try{ if(S.planningBascule && typeof _sdcReparerTout==='function') _sdcReparerTout(); }catch(e){}
       };
       row.appendChild(mvU2); row.appendChild(mvD2); row.appendChild(del);
       listEl.appendChild(row);
@@ -28761,6 +28774,12 @@ function _sdcLigneVersItem(l, freeItems, prog){
     if(Array.isArray(prog) && typeof _sdcRelocaliser==='function'){
       const r=_sdcRelocaliser(l, prog);
       if(r.etat==='ok' || r.etat==='deplace') moIdx=r.idx;
+      // V11.3.70 — la séance existe mais la ligne n'y est plus : la position
+      // stockée désignerait une AUTRE ligne. On l'affiche donc propre au cours, en
+      // attendant que _sdcReparerTout la convertisse pour de bon.
+      else if(typeof _sdcTrouverParId==='function' && _sdcTrouverParId(prog, l.seqId, l.seanId))
+        return {type:'free', fi:{id:'sdcorph_'+String(l.seanId||'')+'_'+String(l.moIdx), label:l.label||'', type:'modeOp', icon:'⚙️', duree:d, sdc:true, orpheline:true},
+                dureeSlot:d, isStart:true, isEnd:true, sdc:true};
     }
     return {type:'task', seqId:l.seqId, seanId:l.seanId, taskIdx:moIdx, label:l.label,
             dureeSlot:d, dureeTotal:d, doneBeforeSlot:0, isStart:true, isEnd:true,
@@ -29081,6 +29100,120 @@ function _sdcBasculerEtoile(cls, slotKey, cle){
   S.seanceContentDraft[k]=d;
   saveS();
   return E.has(cle);
+}
+
+/* ── V11.3.70 — Lot E, la complétion ───────────────────────────────────────
+   Pendant la frappe, l'écran propose des lignes déjà écrites : celles de la
+   bibliothèque (la séance de l'en-tête courant d'abord, puis son chapitre, puis
+   tout le niveau) et celles des autres cours composés du niveau. Même grammaire
+   que la saisie : une ligne nue cherche parmi les tâches, « /Doc », « /Res »,
+   « /TAF » parmi leurs pareils. Prendre une suggestion de la bibliothèque sous
+   le bon en-tête, c'est la relier — sans rien ressaisir. */
+/** La ligne sous le curseur. Pure. */
+function _sdcLigneAuCurseur(text, pos){
+  const s=String(text||''); pos=Math.max(0, Math.min(pos|0, s.length));
+  const debut=s.lastIndexOf('\n', pos-1)+1;
+  let fin=s.indexOf('\n', pos); if(fin<0) fin=s.length;
+  return {debut, fin, ligne:s.slice(debut, fin), index:s.slice(0, debut).split('\n').length-1};
+}
+/** Ce qu'on est en train de taper sur une ligne. Pure. null = rien à compléter
+ *  (en-tête, /Eval, préfixe inachevé, durée déjà écrite). */
+function _sdcFragment(ligne){
+  const t=String(ligne||'');
+  const m=t.match(/^(\s*\/(\S*)\s+)(.*)$/);
+  if(m){
+    const cmd=m[2].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    let kind=null;
+    if(/^doc/.test(cmd)) kind='doc';
+    else if(/^res/.test(cmd)) kind='res';
+    else if(cmd==='taf' || /^travail/.test(cmd)) kind='taf';
+    return kind ? {kind, prefixe:m[1], saisi:m[3]} : null;
+  }
+  if(/^\s*\//.test(t)) return null;
+  if(/[-–—]\s*\d+\s*(?:min|mn)\b/i.test(t)) return null;
+  const pre=(t.match(/^\s*/)||[''])[0];
+  return {kind:'tache', prefixe:pre, saisi:t.slice(pre.length)};
+}
+/** La séance (ou le chapitre) de l'en-tête sous lequel est le curseur. Pure. */
+function _sdcBlocAuCurseur(r, index){
+  let cur=null;
+  (r&&r.items||[]).forEach(it=>{
+    if(it.ligne>=index) return;
+    if(it.type==='seq') cur=it.seqId?{seqId:it.seqId}:null;
+    else if(it.type==='sean') cur=it.seanId?{seqId:it.seqId, seanId:it.seanId}:(cur?{seqId:cur.seqId}:null);
+  });
+  return cur;
+}
+/** Toutes les lignes proposables. Pure. rang : 0 = séance courante,
+ *  1 = son chapitre, 2 = bibliothèque du niveau, 3 = autres cours. */
+function _sdcCandidats(prog, ctx, autresTextes){
+  const out=[];
+  (Array.isArray(prog)?prog:[]).forEach((q,qi)=>(q&&q.seances||[]).forEach((sn,si)=>{
+    if(!sn) return;
+    const rang = ctx && ctx.seanId===sn.id ? 0 : (ctx && ctx.seqId===q.id ? 1 : 2);
+    const src='SEQ'+_sdcSeqNum(q,qi)+' · S'+(si+1);
+    const add=(kind, l, duree)=>{ const v=String(l||'').trim(); if(v) out.push({kind, label:v, duree:duree|0, rang, src, biblio:true}); };
+    (Array.isArray(sn.modeOp)?sn.modeOp:[]).forEach((l,k)=>add('tache', l, (Array.isArray(sn.modeOpDurees)?sn.modeOpDurees:[])[k]));
+    (Array.isArray(sn.docs)?sn.docs:[]).forEach(l=>add('doc', l));
+    (Array.isArray(sn.ressources)?sn.ressources:[]).forEach(l=>add('res', l));
+    ((Array.isArray(sn.tafs)&&sn.tafs.length)?sn.tafs:(sn.taf?[sn.taf]:[])).forEach(l=>add('taf', l));
+  }));
+  (Array.isArray(autresTextes)?autresTextes:[]).forEach(t=>String(t||'').split('\n').forEach(l=>{
+    const it=_sdcClasserLigne(l);
+    if(!it || ['tache','doc','res','taf'].indexOf(it.type)<0 || !String(it.label||'').trim()) return;
+    out.push({kind:it.type, label:String(it.label).trim(), duree:it.duree|0, rang:3, src:'autre cours', biblio:false});
+  }));
+  return out;
+}
+/** Les suggestions pour ce qui est tapé. Pure.
+ *  Chaque mot tapé doit commencer un mot de la ligne proposée (dans n'importe
+ *  quel ordre) ; au moins deux caractères. Tri : proximité dans la
+ *  bibliothèque, puis début de ligne, puis la plus courte. Sans doublon. */
+function _sdcSuggestions(frag, cands, max){
+  if(!frag) return [];
+  const q=_sdcNorm(frag.saisi);
+  if(q.length<2) return [];
+  const mots=q.split(' ');
+  const res=[];
+  (cands||[]).forEach(c=>{
+    if(!c || c.kind!==frag.kind) return;
+    const n=_sdcNorm(c.label);
+    if(!n || n===q) return;
+    const toks=n.split(' ');
+    if(!mots.every(m=>toks.some(t=>t.indexOf(m)===0))) return;
+    res.push({c, score:c.rang*10+(n.indexOf(q)===0?0:1)});
+  });
+  res.sort((a,b)=>a.score-b.score || a.c.label.length-b.c.label.length);
+  const vus=new Set(), out=[];
+  for(const x of res){
+    const k=_sdcNorm(x.c.label); if(vus.has(k)) continue;
+    vus.add(k); out.push(x.c);
+    if(out.length>=(max||6)) break;
+  }
+  return out;
+}
+/** Remplace la ligne du curseur par la suggestion (durée comprise pour une
+ *  tâche). Pure. → {text, pos}. */
+function _sdcAppliquerSuggestion(text, pos, sugg){
+  const s=String(text||'');
+  const L=_sdcLigneAuCurseur(s, pos), f=_sdcFragment(L.ligne);
+  if(!f || !sugg) return {text:s, pos};
+  let nv=f.prefixe+sugg.label;
+  if(sugg.kind==='tache' && sugg.duree>0) nv+=' - '+sugg.duree+' min';
+  return {text:s.slice(0, L.debut)+nv+s.slice(L.fin), pos:L.debut+nv.length};
+}
+/** Textes des AUTRES cours composés du même niveau (brouillons de l'écran). */
+function _sdcTextesAutresCours(cls, slotKey){
+  const niv=_sdcNiveau(cls).toLowerCase(), moi=cls+'|'+slotKey, out=[];
+  const D=S.seanceContentDraft||{};
+  Object.keys(D).forEach(k=>{
+    if(k===moi || out.length>=300) return;
+    const c=k.split('|')[0];
+    if(_sdcNiveau(c).toLowerCase()!==niv) return;
+    const t=D[k] && D[k].saisie;
+    if(typeof t==='string' && t.trim()) out.push(t);
+  });
+  return out;
 }
 
 /** Un cours est « rempli » s'il a un contenu (saisi ou enregistré). Pure. */
@@ -29555,6 +29688,57 @@ function _sdcRendre(){
   const ta=_sdcEl('textarea','sdc-ta'); ta.value=texte0; ta.spellcheck=true; ta.readOnly=lectureSeule;
   ta.placeholder='Choisissez une séance au-dessus pour en prendre des lignes,\nou écrivez directement :\nCorrection de l’exercice de vendredi - 15 min\n/TAF Terminer l’algorigramme p. 3';
   colG.appendChild(ta);
+  // V11.3.70 — complétion : suggestions sous le champ ; ↓ ↑ pour choisir, Tab ou
+  // Entrée pour prendre, Échap pour les masquer (sans fermer l'écran).
+  const sugg=_sdcEl('div','sdc-sugg'); sugg.style.display='none'; colG.appendChild(sugg);
+  if(!lectureSeule){
+    const autres=_sdcTextesAutresCours(cls, slotKey);
+    let liste=[], sel=-1, masque=false;
+    const prendre=(i)=>{
+      const x=liste[i]; if(!x) return;
+      const r=_sdcAppliquerSuggestion(ta.value, ta.selectionStart, x);
+      ta.value=r.text; ta.focus(); ta.setSelectionRange(r.pos, r.pos);
+      maj(true); calculer();
+    };
+    const dessiner=()=>{
+      sugg.textContent='';
+      if(!liste.length || masque){ sugg.style.display='none'; return; }
+      sugg.style.display='';
+      sugg.appendChild(_sdcEl('span','sdc-sugg-l','Compléter :'));
+      liste.forEach((x,i)=>{
+        const b=_sdcEl('button','sdc-sugg-i'+(x.biblio?' sdc-sugg-biblio':'')+(i===sel?' sdc-sugg-on':'')); b.type='button';
+        b.appendChild(document.createTextNode(x.label+(x.kind==='tache'&&x.duree?' - '+x.duree+' min':'')));
+        b.appendChild(_sdcEl('span','sdc-sugg-src', x.biblio?x.src:'autre cours'));
+        b.onmousedown=(e)=>e.preventDefault();
+        b.onclick=()=>prendre(i);
+        sugg.appendChild(b);
+      });
+      sugg.appendChild(_sdcEl('span','sdc-sugg-n','↓ ↑ choisir · Tab ou Entrée : prendre · Échap : masquer'));
+    };
+    const calculer=()=>{
+      const L=_sdcLigneAuCurseur(ta.value, ta.selectionStart);
+      const f=_sdcFragment(L.ligne);
+      let n=[];
+      if(f && ta.selectionStart===ta.selectionEnd){
+        const ctx=_sdcBlocAuCurseur(_sdcInterpreter(ta.value, prog), L.index);
+        n=_sdcSuggestions(f, _sdcCandidats(prog, ctx, autres), 6);
+      }
+      if(JSON.stringify(n.map(x=>x.label+x.src))!==JSON.stringify(liste.map(x=>x.label+x.src))) sel=-1;
+      liste=n; dessiner();
+    };
+    ta.addEventListener('input', ()=>{ masque=false; calculer(); });
+    ta.addEventListener('click', calculer);
+    ta.addEventListener('keyup', (e)=>{ if(['ArrowLeft','ArrowRight','Home','End'].indexOf(e.key)>=0) calculer(); });
+    ta.addEventListener('blur', ()=>{ setTimeout(()=>{ if(document.activeElement!==ta){ liste=[]; dessiner(); } }, 150); });
+    ta.addEventListener('keydown', (e)=>{
+      if(!liste.length || masque) return;
+      if(e.key==='ArrowDown'){ e.preventDefault(); sel=(sel+1)%liste.length; dessiner(); }
+      else if(e.key==='ArrowUp'){ e.preventDefault(); sel=sel<=0?-1:sel-1; dessiner(); }
+      else if(e.key==='Tab'){ e.preventDefault(); prendre(sel>=0?sel:0); }
+      else if(e.key==='Enter' && sel>=0){ e.preventDefault(); prendre(sel); }
+      else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); masque=true; dessiner(); }
+    });
+  }
   const pref=_sdcEl('div','sdc-pref'); colG.appendChild(pref);
   pref.appendChild(_sdcEl('span','sdc-pref-l','Insérer'));
   ['/SEQ','/Séance','/Doc','/Res','/TAF','/Eval','- 15 min'].forEach(p=>{
@@ -43604,6 +43788,7 @@ function showAboutModal(){
   info.style.cssText='font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx3);border-top:1px solid var(--brd);padding-top:8px;margin-bottom:6px';
   info.textContent='Informations'; root.appendChild(info);
   root.appendChild(_aboutNews('septembre 2026', [
+    'Saisir mes cours — complétion : pendant la frappe, l’écran propose sous le champ les lignes déjà écrites — celles de la séance de l’en-tête d’abord, puis du chapitre, puis de toute la bibliothèque du niveau, puis des autres cours composés. Une ligne nue cherche parmi les tâches, « /Doc », « /Res » et « /TAF » parmi leurs pareils. ↓ ↑ pour choisir, Tab ou Entrée pour prendre (avec la durée), Échap pour masquer. Et dans Progression, le bouton de suppression des listes d’une séance (mode opératoire, documents, ressources…) est désormais rouge.',
     'Saisir mes cours — l’étoile ☆ : dans l’interprétation, une étoile par ligne propre au cours. Étoilée, la ligne est versée dans la bibliothèque à l’enregistrement, dans la séance de son en-tête ; si le chapitre ou la séance n’existent pas, ils sont créés (« à créer » s’affiche avant). Rien n’entre jamais dans la bibliothèque sans étoile. Les menus Chapitre et Séance proposent « ＋ Nouveau chapitre » et « ＋ Nouvelle séance », et un lien vers Progression pour retoucher la bibliothèque. Et les cours déjà composés tiennent bon : une séance déplacée, une ligne réordonnée ou retouchée dans Progression sont retrouvées ; une ligne dont la source a été supprimée reste dans le cours, propre à lui.',
     'Saisir mes cours se ferme d’un clic à côté de la fenêtre. Si le cours ouvert a une saisie non enregistrée, un bandeau le signale après la fermeture, avec « Rouvrir » : rien n’est perdu, le texte reste gardé sur cet appareil. Et le planning d’affectation comme l’Agenda hebdo se mettent à jour dès l’enregistrement d’un cours, sans avoir à changer de semaine.',
     'Saisir mes cours — « Autres cours » : sous l’interprétation, une carte par classe du niveau (et une pour les autres cours de la classe ouverte), chacune sur son cours le plus proche, avec ◀ ▶ pour en changer. On y prend une ligne (＋) ou tout le cours (« Tout prendre ») ; une ligne liée à la bibliothèque le reste. Rien n’est jamais modifié dans le cours d’où l’on prend.',
