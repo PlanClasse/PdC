@@ -1631,6 +1631,15 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .stp-btn{padding:9px 6px;border-radius:var(--r1);border:2px solid transparent;cursor:pointer;font-size:12px;font-weight:700;text-align:center;transition:all .12s;width:100%;letter-spacing:.02em}
 .stp-btn.on{filter:brightness(1);box-shadow:inset 0 2px 4px rgba(0,0,0,.15)}
 .stp-btn:not(.on){opacity:1;filter:none;background:#fff;color:#111;border-color:#111}.stp-btn:not(.on):hover{background:#F3F4F6}
+/* V11.3.74 — avertissement à niveaux : un libellé sur toute la largeur, N zones cliquables */
+.stp-avt-multi{position:relative;padding:9px 6px 16px;cursor:default}
+.stp-avt-zones{position:absolute;inset:0;display:flex}
+.stp-avt-z{flex:1;border:none;background:transparent;cursor:pointer;padding:0;position:relative;font:inherit;color:inherit}
+.stp-avt-z+.stp-avt-z{border-left:1.5px dashed currentColor}
+.stp-avt-z span{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:10px;font-weight:800;opacity:.85}
+.stp-avt-z:hover{background:rgba(0,0,0,.06)}
+.stp-avt-z.stp-avt-on{background:rgba(0,0,0,.28)}
+.stp-avt-z:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 /* V11.3.73 — maquette d'ordre des statuts (Paramètres) */
 .stpo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-width:380px;margin:6px 0 4px}
 .stpo-tile{padding:9px 6px;border:2px solid #111;border-radius:var(--r1);background:#fff;color:#111;font-size:12px;font-weight:700;text-align:center;cursor:grab;user-select:none;touch-action:none;letter-spacing:.02em}
@@ -4186,7 +4195,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.73';
+const APP_VERSION = 'v11.3.74';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -6310,14 +6319,14 @@ function _pcmSeverityCss(keys){
   if(s==='avt')    return 'sev-avt';
   return '';
 }
-function _pcmSeverityBadge(keys){
+function _pcmSeverityBadge(keys, niveauAvt){
   // Badge texte court pour le statut le plus sévère, '' si aucun marquant.
   if(!keys || !keys.length) return '';
   if(keys.includes('absent'))   return '<span class="pcm-stbadge sev-absent">ABS</span>';
   if(keys.includes('exclusion'))return '<span class="pcm-stbadge sev-pun">EXC</span>';
   if(keys.includes('retenue'))  return '<span class="pcm-stbadge sev-pun">RET</span>';
   if(keys.includes('punition')) return '<span class="pcm-stbadge sev-pun">PUN</span>';
-  if(keys.includes('avert'))    return '<span class="pcm-stbadge sev-avt">AVT</span>';
+  if(keys.includes('avert'))    return '<span class="pcm-stbadge sev-avt">'+((niveauAvt|0)>0 ? 'AVT'+(niveauAvt|0) : 'AVT')+'</span>';
   if(keys.includes('retard'))   return '<span class="pcm-stbadge sev-avt">RD</span>';
   return '';
 }
@@ -6457,7 +6466,7 @@ function _pcmRenderIlotsHtml(cls){
     const lbl    = (typeof getSeatLabel==='function') ? getSeatLabel(stuId) : stuId;
     const keys   = _pcmStuStatutKeys(stuId);
     const sevCss = _pcmSeverityCss(keys);
-    const badgeSev = _pcmSeverityBadge(keys);
+    const badgeSev = _pcmSeverityBadge(keys, (curSlotKey && typeof _avtNiveau==='function') ? _avtNiveau(getStatutsMap(), stuId) : 0);
     const pc    = (typeof getParticipations==='function') ? getParticipations(stuId) : 0;
     const pcCls = pc===0?'':(pc===1?' pc1':(pc===2?' pc2':' pc3'));
     const pBadge='<span class="seat-partic-badge'+(pc>0?' has-partic':'')+pcCls+'">'+(pc>0?String(pc):'')+'</span>';
@@ -6567,7 +6576,7 @@ function _pcmRowHtml(stuId, eqKey, isFloat){
   const lbl    = (typeof getSeatLabel==='function') ? getSeatLabel(stuId) : stuId;
   const keys   = _pcmStuStatutKeys(stuId);
   const sevCss = _pcmSeverityCss(keys);
-  const badgeSev = _pcmSeverityBadge(keys);
+  const badgeSev = _pcmSeverityBadge(keys, (curSlotKey && typeof _avtNiveau==='function') ? _avtNiveau(getStatutsMap(), stuId) : 0);
   const pc    = (typeof getParticipations==='function') ? getParticipations(stuId) : 0;
   const pcCls = pc===0?'':(pc===1?' pc1':(pc===2?' pc2':' pc3'));
   const pBadge='<span class="seat-partic-badge'+(pc>0?' has-partic':'')+pcCls+'">'+(pc>0?String(pc):'')+'</span>';
@@ -18363,6 +18372,19 @@ function renderParamsStatuts(body){
       shortInp.style.cssText='width:50px;flex-shrink:0;padding:4px 6px;border:1px solid var(--brd);border-radius:var(--r1);font-size:12px;font-weight:700;font-family:monospace;background:var(--bg);color:var(--tx);outline:none;text-align:center';
       shortInp.oninput=()=>{ S.customStatuts[idx].short=shortInp.value; saveS(); };
       row.appendChild(shortInp);
+      // V11.3.74 — nombre de niveaux d'avertissement (1 = comme avant).
+      if(st.key==='avert' && typeof _avtNb==='function'){
+        const w=document.createElement('label');
+        w.style.cssText='display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--tx2);flex-shrink:0';
+        { const t=document.createElement('span'); t.textContent='Niveaux'; w.appendChild(t); }
+        const sel=document.createElement('select'); sel.className='avt-nb-sel';
+        sel.style.cssText='padding:3px 6px;border:1px solid var(--brd);border-radius:var(--r1);font-size:12px;background:var(--bg);color:var(--tx)';
+        [1,2,3].forEach(n=>{ const o=document.createElement('option'); o.value=String(n); o.textContent=String(n); if(n===_avtNb()) o.selected=true; sel.appendChild(o); });
+        sel.title='1 : un seul avertissement (AVT). 2 ou 3 : la case est découpée en zones, la tuile affiche AVT1, AVT2, AVT3.';
+        sel.onchange=()=>{ if(!S.reglages) S.reglages={}; S.reglages.avtNbNiveaux=+sel.value; saveS(); };
+        w.appendChild(sel);
+        row.appendChild(w);
+      }
 
       // Reset (statuts de base) ou Supprimer (custom)
       if(isCustom){
@@ -25538,7 +25560,8 @@ function buildCourseSummaryDense(slotKey, clsCode){
     if(Object.keys(byStatus).length){
       const statusLines=Object.entries(byStatus).map(([k,arr])=>{
         const c=getSummaryStatusColor(k);
-        return `<div style="margin-bottom:3px"><span style="font-weight:700;color:${c};text-transform:uppercase;font-size:12px;letter-spacing:.03em">${escapeHtml(statusLabel(k))}</span> <span style="color:var(--tx2)">${arr.map(studentName).join(' – ')}</span></div>`;
+        const niv=(id)=>{ const n=(k==='avert' && typeof _avtNiveauSeance==='function')?_avtNiveauSeance(seance, id):0; return n?' (AVT'+n+')':''; };   // V11.3.74
+        return `<div style="margin-bottom:3px"><span style="font-weight:700;color:${c};text-transform:uppercase;font-size:12px;letter-spacing:.03em">${escapeHtml(statusLabel(k))}</span> <span style="color:var(--tx2)">${arr.map(id=>studentName(id)+escapeHtml(niv(id))).join(' – ')}</span></div>`;
       }).join('');
       rowsHtml.push(`<div style="${keyStyle}">Statuts</div><div style="${valStyle}">${statusLines}</div>`);
     } else {
@@ -25643,7 +25666,8 @@ function buildCourseSummaryDense(slotKey, clsCode){
     Object.entries(liveMap).forEach(([sid,keys])=>{ (keys||[]).forEach(k=>{ (byStatus2[k]||(byStatus2[k]=[])).push(sid); }); });
     const statusLines=Object.entries(byStatus2).map(([k,arr])=>{
       const c=getSummaryStatusColor(k);
-      return `<div style="margin-bottom:3px"><span style="font-weight:700;color:${c};text-transform:uppercase;font-size:12px;letter-spacing:.03em">${escapeHtml(statusLabel(k))}</span> <span style="color:var(--tx2)">${arr.map(studentName).join(' – ')}</span></div>`;
+      const niv=(id)=>{ const n=(k==='avert' && typeof _avtNiveau==='function')?_avtNiveau(liveMap, id):0; return n?' (AVT'+n+')':''; };   // V11.3.74
+      return `<div style="margin-bottom:3px"><span style="font-weight:700;color:${c};text-transform:uppercase;font-size:12px;letter-spacing:.03em">${escapeHtml(statusLabel(k))}</span> <span style="color:var(--tx2)">${arr.map(id=>studentName(id)+escapeHtml(niv(id))).join(' – ')}</span></div>`;
     }).join('');
     rowsHtml.push(`<div style="${keyStyle}">Statuts</div><div style="${valStyle}">${statusLines}</div>`);
   }
@@ -25680,8 +25704,10 @@ function buildCourseSummaryHtml(slotKey, clsCode, ev, opts){
     Object.entries(liveMap).forEach(([sid,keys])=>{ (keys||[]).forEach(k=>{ (byStatus[k]||(byStatus[k]=[])).push(sid); }); });
     const statusBlocks=Object.entries(byStatus).map(([k,arr])=>{
       const c=getSummaryStatusColor(k);
+      // V11.3.74 — le niveau d'avertissement reste visible après le cours.
+      const niv=(id)=>{ const n=(k==='avert' && typeof _avtNiveau==='function')?_avtNiveau(liveMap, id):0; return n?' (AVT'+n+')':''; };
       return `<div style="margin-bottom:10px"><div style="font-size:15px;font-weight:800;color:${c};text-transform:uppercase;margin-bottom:4px">${escapeHtml(statusLabel(k))}</div>
-        <div style="font-size:16px;line-height:1.45;color:${c}">${arr.map(id=>escapeHtml(formatSummaryStudentName(id)||id)).join(' - ')||'—'}</div></div>`;
+        <div style="font-size:16px;line-height:1.45;color:${c}">${arr.map(id=>escapeHtml((formatSummaryStudentName(id)||id)+niv(id))).join(' - ')||'—'}</div></div>`;
     }).join('');
 
     // ── Tâches (coches + décisions draft + layout) ──
@@ -31970,13 +31996,81 @@ function _applyStatutExclusions(list, addedKey){
   if(addedKey==='retard') return (list||[]).filter(k=>k!=='absent');
   return list;
 }
-function toggleStatut(name,key){
+/* V11.3.74 — Niveaux d'avertissement (demande du 26/09).
+   Le statut reste UN SEUL : « avert », tel que le lisent déjà seuils d'alerte,
+   suivi, analyses et teinte du siège — un avertissement compte pour un, quel
+   que soit son niveau. Le niveau est rangé À CÔTÉ, sous la même clé que la
+   saisie du cours : S.avtNiveaux['<clé de S.statutsCours>'][uid] = 1 | 2 | 3.
+   Il est visible pendant le cours (popup, tuile : AVT1/AVT2/AVT3) et après
+   (Séance précédente, suivi). Pas de niveau rangé = « AVT », comme avant.
+   Nombre de niveaux : S.reglages.avtNbNiveaux (1 par défaut = rien ne change). */
+function _avtNb(){
+  const n=parseInt(S && S.reglages && S.reglages.avtNbNiveaux, 10);
+  return (n>=2 && n<=3) ? n : 1;
+}
+/** Clé de S.statutsCours dont `map` est la saisie (identité d'objet). */
+function _avtCleDeMap(map){
+  if(!map || !S || !S.statutsCours) return null;
+  const k=Object.keys(S.statutsCours).find(x=>S.statutsCours[x]===map);
+  return k||null;
+}
+/** Niveau d'avertissement d'un élève dans une saisie de cours ; 0 = sans niveau. */
+function _avtNiveau(map, uid){
+  if(!map || !uid) return 0;
+  const v=map[uid], keys=Array.isArray(v)?v:(v?[v]:[]);
+  if(keys.indexOf('avert')<0) return 0;
+  const k=_avtCleDeMap(map);
+  const n=k && S.avtNiveaux && S.avtNiveaux[k] ? (S.avtNiveaux[k][uid]|0) : 0;
+  return (n>=1 && n<=3) ? n : 0;
+}
+function _avtEcrire(map, uid, n){
+  const k=_avtCleDeMap(map); if(!k) return;
+  if(!S.avtNiveaux) S.avtNiveaux={};
+  if(n>=1 && n<=3){ (S.avtNiveaux[k]||(S.avtNiveaux[k]={}))[uid]=n; }
+  else if(S.avtNiveaux[k]){ delete S.avtNiveaux[k][uid]; if(!Object.keys(S.avtNiveaux[k]).length) delete S.avtNiveaux[k]; }
+}
+/** Copie des niveaux d'une saisie, pour la séance enregistrée ; null si aucun. */
+function _avtFiger(map){
+  const out={};
+  Object.keys(map||{}).forEach(uid=>{ const n=_avtNiveau(map, uid); if(n) out[uid]=n; });
+  return Object.keys(out).length ? out : null;
+}
+/** Niveau lu dans une séance enregistrée (copie figée). Pure. */
+function _avtNiveauSeance(seance, uid){
+  const keys=(seance && seance.statuts && seance.statuts[uid]) || [];
+  if(!Array.isArray(keys) || keys.indexOf('avert')<0) return 0;
+  const n=(seance.avtNiveaux && seance.avtNiveaux[uid])|0;
+  return (n>=1 && n<=3) ? n : 0;
+}
+/** Libellé court : « AVT2 » si un niveau est rangé, sinon le libellé court du statut. Pure. */
+function _avtCourt(n, court){ return n>=1 ? 'AVT'+n : (court||'AVT'); }
+/** Clic sur une zone de niveau. Pure. → {pose, niveau}.
+ *  Recliquer le niveau actif retire l'avertissement ; un autre niveau le remplace. */
+function _avtBasculer(estPose, niveauActuel, niveauClique){
+  if(estPose && niveauActuel===niveauClique) return {pose:false, niveau:0};
+  return {pose:true, niveau:niveauClique};
+}
+
+function toggleStatut(name,key,niveau){
   if(!curSlotKey) return; // pas de contexte EDT → statuts désactivés
   const map=getStatutsMap();
   const cur=getStatutKeys(name);
   const idx=cur.indexOf(key);
-  map[name]=idx>=0 ? cur.filter(k=>k!==key) : _applyStatutExclusions([...cur,key], key);
+  // V11.3.74 — avertissement à niveaux : la zone cliquée décide (poser, changer, retirer).
+  let retirer=idx>=0, nouveauNiveau=0;
+  const _avtOk=(typeof _avtEcrire==='function');
+  if(key==='avert' && niveau && _avtOk){
+    const b=_avtBasculer(idx>=0, _avtNiveau(map, name), niveau);
+    retirer=!b.pose; nouveauNiveau=b.niveau;
+  }
+  map[name]=retirer ? cur.filter(k=>k!==key) : (idx>=0 ? cur.slice() : _applyStatutExclusions([...cur,key], key));
   if(map[name].length===0) delete map[name];
+  // Le niveau suit le statut : effacé dès que l'avertissement n'est plus là
+  // (retiré, ou emporté par « absent »), posé seulement par une zone de niveau.
+  if(_avtOk){
+    if(!(map[name]||[]).includes('avert')) _avtEcrire(map, name, 0);
+    else if(key==='avert') _avtEcrire(map, name, nouveauNiveau);
+  }
   // V020-v172 — Retour haptique léger sur toggle (silencieux sur iOS/iPadOS)
   if(typeof _v172Haptic === 'function') _v172Haptic(8);
   // Phase 2b session 11 — persistance via helper rétrocompatible (clé legacy OU composite)
@@ -32000,6 +32094,7 @@ function toggleStatut(name,key){
 function clearStatuts(name){
   if(!curSlotKey) return;
   const map=getStatutsMap();
+  if(typeof _avtEcrire==='function') _avtEcrire(map, name, 0);   // V11.3.74
   delete map[name];
   // Phase 2b session 11 — persistance via helper rétrocompatible
   const _grp = (typeof getCurrentGrpId==='function') ? getCurrentGrpId(curCls, curSlotKey) : '';
@@ -32543,12 +32638,34 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
       }
       btn.textContent=(isOn?'✓ ':'')+s.label;
       btn.onclick=e=>{ e.stopPropagation(); toggleStatut(name,s.key); };
+      // V11.3.74 — avertissement à 2 ou 3 niveaux : même libellé sur toute la
+      // largeur, N zones cliquables (1, 2, 3) posées par-dessus.
+      if(s.key==='avert' && typeof _avtNb==='function' && _avtNb()>1){
+        const nb=_avtNb(), niv=isOn ? _avtNiveau(getStatutsMap(), name) : 0;
+        const box=document.createElement('div');
+        box.className=btn.className+' stp-avt-multi'; box.setAttribute('role','group');
+        box.setAttribute('aria-label', s.label+' — '+nb+' niveaux');
+        { const lb=document.createElement('span'); lb.textContent=(isOn?'✓ ':'')+s.label; box.appendChild(lb); }
+        const zones=document.createElement('div'); zones.className='stp-avt-zones';
+        for(let n=1;n<=nb;n++){
+          const z=document.createElement('button'); z.type='button';
+          z.className='stp-avt-z'+(isOn && niv===n?' stp-avt-on':'');
+          z.title=s.label+' — niveau '+n+(isOn && niv===n?' (cliquer pour retirer)':'');
+          z.setAttribute('aria-label', s.label+' niveau '+n);
+          const d=document.createElement('span'); d.textContent=String(n); z.appendChild(d);
+          z.onclick=e=>{ e.stopPropagation(); toggleStatut(name, 'avert', n); };
+          zones.appendChild(z);
+        }
+        box.appendChild(zones);
+        col.appendChild(box);
+        return;
+      }
       col.appendChild(btn);
     });
     return col;
   };
   // Les boutons sont posés directement dans la grille (2 colonnes, ligne par ligne).
-  Array.from(makeCol(negOrd,'').querySelectorAll('.stp-btn')).forEach(b=>negEl.appendChild(b));
+  Array.from(makeCol(negOrd,'').children).filter(b=>b.classList.contains('stp-btn')).forEach(b=>negEl.appendChild(b));
 
   // — Statuts positifs —
   const posEl=document.getElementById('stp-pos');
@@ -34241,7 +34358,9 @@ function makeSeat(idx,name,extraCls){
         const mwrap=document.createElement('div'); mwrap.className='seat-badges-major';
         majorShown.forEach(k=>{
           const st=getStatuts().find(s=>s.key===k);if(!st)return;
-          const b=document.createElement('span');b.className='status-badge sb-'+k;b.textContent=st.short;
+          const b=document.createElement('span');b.className='status-badge sb-'+k;
+          // V11.3.74 — AVT1 / AVT2 / AVT3 quand un niveau est rangé
+          b.textContent=(k==='avert' && typeof _avtCourt==='function') ? _avtCourt(_avtNiveau(getStatutsMap(), name), st.short) : st.short;
           mwrap.appendChild(b);
         });
         seat.appendChild(mwrap);
@@ -43924,7 +44043,7 @@ function showAboutModal(){
     ['📋 Cahier de texte du jour', 'septembre 2026',
      'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement ; les tâches commencées portent « (à poursuivre au prochain cours) ».'],
     ['👩‍🏫 En classe', 'septembre 2026',
-     'Une popup de statuts plus lisible, dont vous fixez la disposition dans Paramètres. Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. La Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
+     'Une popup de statuts plus lisible, dont vous fixez la disposition dans Paramètres, avec des avertissements à deux ou trois niveaux (AVT1, AVT2, AVT3). Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. La Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
     ['⏱️ Compte à rebours', 'septembre 2026',
      'Chaque alerte (5, 3, 2, 1 min, fin) se coupe, se règle en volume et peut jouer votre propre son.'],
     ['🔄 Synchronisation et sécurité des données', 'septembre 2026',
@@ -44227,6 +44346,7 @@ function openSaveSeance(){
     // V035-v181.15.27 (v5c-2a-1) : helper scopé (groupe inter-classes OU classe/demi-groupe)
     const _slotStatuts=_seanceStatutsFrozen();
     Object.entries(_slotStatuts).forEach(([id,keys])=>{ if(keys&&keys.length) statuts[id]=[...keys]; });
+    const _avtFige=(typeof _avtFiger==='function')?_avtFiger(_slotStatuts):null;   // V11.3.74
     const competences={};
     // V035-v181.15.34 (v5d-2) — figeage scope-aware (groupe inter-classes ou classe)
     const _ecTagDS=(typeof _evalScopeTag==='function')?_evalScopeTag():curCls;
@@ -44250,6 +44370,7 @@ function openSaveSeance(){
       });
     }
     const seance={date:effectiveDateStr,debut,fin,slotKey,statuts,competences,observations};
+    if(_avtFige) seance.avtNiveaux=_avtFige;   // V11.3.74 — niveaux d'avertissement figés avec les statuts
     // Sauvegarder evalComps → après la déclaration de seance
     if(curSlotKey&&S.evalComps){
       // V035-v181.15.36 (v5d-2c) — clé scopée (groupe inter-classes ou classe).
@@ -46199,6 +46320,7 @@ function openSaveSeance(){
     // V035-v181.15.27 (v5c-2a-1) : helper scopé (groupe inter-classes OU classe/demi-groupe)
     const _slotStatuts=_seanceStatutsFrozen();
     Object.entries(_slotStatuts).forEach(([id,keys])=>{ if(keys&&keys.length) statuts[id]=[...keys]; });
+    const _avtFige=(typeof _avtFiger==='function')?_avtFiger(_slotStatuts):null;   // V11.3.74
     const competences={};
     // V035-v181.15.34 (v5d-2) — figeage scope-aware (groupe inter-classes ou classe)
     const _ecTagDSF=(typeof _evalScopeTag==='function')?_evalScopeTag():curCls;
@@ -46221,6 +46343,7 @@ function openSaveSeance(){
       });
     }
     const seance={date:effectiveDateStr,debut,fin,slotKey,statuts,competences,observations,contenu,commentaire,seqId,seanId};
+    if(_avtFige) seance.avtNiveaux=_avtFige;   // V11.3.74 — niveaux d'avertissement figés avec les statuts
     // V035-V11.3.35 (Q1) — Réalignement des identités AVANT d'écrire la séance et
     // AVANT l'auto-cochage : chaque TAF déjà enregistré retrouve sa coche et sa
     // vérification à son nouveau rang (appariement par libellé), les TAF
@@ -52028,7 +52151,8 @@ function renderSuiviTable(){
           const st=getStatuts().find(x=>x.key===sk); if(!st) return;
           const tag=document.createElement('span'); tag.className='suivi-tag';
           const colMap={'neg-l':'#555','neg-r':'#9A3412','pos':'#166534'};
-          tag.style.background=colMap[st.col]||'#888'; tag.textContent=st.short;
+          tag.style.background=colMap[st.col]||'#888';
+          tag.textContent=(sk==='avert' && typeof _avtCourt==='function') ? _avtCourt(_avtNiveau(liveMap, id)||_avtNiveauSeance(s, id), st.short) : st.short;   // V11.3.74
           cell.appendChild(tag); cellHasData=true;
         });
         const obs=((s.observations&&s.observations[id])||((S.observations&&S.observations[suiviCls+'|'+id])||''));
