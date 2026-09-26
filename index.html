@@ -4208,7 +4208,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.79';
+const APP_VERSION = 'v11.3.80';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29346,6 +29346,24 @@ function _sdcClasses(){
   try{ return (typeof _homeListActiveClasses==='function') ? _homeListActiveClasses() : Object.keys(S.cl||{}); }
   catch(e){ return []; }
 }
+/** V11.3.80 — Ordre du sélecteur de classe : d'abord les classes qui ont cours
+ *  le jour affiché, dans l'ordre des heures ; puis les autres, dans l'ordre
+ *  habituel. Pure. cours = [{cls, dateStr, debut, annule}].
+ *  Renvoie {jour:[{cls, debut}], autres:[cls]}. */
+function _sdcOrdreClasses(classes, dateStr, cours){
+  const premier={};
+  (cours||[]).forEach(c=>{
+    if(!c || c.annule || c.dateStr!==dateStr || !c.cls) return;
+    const d=String(c.debut||'');
+    if(premier[c.cls]===undefined || d<premier[c.cls]) premier[c.cls]=d;
+  });
+  const liste=(classes||[]);
+  const jour=liste.filter(c=>premier[c]!==undefined)
+    .map((c,i)=>({cls:c, debut:premier[c], i}))
+    .sort((a,b)=>a.debut<b.debut?-1:a.debut>b.debut?1:a.i-b.i)
+    .map(({cls,debut})=>({cls,debut}));
+  return {jour, autres:liste.filter(c=>premier[c]===undefined)};
+}
 function _sdcMaintenant(){
   const d=(typeof _appNow==='function')?_appNow():new Date();
   return {today:toDateStr(d), now:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')};
@@ -29627,12 +29645,34 @@ function _sdcRendre(){
   const head=_sdcEl('div','sdc-head'); pan.appendChild(head);
   head.appendChild(_sdcEl('div','sdc-titre','🗓️ Saisir mes cours'));
   const selCls=_sdcEl('select','sdc-cls'); selCls.title='Classe';
-  _sdcClasses().forEach(c=>{ const o=_sdcEl('option',null,c); o.value=c; if(c===cls) o.selected=true; selCls.appendChild(o); });
   selCls.onchange=()=>{ _sdcFlushSaisie(); openSaisieCours({cls:selCls.value}); };
   head.appendChild(selCls);
   const cours=cls?_sdcCoursDeClasse(cls).filter(c=>!c.annule):[];
   const i=cours.findIndex(c=>c.slotKey===slotKey);
   const cur=i>=0?cours[i]:null;
+  // V11.3.80 — classes du jour affiché en tête, en gras, dans l'ordre des heures ;
+  // les autres ensuite, en maigre. Jour affiché : celui du cours ouvert, sinon
+  // aujourd'hui.
+  {
+    const jourAff=cur?cur.dateStr:_sdcMaintenant().today;
+    const toutes=_sdcClasses();
+    let coursJour=[];
+    toutes.forEach(c=>{ try{ coursJour=coursJour.concat((c===cls?cours:_sdcCoursDeClasse(c)).filter(x=>x.dateStr===jourAff)); }catch(e){} });
+    const ord=_sdcOrdreClasses(toutes, jourAff, coursJour);
+    // Pas d'heure dans le libellé : le sélecteur fermé montrerait la 1re heure
+    // de la classe même quand on ouvre son 2e cours de la journée.
+    const opt=(c, gras, heure)=>{
+      const o=_sdcEl('option',null,c); o.value=c; if(heure) o.title=c+' — premier cours à '+heure;
+      o.style.fontWeight=gras?'700':'400';
+      if(c===cls) o.selected=true; selCls.appendChild(o);
+    };
+    ord.jour.forEach(x=>opt(x.cls, true, x.debut));
+    if(ord.jour.length && ord.autres.length){
+      // Séparateur : là où le système ignore le gras des options (macOS, iOS).
+      const sep=_sdcEl('option',null,'──────────'); sep.disabled=true; selCls.appendChild(sep);
+    }
+    ord.autres.forEach(c=>opt(c, false, ''));
+  }
   const nav=(j)=>{ if(j<0||j>=cours.length) return; _sdcFlushSaisie(); _sdc.slotKey=cours[j].slotKey; _sdcRendre(); };
   const bPrev=_sdcEl('button','bs sdc-nav','◀'); bPrev.title='Cours précédent de la classe'; bPrev.disabled=i<=0; bPrev.onclick=()=>nav(i-1);
   const bNext=_sdcEl('button','bs sdc-nav','▶'); bNext.title='Cours suivant de la classe'; bNext.disabled=i<0||i>=cours.length-1; bNext.onclick=()=>nav(i+1);
