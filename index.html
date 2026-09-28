@@ -2714,6 +2714,10 @@ body.is-touch .v169-source{
 .sdc-nav{min-width:36px;min-height:34px;font-size:13px}
 .sdc-quand{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--tx);min-width:0}
 .sdc-num{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--acc);color:#fff;font-size:12px;font-weight:800}
+.sdc-date{position:relative;cursor:pointer;padding:2px 6px;border-radius:var(--r1);border:1px dashed transparent}
+.sdc-date:hover{border-color:var(--acc);background:var(--acc-l)}
+.sdc-date::after{content:' 📅';font-size:12px}
+.sdc-date-inp{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0;margin:0}
 .sdc-vide{margin-left:auto;font-size:12px}
 .sdc-fermer{font-size:12px}
 .sdc-sels{display:flex;gap:12px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--brd)}
@@ -4209,7 +4213,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.84';
+const APP_VERSION = 'v11.3.85';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -15086,9 +15090,14 @@ function _homeGetDocsAujourdhui(){
     let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ return; }
     slots.filter(s=>s.dateStr===today).forEach(slot=>{
       if(typeof isSlotCancelled==='function' && isSlotCancelled(slot.dateStr, slot.debut, cls)) return;
-      const ps=_homeProgSeanceFromMapping(slot.slotKey, cls);
-      if(!ps || !ps.sean) return;
-      const docs=(ps.sean.docs||[]).map(d=>String(d||'').trim()).filter(Boolean);
+      // V11.3.85 — cours composé dans « Saisir mes cours » : son texte fait foi.
+      let docs;
+      if(typeof _sdcEntreeDuCours==='function' && _sdcEntreeDuCours(slot.slotKey, cls)) docs=_docsDistribuesAuCours(slot.slotKey, cls);
+      else {
+        const ps=_homeProgSeanceFromMapping(slot.slotKey, cls);
+        if(!ps || !ps.sean) return;
+        docs=(ps.sean.docs||[]).map(d=>String(d||'').trim()).filter(Boolean);
+      }
       if(!docs.length) return;
       out.push({clsCode:cls, slotKey:slot.slotKey, debut:slot.debut, fin:slot.fin, docs});
     });
@@ -28950,6 +28959,10 @@ function _docsARemettreAbsents(slotKey, cls, grp){
   const prev=(typeof getPrevSlotKey==='function') ? getPrevSlotKey(cls, slotKey, grp||'') : null;
   return prev ? _docsDistribuesAuCours(prev, cls) : [];
 }
+/** V11.3.85 — Élément libre = doc ou ressource tapé dans « Saisir mes cours ». Pure. */
+function _sdcFiDocRes(fi){
+  return !!(fi && fi.sdc && (fi.type==='doc' || fi.type==='ressource'));
+}
 /** V11.3.83 — Entrée composée d'un cours (slotKey, classe ; casse tolérée), sinon null. */
 function _sdcEntreeDuCours(slotKey, cls){
   if(!slotKey || !cls) return null;
@@ -29754,6 +29767,15 @@ function _sdcRendreBascule(pan){
   btns.appendChild(bGo); btns.appendChild(bNon);
 }
 
+/** V11.3.85 — Cours à ouvrir pour une date choisie au calendrier : le 1er de la
+ *  classe ce jour-là, sinon le suivant, sinon le dernier. → slotKey ou null. Pure. */
+function _sdcCoursPourDate(cours, dateStr){
+  const L=(Array.isArray(cours)?cours:[]).filter(c=>c && c.slotKey && c.dateStr)
+    .slice().sort((a,b)=>String(a.slotKey).localeCompare(String(b.slotKey)));
+  if(!L.length || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr||''))) return null;
+  const c=L.find(x=>x.dateStr>=dateStr) || L[L.length-1];
+  return c.slotKey;
+}
 function _sdcRendre(){
   if(!_sdc) return;
   const pan=_sdcFond();
@@ -29800,7 +29822,21 @@ function _sdcRendre(){
   if(cur){
     const n=(typeof _edtNumeroCours==='function')?_edtNumeroCours(cls, slotKey):0;
     if(n){ const pas=_sdcEl('span','sdc-num',String(n)); pas.title=n+'ᵉ cours de l’année avec '+cls; quand.appendChild(pas); }
-    quand.appendChild(_sdcEl('span',null,_sdcDateLongue(cur.dateStr)+' · '+cur.debut+(cur.fin?' – '+cur.fin:'')));
+    // V11.3.85 — la date ouvre un calendrier : on saute au cours de la classe ce
+    // jour-là (sinon au suivant). Champ date natif posé, invisible, sur le texte.
+    const dt=_sdcEl('span','sdc-date',_sdcDateLongue(cur.dateStr)+' · '+cur.debut+(cur.fin?' – '+cur.fin:''));
+    dt.title='Choisir une date dans le calendrier';
+    const inp=_sdcEl('input','sdc-date-inp'); inp.type='date'; inp.value=cur.dateStr;
+    if(cours.length){ inp.min=cours[0].dateStr; inp.max=cours[cours.length-1].dateStr; }
+    inp.setAttribute('aria-label','Aller au cours de cette date');
+    inp.onclick=()=>{ try{ if(typeof inp.showPicker==='function') inp.showPicker(); }catch(e){} };
+    inp.onchange=()=>{
+      const sk=_sdcCoursPourDate(cours, inp.value);
+      if(!sk || sk===slotKey) return;
+      _sdcFlushSaisie(); _sdc.slotKey=sk; _sdcRendre();
+    };
+    dt.appendChild(inp);
+    quand.appendChild(dt);
     if(cur.demi){ const lg=_sdcLibelleGroupe(cls, cur.grpIds); if(lg) quand.appendChild(_sdcEl('span','sdc-grp',lg)); }
   } else quand.textContent='Aucun cours à venir pour cette classe.';
   head.appendChild(quand);
@@ -35914,6 +35950,26 @@ function _syncBarFormeCourante(){
   }catch(e){ return ''; }
 }
 
+/** V11.3.85 — Décalage de la barre : à droite du volet latéral gauche du plan
+ *  de classe quand il est ouvert (sinon il masque ses boutons), à 1rem sinon.
+ *  `bordDroit` = bord droit du volet en px (0 = fermé ou absent). Pure. */
+function _syncBarLeft(bordDroit){
+  const b=Number(bordDroit)||0;
+  return b>0 ? (Math.round(b)+12)+'px' : '1rem';
+}
+function _syncBarPlacer(bar){
+  bar=bar||document.getElementById('ios-sync-bar');
+  if(!bar) return;
+  const sb=document.getElementById('sidebar');
+  const bord=(sb && sb.getClientRects().length) ? sb.getBoundingClientRect().right : 0;
+  bar.style.left=_syncBarLeft(bord);
+  // Suit le volet sans attendre le prochain rafraîchissement : repli (transition
+  // de largeur), changement de vue (display:none → taille nulle).
+  if(sb && !sb._syncObs && typeof ResizeObserver==='function'){
+    try{ sb._syncObs=new ResizeObserver(()=>{ try{ _syncBarPlacer(); }catch(e){} }); sb._syncObs.observe(sb); }catch(e){}
+  }
+}
+
 /** Crée la barre si besoin, la met à jour, la masque quand elle n'a pas lieu
  *  d'être. Idempotente, createElement : invariants de balises inchangés. */
 function _ensureSyncBar(){
@@ -35931,7 +35987,7 @@ function _ensureSyncBar(){
     bar=document.createElement('div');
     bar.id='ios-sync-bar';
     if(bar.dataset) bar.dataset.forme=forme;
-    bar.style.cssText='position:fixed;left:1rem;z-index:480;'
+    bar.style.cssText='position:fixed;left:1rem;z-index:480;transition:left .2s;'
       +'bottom:calc('+(compact?'.6rem':'1rem')+' + env(safe-area-inset-bottom, 0px));'
       +'display:flex;flex-direction:column;gap:4px;'
       +'max-width:min('+(compact?'340px':'460px')+', calc(100vw - 130px));'
@@ -35989,6 +36045,7 @@ function _ensureSyncBar(){
   }
 
   bar.style.display='flex';
+  _syncBarPlacer(bar);
   const gros=document.getElementById('ios-sync-go');
   if(gros){
     gros.textContent=compact?txt.titreCourt:txt.titre;
@@ -39986,7 +40043,8 @@ function renderVoletDroit(){
   }
 
   // ── 5. Tâches libres placées dans le planning (non-reporter, non-eval) ──
-  const freePlanned=(entry.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif');
+  // V11.3.85 — sans les docs / ressources de « Saisir mes cours » (pas des tâches).
+  const freePlanned=(entry.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif'&&!_sdcFiDocRes(fi));
   if(freePlanned.length){
     const {wrap,body}=mkSection('vd-free','📝','Tâches libres');
     freePlanned.forEach(fi=>{
@@ -45357,7 +45415,9 @@ function openSaveSeance(){
     // deux sites frères la font (volet droit « Tâches libres », et « Fix S » plus bas).
     // Conséquence : tout freeItem taf-verif était poussé une 2e fois (déjà présent en
     // section 0), d'où deux lignes identiques par TAF dans le modal Séance.
-    (entry4.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif').forEach(fi=>{
+    // V11.3.85 — une ressource tapée dans « Saisir mes cours » n'est pas à cocher
+    // (pas plus que celles de la bibliothèque) ; un doc propre au cours, si.
+    (entry4.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif'&&!(fi.sdc&&fi.type==='ressource')).forEach(fi=>{
       items.push({key:'fi_'+fi.id, icon:fi.icon||'📝', label:fi.label+(fi.duree?' ('+fi.duree+'mn)':''), checked:!!coches2['fi_'+fi.id], source:'free', fi});
     });
 
@@ -46425,7 +46485,9 @@ function openSaveSeance(){
     // Fix S : exclure les reporters et taf-verif — ils sont déjà affichés
     // en section 0 de la checklist. Ici on ne montre que les tâches libres
     // ajoutées manuellement (type != 'reporter' && type != 'taf-verif' && type != 'eval').
-    const visibleFreeItems=entry2.freeItems.filter(fi=>fi.type!=='reporter'&&fi.type!=='taf-verif'&&fi.type!=='eval');
+    // V11.3.85 — ni les docs / ressources de « Saisir mes cours » : ce ne sont pas
+    // des tâches, et ils se modifient depuis cet écran-là.
+    const visibleFreeItems=entry2.freeItems.filter(fi=>fi.type!=='reporter'&&fi.type!=='taf-verif'&&fi.type!=='eval'&&!_sdcFiDocRes(fi));
     if(!visibleFreeItems.length) return;
     const lbl=document.createElement('div'); lbl.style.cssText='font-size:10px;color:var(--tx3);margin-bottom:2px'; lbl.textContent='Tâches libres dans ce cours :';
     freeAddedList.appendChild(lbl);
