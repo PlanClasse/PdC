@@ -4209,7 +4209,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.81';
+const APP_VERSION = 'v11.3.84';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -27295,22 +27295,9 @@ function _fdjGetDocsARemettre(slotKey, cls){
     if(!absentUids.length) return;
 
     // 2b. Docs distribués au prev slot (via séances rattachées)
-    const docs = new Set();
-    if(S.edtProgMapping){
-      const me = S.edtProgMapping[prevSK + '|' + cls];
-      if(me && Array.isArray(me.seances)){
-        me.seances.forEach(({seqId, seanId}) => {
-          const seq = prog.find(s => s && s.id === seqId);
-          if(!seq) return;
-          const sean = (seq.seances || []).find(s => s && s.id === seanId);
-          if(!sean) return;
-          (Array.isArray(sean.docs) ? sean.docs : []).forEach(d => {
-            const clean = String(d || '').trim();
-            if(clean) docs.add(clean);
-          });
-        });
-      }
-    }
+    // V11.3.84 — même source que le volet de droite et le modal Séance
+    // (séances explicites OU projetées ; cours composé : son texte fait foi).
+    const docs = new Set(typeof _docsDistribuesAuCours === 'function' ? _docsDistribuesAuCours(prevSK, cls) : []);
     if(!docs.size) return;
 
     // 2c. Croisement (chaque absent reçoit chaque doc)
@@ -27670,8 +27657,18 @@ function _fdjRenderCard(event, todayStr){
   // d'un VRAI vide, pas seulement de l'absence de séance.
   // Les blocs informatifs/statiques (EBEP, compétences, ctxItems) ne comptent
   // pas comme "contenu" car indépendants de l'activité du slot.
+  // V11.3.82 — cours composé dans « Saisir mes cours » : son texte fait foi.
+  // V11.3.84 — calculé ici : un cours composé de lignes PROPRES seulement (aucune
+  // séance reconnue) n'est pas vide, il a son bloc « Ce cours ».
+  const _sdcEnt = (cls && typeof _sdcEntreeComposee === 'function')
+    ? _sdcEntreeComposee((S.edtProgMapping||{})[slotKey+'|'+cls] || (S.edtProgMapping||{})[slotKey+'|'+String(cls).toLowerCase()]) : null;
+  const _sdcT = _sdcEnt ? _sdcTachesParSeance(_sdcEnt) : null;
+  const _sdcPr = _sdcEnt ? _sdcDocsResPropres(_sdcEnt) : null;
+  const _sdcBlocPropre = !planned.length && !!_sdcEnt
+    && (_sdcT.avant.length + _sdcPr.docs.length + _sdcPr.ress.length) > 0;
+  const _blocs = _sdcBlocPropre ? [{propre:true}] : planned;
   const isEverythingEmpty = (
-    planned.length === 0 &&
+    _blocs.length === 0 &&
     evalsPosees.length === 0 &&
     evalsRattrapGrouped.length === 0 &&
     docsARemettre.length === 0 &&
@@ -27692,8 +27689,9 @@ function _fdjRenderCard(event, todayStr){
   // (filter naturel du .map sur tableau vide), ce qui rend la fusion transparente.
   // ════════════════════════════════════════════════════════════════════
   // Construit un bloc HTML par séance rattachée
-  const seanceBlocsHtml = planned.map((p, idx) => {
-    const seq = p.seq, sean = p.sean;
+  // V11.3.84 — ou un bloc « Ce cours » (cours composé sans séance reconnue).
+  const seanceBlocsHtml = _blocs.map((p, idx) => {
+    const seq = p.propre ? {num:'', titre:'', seances:[]} : p.seq, sean = p.propre ? null : p.sean;
     // V020-v181.4.1 — Numéro de séance déduit de la position (sean.num n'est pas saisi
     // dans l'app : la vue "Séances de la séquence" affiche déjà ORDRE = index+1).
     let seanIdx = -1;
@@ -27703,15 +27701,22 @@ function _fdjRenderCard(event, todayStr){
     const seanNum = (seanIdx >= 0) ? (seanIdx + 1) : '';
     const pavePartSeq  = seq.num ? ('SEQ' + seq.num) : 'SEQ';
     const pavePartSean = (sean && seanNum) ? ('S' + seanNum) : 'S?';
-    const paveTxt = pavePartSeq + ' · ' + pavePartSean;
+    const paveTxt = p.propre ? 'Ce cours' : (pavePartSeq + ' · ' + pavePartSean);
     // Titre combiné (sans les numéros, déjà dans le pavé)
     const titreSeq  = (seq.titre || '').trim();
     const titreSean = sean ? (sean.titre || '').trim() : '';
     let titreCombine = titreSeq;
     if(titreSean) titreCombine += (titreSeq ? ' — ' : '') + titreSean;
+    if(p.propre) titreCombine = 'Saisi dans « Saisir mes cours »';
     if(!titreCombine) titreCombine = '(sans titre)';
 
     const items = [];
+    if(p.propre){
+      // V11.3.84 — cours composé sans séance reconnue : ses seules lignes propres.
+      if(_sdcT.avant.length)  items.push({key:'taches', lbl:'Tâches',     vals: _sdcT.avant});
+      if(_sdcPr.docs.length)  items.push({key:'docs',   lbl: effectif ? ('Docs (' + effectif + ' élèves)') : 'Docs', vals: _sdcPr.docs});
+      if(_sdcPr.ress.length)  items.push({key:'ress',   lbl:'Ressources', vals: _sdcPr.ress});
+    }
     if(sean){
       // V020-v181.4.1 — Ligne "Contenu" retirée
       // V020-v181.4.6 — Bug B (sous-pb 3) : si la séance vient d'une projection auto
@@ -27726,16 +27731,30 @@ function _fdjRenderCard(event, todayStr){
       const modeOpDurees = Array.isArray(sean.modeOpDurees) ? sean.modeOpDurees : [];
       const taskFilter = (Array.isArray(p.taskIndices) && p.taskIndices.length > 0)
         ? new Set(p.taskIndices) : null;
-      const tachesLabels = [];
+      let tachesLabels = [];
       modeOpFull.forEach((t, i) => {
         if(!t || !String(t).trim()) return;
         if(taskFilter && !taskFilter.has(i)) return;
         const d = modeOpDurees[i];
         tachesLabels.push(d ? (t + ' (' + d + ' min)') : t);
       });
+      // V11.3.84 — cours composé : les tâches DE SON TEXTE, dans l'ordre (reliées
+      // et propres) ; celles écrites avant toute ligne reliée ouvrent le 1er bloc.
+      if(_sdcEnt){
+        tachesLabels = (_sdcT.parSean[sean.id] || []).slice();
+        if(idx === 0) tachesLabels = _sdcT.avant.concat(tachesLabels);
+      }
       const tafs = Array.isArray(sean.tafs) ? sean.tafs.filter(Boolean) : (sean.taf ? [sean.taf] : []);
-      const docs = Array.isArray(sean.docs) ? sean.docs.filter(Boolean) : [];
-      const ress = Array.isArray(sean.ressources) ? sean.ressources.filter(Boolean) : [];
+      let docs = Array.isArray(sean.docs) ? sean.docs.filter(Boolean) : [];
+      let ress = Array.isArray(sean.ressources) ? sean.ressources.filter(Boolean) : [];
+      // V11.3.82 — cours composé : seulement les lignes que son texte a reliées,
+      // puis (1er bloc) celles tapées comme propres au cours, avec leur type.
+      if(_sdcEnt){
+        const rd = _sdcBiblioRetenus(_sdcEnt, sean, 'doc'), rr = _sdcBiblioRetenus(_sdcEnt, sean, 'res');
+        docs = docs.filter(d => rd.has(String(d).trim()));
+        ress = ress.filter(r => rr.has(String(r).trim()));
+        if(idx === 0){ const pr = _sdcDocsResPropres(_sdcEnt); docs = docs.concat(pr.docs); ress = ress.concat(pr.ress); }
+      }
       // V020-v181.4.2 — Passer en `vals: []` (rendu 1 par ligne) au lieu de `val: 'a · b · c'`
       if(tachesLabels.length) items.push({key:'taches', lbl:'Tâches',     vals: tachesLabels});
       if(tafs.length)         items.push({key:'taf',    lbl:'TAF',        vals: tafs});
@@ -28354,8 +28373,15 @@ function _cdtParts(seance, clsCode){
 
   // Documents distribués : prévus par la séance de progression (du prévu, donc
   // jamais filtré par un état).
-  const docs=(ent.sean && Array.isArray(ent.sean.docs))
+  let docs=(ent.sean && Array.isArray(ent.sean.docs))
     ? ent.sean.docs.map(d=>String(d||'').trim()).filter(Boolean) : [];
+  // V11.3.83 — cours composé dans « Saisir mes cours » : son texte fait foi.
+  const ec=(typeof _sdcEntreeDuCours==='function') ? _sdcEntreeDuCours(seance.slotKey, clsCode) : null;
+  if(ec){
+    const ret=_sdcBiblioRetenus(ec, ent.sean, 'doc');
+    if(ret) docs=docs.filter(d=>ret.has(d));
+    _sdcDocsResPropres(ec).docs.forEach(d=>{ if(docs.indexOf(d)<0) docs.push(d); });
+  }
   if(docs.length){
     out.apres.push('');
     out.apres.push('Documents distribués :');
@@ -28855,6 +28881,98 @@ function _sdcLigneVersItem(l, freeItems, prog){
     return {type:'free', fi, dureeSlot:fi.duree||0, isStart:true, isEnd:true, sdc:true};
   }
   return null;   // doc / res de la bibliothèque : pas d'élément de minutage
+}
+
+/* V11.3.82 — Un cours composé dans « Saisir mes cours » fait foi pour SES
+   documents et ressources (arbitrage du 28/09) : une ligne /Doc de la séance
+   retapée en /Res devient une ressource de ce cours, la bibliothèque ne bouge
+   pas. Les vues qui lisaient sean.docs / sean.ressources en bloc ne gardent
+   donc, pour un cours composé, que les lignes que son texte a reliées. */
+/** L'entrée du planning d'un cours composé, sinon null (cours ordinaire). */
+function _sdcEntreeComposee(entry){
+  return (entry && Array.isArray(entry.lignes) && entry.lignes.length) ? entry : null;
+}
+/** V11.3.83 — Docs de la séance `sean` pour CE cours : limités, pour un cours
+ *  composé, à ceux que son texte a reliés, puis ses docs propres.
+ *  (V11.3.84 : ne sert plus qu'au « Copier » du modal Séance.) */
+function _sdcDocsARemettreListe(sean, slotKey, cls){
+  let docs=(sean && Array.isArray(sean.docs) ? sean.docs : []).filter(d=>d && String(d).trim());
+  const ec=_sdcEntreeDuCours(slotKey, cls);
+  if(ec){
+    const ret=_sdcBiblioRetenus(ec, sean, 'doc');
+    if(ret) docs=docs.filter(d=>ret.has(String(d).trim()));
+    _sdcDocsResPropres(ec).docs.forEach(d=>{ if(docs.indexOf(d)<0) docs.push(d); });
+  }
+  return docs;
+}
+/** V11.3.84 — Tâches d'un cours composé, DANS L'ORDRE DU TEXTE, rangées par
+ *  séance : une tâche propre au cours suit la séance de la ligne reliée qui la
+ *  précède ; avant toute ligne reliée → `avant`. Libellé « texte (N min) ». Pure. */
+function _sdcTachesParSeance(entry){
+  const out={parSean:{}, avant:[]};
+  if(!_sdcEntreeComposee(entry)) return out;
+  const fi=Array.isArray(entry.freeItems)?entry.freeItems:[];
+  const fmt=(t,d)=>{ const s=String(t||'').trim(); return s ? s+((d|0)>0?' ('+(d|0)+' min)':'') : ''; };
+  let cur=null;
+  entry.lignes.forEach(l=>{
+    if(!l) return;
+    let lbl='';
+    if(l.src==='biblio' && l.kind==='tache'){ cur=l.seanId||null; lbl=fmt(l.label, l.duree); }
+    else if(l.src==='biblio' && l.seanId){ cur=l.seanId; return; }
+    else if(l.src==='cours' && l.kind==='tache'){ const f=fi.find(x=>x && x.id===l.fiId); if(f) lbl=fmt(f.label, f.duree); }
+    if(!lbl) return;
+    if(cur){ (out.parSean[cur]=out.parSean[cur]||[]).push(lbl); } else out.avant.push(lbl);
+  });
+  return out;
+}
+/** V11.3.84 — Documents DISTRIBUÉS à un cours : ceux des séances qui lui sont
+ *  rattachées (explicites ou projetées), limités pour un cours composé à ceux
+ *  que son texte a reliés, puis ses docs propres. Sans doublon, dans l'ordre. */
+function _docsDistribuesAuCours(slotKey, cls){
+  if(!slotKey || !cls) return [];
+  let planned=[];
+  try{ planned=(typeof _fdjGetAllPlannedSeances==='function') ? (_fdjGetAllPlannedSeances(slotKey, cls)||[]) : []; }catch(e){ planned=[]; }
+  const ec=_sdcEntreeDuCours(slotKey, cls);
+  const out=[];
+  const add=(d)=>{ const t=String(d||'').trim(); if(t && out.indexOf(t)<0) out.push(t); };
+  planned.forEach(p=>{
+    if(!p || !p.sean) return;
+    const ret=_sdcBiblioRetenus(ec, p.sean, 'doc');
+    (Array.isArray(p.sean.docs)?p.sean.docs:[]).forEach(d=>{ if(!ret || ret.has(String(d||'').trim())) add(d); });
+  });
+  if(ec) _sdcDocsResPropres(ec).docs.forEach(add);
+  return out;
+}
+/** V11.3.84 — « Documents à remettre » aux absents du cours PRÉCÉDENT : ce qui a
+ *  été distribué à CE cours-là (avant : la séance du cours courant). Volet de
+ *  droite ET modal Séance — ils partagent les clés prev_doc_<nom>_<i>. */
+function _docsARemettreAbsents(slotKey, cls, grp){
+  const prev=(typeof getPrevSlotKey==='function') ? getPrevSlotKey(cls, slotKey, grp||'') : null;
+  return prev ? _docsDistribuesAuCours(prev, cls) : [];
+}
+/** V11.3.83 — Entrée composée d'un cours (slotKey, classe ; casse tolérée), sinon null. */
+function _sdcEntreeDuCours(slotKey, cls){
+  if(!slotKey || !cls) return null;
+  const M=(typeof S!=='undefined' && S && S.edtProgMapping) || {};
+  return _sdcEntreeComposee(M[slotKey+'|'+cls] || M[slotKey+'|'+String(cls).toLowerCase()]);
+}
+/** Textes (de la bibliothèque) des docs ou ressources de `sean` que le cours
+ *  a reliés. null = cours non composé : tout garder, comme avant. Pure. */
+function _sdcBiblioRetenus(entry, sean, kind){
+  if(!_sdcEntreeComposee(entry) || !sean) return null;
+  const liste=kind==='res' ? (Array.isArray(sean.ressources)?sean.ressources:[]) : (Array.isArray(sean.docs)?sean.docs:[]);
+  const out=new Set();
+  entry.lignes.forEach(l=>{
+    if(!l || l.src!=='biblio' || l.kind!==kind || l.seanId!==sean.id || typeof l.idx!=='number') return;
+    const t=String(liste[l.idx]||'').trim(); if(t) out.add(t);
+  });
+  return out;
+}
+/** Docs et ressources tapés comme propres au cours, dans l'ordre. Pure. */
+function _sdcDocsResPropres(entry){
+  const fi=Array.isArray(entry && entry.freeItems) ? entry.freeItems : [];
+  const de=(t)=>fi.filter(f=>f && f.sdc && f.type===t).map(f=>String(f.label||'').trim()).filter(Boolean);
+  return {docs:de('doc'), ress:de('ressource')};
 }
 
 /* ── V11.3.69 — Lot E, 1/2 : des liens qui tiennent ─────────────────────────
@@ -31152,10 +31270,14 @@ function renderEdtList(){
         const prog3=getProgression(lv2)||[];
         const seq=prog3.find(sq=>sq.id===progMap.seqId);
         const sean=seq&&progMap.seanId&&seq.seances?seq.seances.find(sn=>sn.id===progMap.seanId):null;
+        // V11.3.83 — cours composé : docs / ressources de la séance limités à ceux que
+        // son texte a reliés (les siens, typés, arrivent par progMapEntry.freeItems).
+        const _retEdt={docs:_sdcBiblioRetenus(progMapEntry, sean, 'doc'), ressources:_sdcBiblioRetenus(progMapEntry, sean, 'res')};
+        const _garderEdt=(type)=>(v)=>!_retEdt[type] || _retEdt[type].has(String(v||'').trim());
         const filterEdt=(arr,type)=>{
-          if(!progMap.items||progMap.items==null) return arr.map(v=>({icon:({modeOp:'⚙️',docs:'📄',ressources:'🔗'}[type]),v}));
+          if(!progMap.items||progMap.items==null) return arr.filter(_garderEdt(type)).map(v=>({icon:({modeOp:'⚙️',docs:'📄',ressources:'🔗'}[type]),v}));
           const allowed=progMap.items.filter(x=>x.type===type).map(x=>x.idx);
-          return arr.filter((_,i)=>allowed.includes(i)).map(v=>({icon:({modeOp:'⚙️',docs:'📄',ressources:'🔗'}[type]),v}));
+          return arr.filter((v,i)=>allowed.includes(i) && _garderEdt(type)(v)).map(v=>({icon:({modeOp:'⚙️',docs:'📄',ressources:'🔗'}[type]),v}));
         };
         const allItems=[
           ...filterEdt(sean&&sean.modeOp||[],'modeOp'),
@@ -39559,7 +39681,8 @@ function renderVoletDroit(){
 
 
   // ── 2. Documents à remettre (absents cours préc.) + V019-v161 sous-volet traces EBEP ──
-  const docsSeance=(sean&&(sean.docs||[])||[]).filter(d=>d&&d.trim());
+  // V11.3.84 — docs distribués au cours PRÉCÉDENT ; même liste que le modal Séance (clés prev_doc_<nom>_<i> partagées).
+  const docsSeance=_docsARemettreAbsents(slotKey, clsCode, _grpPrev1);
 
   // V019-v161 — Calcul des traces 📓 du slot pour les EBEP photocopies
   const _layoutTraces = (typeof getSlotLayout==='function') ? getSlotLayout(clsCode, slotKey) : null;
@@ -44851,8 +44974,9 @@ function openSaveSeance(){
         }
 
         // Documents distribués (depuis la séance pointée par le picker)
-        if(curSean && Array.isArray(curSean.docs)){
-          const docs=curSean.docs.map(d=>String(d||'').trim()).filter(Boolean);
+        // V11.3.83 — cours composé : son texte fait foi (docs reliés + docs propres).
+        if(curSean && Array.isArray(curSean.docs) || _sdcEntreeDuCours(slotKey, curCls)){
+          const docs=_sdcDocsARemettreListe(curSean, slotKey, curCls).map(d=>String(d||'').trim()).filter(Boolean);
           if(docs.length){
             lines.push('');
             lines.push('Documents distribués :');
@@ -45122,8 +45246,10 @@ function openSaveSeance(){
         });
       }
       // 2. Docs
+      const _retO=_sdcBiblioRetenus(entry4, o.sean, 'doc');   // V11.3.82 — cours composé
       (o.sean.docs||[]).filter(d=>d&&d.trim()).forEach((d,i)=>{
         const _k='doc_'+o.sean.id+'_'+i;
+        if(_retO && !_retO.has(d.trim())) return;
         if(_reporterLabels.has(d.trim())) return;
         items.push({key:_k, icon:'📄', label:_badge+d, checked:!!coches2[_k], source:'doc', _otherSean:true});
       });
@@ -45201,8 +45327,12 @@ function openSaveSeance(){
 
     // 2. Docs — sauter les docs déjà traités dans un slot précédent OU déjà en reporter section 0
     const docs2=(sean2&&sean2.docs||[]).filter(d=>d&&d.trim());
+    // V11.3.82 — cours composé : seulement les docs que son texte a reliés (les
+    // clés doc_i restent celles d'avant : on saute, on ne renumérote pas).
+    const _ret2=_sdcBiblioRetenus(entry4, sean2, 'doc');
     docs2.forEach((d,i)=>{
       const _dk='doc_'+i;
+      if(_ret2 && !_ret2.has(d.trim())) return;
       if(_prevHandledDocTaf.has(_dk)) return;
       // Fix R3B : skip si déjà représenté par un freeItem reporter dans ce slot
       if(_reporterDocTafKeys.has(_dk)) return;
@@ -45679,8 +45809,9 @@ function openSaveSeance(){
     // Phase 2b session 11 — 3e arg grp pour filtrer par groupe courant
     const _grpPrev3 = (typeof getCurrentGrpId==='function') ? getCurrentGrpId(curCls, slotKey) : '';
     const abPrev=getAbsentsPrevSlot(curCls, slotKey, _grpPrev3);
-    if(abPrev.length&&sean2){
-      const docs2b=(sean2.docs||[]).filter(d=>d&&d.trim());
+    if(abPrev.length){   // V11.3.84 — plus besoin de sean2 : les docs sont ceux du cours précédent
+      // V11.3.84 — docs distribués au cours PRÉCÉDENT ; même liste que le volet de droite (clés prev_doc_<nom>_<i> partagées).
+      const docs2b=_docsARemettreAbsents(slotKey, curCls, _grpPrev3);
       if(docs2b.length){
         const docHdr=document.createElement('div');
         docHdr.style.cssText='font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 6px;padding-top:8px;border-top:1px solid var(--brd)';
