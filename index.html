@@ -4213,7 +4213,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.85';
+const APP_VERSION = 'v11.3.86';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -62933,6 +62933,58 @@ function _tmrPlayEndBeeps(opts){
   } catch(e){ /* navigateur sans Web Audio : on laisse le toast */ }
 }
 
+// V020-v181.4.13 — Seuils d'avertissement progressifs. Chaque palier ne sonne
+// que si la durée initiale était strictement supérieure à ce seuil (sinon un
+// timer de 4 min déclencherait absurdement le palier "5 min").
+const _TMR_ALERTS = [
+  {at: 300, level: 5},
+  {at: 180, level: 3},
+  {at: 120, level: 2},
+  {at:  60, level: 1}
+];
+
+// V11.3.86 — Recalage sur l'horloge (leçon n°6) : hors premier plan, le
+// navigateur espace les ticks (≥ 1 s, puis 1/min) et le décompte `_tmrSec--`
+// prenait du retard. Le restant se calcule désormais depuis l'heure de fin.
+let _tmrEnd = 0; // horodatage (ms) de fin du décompte en cours
+function _tmrRestant(fin, maintenant){ return Math.max(0, Math.ceil((fin - maintenant) / 1000)); }
+
+// Palier franchi entre deux ticks (avant > at >= après). Des ticks espacés
+// peuvent en franchir plusieurs : on ne garde que le plus proche de la fin.
+function _tmrPalierFranchi(avant, apres, total){
+  let niveau = null;
+  for(let i = 0; i < _TMR_ALERTS.length; i++){
+    const a = _TMR_ALERTS[i];
+    if(avant > a.at && apres <= a.at && total > a.at) niveau = a.level;
+  }
+  return niveau;
+}
+
+function _tmrTick(){
+  if(!_tmrIv) return;
+  const avant = _tmrSec;
+  _tmrSec = _tmrRestant(_tmrEnd, Date.now());
+  if(_tmrSec === avant) return;
+  if(_tmrSec <= 0){
+    _tmrStopIv();
+    _tmrUpdateUI();
+    _tmrPlayEndBeeps();
+    try{ showDropToast('⏱ Temps écoulé !'); }catch(e){}
+    return;
+  }
+  const niveau = _tmrPalierFranchi(avant, _tmrSec, _tmrTotalSec);
+  if(niveau) _tmrPlayBeeps(niveau);
+  _tmrUpdateUI();
+}
+
+function _tmrStopIv(){
+  if(_tmrIv){
+    clearInterval(_tmrIv);
+    _tmrIv = null;
+    document.removeEventListener('visibilitychange', _tmrTick);
+  }
+}
+
 function _tmrStart(sec){
   if(_tmrIv) return;
   if(typeof sec === 'number' && sec > 0){
@@ -62940,52 +62992,23 @@ function _tmrStart(sec){
     _tmrTotalSec = sec;
   }
   if(_tmrSec <= 0) return;
-  // V020-v181.4.13 — Seuils d'avertissement progressifs. Chaque entrée se
-  // déclenche au tick où _tmrSec atteint `at`, UNIQUEMENT si la durée
-  // initiale était strictement supérieure à ce seuil (sinon timer de 4 min
-  // déclencherait absurdement le palier "5 min" alors qu'on est déjà sous).
-  const ALERTS = [
-    {at: 300, level: 5},
-    {at: 180, level: 3},
-    {at: 120, level: 2},
-    {at:  60, level: 1}
-  ];
-  _tmrIv = setInterval(() => {
-    _tmrSec--;
-    for(let i = 0; i < ALERTS.length; i++){
-      const a = ALERTS[i];
-      if(_tmrSec === a.at && _tmrTotalSec > a.at){
-        _tmrPlayBeeps(a.level);
-        break;
-      }
-    }
-    if(_tmrSec <= 0){
-      _tmrSec = 0;
-      clearInterval(_tmrIv);
-      _tmrIv = null;
-      _tmrUpdateUI();
-      _tmrPlayEndBeeps();
-      try{ showDropToast('⏱ Temps écoulé !'); }catch(e){}
-      return;
-    }
-    _tmrUpdateUI();
-  }, 1000);
+  _tmrEnd = Date.now() + _tmrSec * 1000;
+  _tmrIv = setInterval(_tmrTick, 250);
+  // Retour au premier plan : recalage immédiat, sans attendre le prochain tick.
+  document.addEventListener('visibilitychange', _tmrTick);
   _tmrUpdateUI();
 }
 
 function _tmrPause(){
   if(_tmrIv){
-    clearInterval(_tmrIv);
-    _tmrIv = null;
+    _tmrSec = _tmrRestant(_tmrEnd, Date.now());
+    _tmrStopIv();
   }
   _tmrUpdateUI();
 }
 
 function _tmrReset(sec){
-  if(_tmrIv){
-    clearInterval(_tmrIv);
-    _tmrIv = null;
-  }
+  _tmrStopIv();
   if(typeof sec === 'number' && sec >= 0){
     _tmrSec = sec;
     _tmrTotalSec = sec;
