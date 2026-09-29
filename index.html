@@ -513,8 +513,8 @@ body.mode-prof #prof-act-col-right{display:flex;flex-direction:column;gap:10px;m
 .edt-import-lbl{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur2);cursor:pointer;font-size:11px;color:var(--tx2);transition:all .12s;white-space:nowrap}
 .edt-import-lbl:hover{border-color:var(--acc);color:var(--acc)}
 .edt-import-lbl.loaded{border-color:#22C55E;color:#22C55E;background:#f0fdf4}
-.edt-del-btn{background:transparent;border:none;color:var(--tx3);cursor:pointer;font-size:16px;padding:0 4px;line-height:1}
-.edt-del-btn:hover{color:#B83228}
+.edt-del-btn{background:transparent;border:none;color:#DC2626;cursor:pointer;font-size:16px;padding:0 4px;line-height:1}
+.edt-del-btn:hover{color:#991B1B}
 .vac-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--brd);font-size:12px}
 .vac-row:last-child{border-bottom:none}
 .vac-label{flex:1;color:var(--tx);font-weight:500}
@@ -824,8 +824,8 @@ body.mode-prof #prof-act-col-right{display:flex;flex-direction:column;gap:10px;m
 .comp-list-item{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--brd)}
 .comp-list-item input{flex:1;padding:5px 8px;border:1px solid var(--brd);border-radius:var(--r1);font-size:12px;background:var(--bg);color:var(--tx);outline:none}
 .comp-list-item input:focus{border-color:var(--acc)}
-.comp-del{background:transparent;border:none;color:var(--tx3);cursor:pointer;font-size:16px;line-height:1;padding:0 4px}
-.comp-del:hover{color:#B83228}
+.comp-del{background:transparent;border:none;color:#DC2626;cursor:pointer;font-size:16px;line-height:1;padding:0 4px}
+.comp-del:hover{color:#991B1B}
 /* New comps architecture */
 .comps-ref-item{display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid var(--brd);font-size:12px}
 .comps-ref-code{font-family:monospace;font-size:11px;font-weight:700;color:var(--acc);background:var(--acc-l);padding:2px 6px;border-radius:3px;white-space:nowrap;min-width:54px;text-align:center;flex-shrink:0}
@@ -942,6 +942,9 @@ body.mode-prof #prof-act-col-right{display:flex;flex-direction:column;gap:10px;m
 .bp:hover{background:#1E3D1A}
 .bs{background:transparent;color:var(--tx2);border:1.5px solid var(--brd);border-radius:var(--r2);padding:.65rem 1.2rem;font-size:.88rem;cursor:pointer;transition:all .15s}
 .bs:hover{border-color:var(--tx2)}
+/* V11.3.98 — bouton OK d'une confirmation de suppression */
+#mok.mok-suppr{background:#DC2626;color:#fff}
+#mok.mok-suppr:hover{background:#B91C1C}
 
 /* APP */
 #app{display:none;flex-direction:column;height:100vh}
@@ -4291,7 +4294,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.97';
+const APP_VERSION = 'v11.3.98';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -11303,6 +11306,7 @@ function _ytpRenderApply(body){
 // Modal de confirmation : saisie "APPLIQUER"
 function _ytpOpenApplyConfirmModal(){
   showModal('Confirmation finale','',null,true);
+  _modalEnjeu();   // V11.3.98 — irréversible : « Annuler », pas de clic extérieur
   const mb=document.getElementById('mb');
   if(!mb) return;
   mb.innerHTML='';
@@ -15503,6 +15507,7 @@ function _showHomeListModal(title, intro, items, footer, headerStats, muteAction
   }
 
   mbg.classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
   // Note : ne PAS définir mbg.style.display = 'flex' — ça empêche closeModal() de fermer
   // le modal (l'inline style surclasse le CSS .mbg{display:none}).
 }
@@ -15629,6 +15634,7 @@ function showRappelsTachesModal(rappels){
   });
 
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 function _placerRappelSurSlot(rappel, slotKey, clsCode){
@@ -15914,6 +15920,7 @@ function showPendingSeanceModal(items){
 
   extra.appendChild(wrap);
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 
@@ -21908,6 +21915,7 @@ function checkPlanChangeReminder(clsCode){
       +'<br>(dernier changement : '+date+').'
       +'<br><br>Pensez à le mettre à jour si nécessaire.';
     document.getElementById('mok').style.display='none';
+    _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
   },600);
 }
 
@@ -22425,7 +22433,7 @@ function renderEdtPeriodes(){
       del.className='edt-del-btn';
       del.textContent='✕';
       del.title='Supprimer cette période';
-      del.style.cssText='background:transparent;border:1px solid var(--brd);border-radius:var(--r1);color:var(--tx3);cursor:pointer;font-size:13px;padding:3px 8px';
+      del.style.cssText='background:transparent;border:1px solid #FCA5A5;border-radius:var(--r1);color:#DC2626;cursor:pointer;font-size:13px;padding:3px 8px';   // V11.3.98 — rouge
       del.onclick=()=>{ S.edt.periodes.splice(i,1); saveS(); renderEdtPeriodes(); };
       row1.appendChild(del);
     }
@@ -23344,6 +23352,7 @@ function _openOptionsGrille(){
     '<button class="bs" style="font-size:12px;padding:6px 14px;display:block;width:100%;text-align:left" onclick="_openChoixAffichageClasses()">Choix de l\'affichage des classes</button>'+
     '</div>';
   showModal('Options de la grille', html, null, false, true);
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 function _openChoixAffichageClasses(){
@@ -23365,6 +23374,7 @@ function _openChoixAffichageClasses(){
     row('both', 'Code + nom',    '4E2 Téroigne de MERICOURT')+
     '</div>';
   showModal('Choix de l\'affichage des classes', html, null, false, true);
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 function _setGridDisplayMode(mode){
@@ -26416,19 +26426,55 @@ function openScPrecModal(clsCode, beforeSlotKey, ev){
 function _attachModalClickOutsideClose(){
   const mbg=document.getElementById('mbg');
   if(!mbg) return;
-  // Si déjà attaché (drapeau), ne pas dupliquer
-  if(mbg.dataset.coAttached==='1') return;
-  mbg.dataset.coAttached='1';
-  const onClick=(e)=>{ if(e.target===mbg){ try{ closeModal(); }catch(err){ mbg.classList.remove('open'); } } };
-  mbg.addEventListener('click', onClick);
-  const obs=new MutationObserver(()=>{
-    if(!mbg.classList.contains('open')){
-      mbg.removeEventListener('click', onClick);
-      delete mbg.dataset.coAttached;
-      obs.disconnect();
-    }
+  // V11.3.98 — un DRAPEAU par ouverture, remis à zéro par showModal, closeModal
+  // et à la fermeture ; l'écouteur, lui, est posé une seule fois. L'ancien
+  // écouteur survivait à une réouverture dans le même tick (piège du §1bis).
+  _modalInstaller(mbg);
+  mbg.dataset.clicExt='1';
+}
+/** V11.3.98 — pose (une fois) l'écouteur du fond et l'observateur de fermeture. */
+function _modalInstaller(mbg){
+  mbg=mbg||document.getElementById('mbg');
+  if(!mbg || mbg.dataset.coInstalle==='1') return;
+  mbg.dataset.coInstalle='1';
+  let appuiDedans=false;
+  // Un appui commencé DANS la fenêtre (sélection de texte) et relâché sur le fond ne ferme pas.
+  mbg.addEventListener('pointerdown', e=>{ appuiDedans=(e.target!==mbg); });
+  mbg.addEventListener('click', e=>{
+    const dedans=appuiDedans; appuiDedans=false;
+    if(e.target!==mbg || dedans || mbg.dataset.clicExt!=='1') return;
+    try{ closeModal(); }catch(err){ mbg.classList.remove('open'); }
   });
-  obs.observe(mbg, {attributes:true, attributeFilter:['class']});
+  // Fermeture sans closeModal (classe retirée à la main) : même remise à zéro,
+  // sauf si la fenêtre a déjà été rouverte entre-temps.
+  new MutationObserver(()=>{ if(!mbg.classList.contains('open')) _modalReinit(); })
+    .observe(mbg, {attributes:true, attributeFilter:['class']});
+}
+/** V11.3.98 — état par défaut du pied de #mbg : « Annuler » visible, pas de clic
+ *  extérieur, bouton OK sans habillage (rouge « Supprimer », ou celui de la
+ *  confirmation de transition d'année). */
+function _modalReinit(){
+  const mbg=document.getElementById('mbg'); if(!mbg) return;
+  _modalInstaller(mbg);
+  delete mbg.dataset.clicExt;
+  const f=mbg.querySelector('.modal-acts .bs'); if(f){ f.textContent='Annuler'; f.style.display=''; }
+  const mok=document.getElementById('mok');
+  if(mok){ mok.classList.remove('mok-suppr'); ['background','color','opacity','cursor'].forEach(k=>{ mok.style[k]=''; }); }
+}
+/** V11.3.98 — C1/C2 : fenêtre sans rien à annuler → « Fermer » + clic extérieur.
+ *  À appeler APRÈS l'ouverture. */
+function _modalFermer(){
+  const f=document.querySelector('#mbg .modal-acts .bs'); if(f) f.textContent='Fermer';
+  _attachModalClickOutsideClose();
+}
+/** V11.3.98 — fenêtre à enjeu : « Annuler », pas de fermeture au clic extérieur. */
+function _modalEnjeu(){
+  const mbg=document.getElementById('mbg'); if(mbg) delete mbg.dataset.clicExt;
+  const f=document.querySelector('#mbg .modal-acts .bs'); if(f) f.textContent='Annuler';
+}
+/** V11.3.98 — titre d'une confirmation de suppression. Pure. */
+function _modalEstSuppression(titre){
+  return /^\s*(🗑\uFE0F?\s*)?Supprimer(\s|$)/.test(String(titre||''));
 }
 function openRecentCourseSummariesModal(clsCode, beforeSlotKey, ev){
   return openScPrecModal(clsCode, beforeSlotKey, ev);
@@ -34818,6 +34864,7 @@ function openEbepList(){
     if(fermerBtn) fermerBtn.style.display='none';
     const mbg=document.getElementById('mbg');
     if(mbg) mbg.classList.add('open');
+    _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
   }catch(err){
     console.error('openEbepList error',err);
     showModal('EBEP','Impossible d\'ouvrir la fenêtre EBEP pour le moment.',null,true);
@@ -35145,6 +35192,7 @@ function showBesoinPopup(uid, anchorEl, evt){
   document.getElementById('mok').textContent='Fermer';
   { const _c=document.querySelector('#mbg .bs'); if(_c) _c.style.display='none'; }
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 function makeSeat(idx,name,extraCls){
@@ -36242,6 +36290,7 @@ function _showFsaIndispo(){
   if(typeof showModal!=='function') return;
   const v=_fsaVerdict(_fsaEnv());
   showModal(v.titre, '', null, false, false);
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
   const mb=document.getElementById('mb'); if(mb) mb.textContent='';
   const ex=document.getElementById('modal-extra'); if(!ex) return;
   ex.innerHTML='';
@@ -44962,23 +45011,29 @@ function showModal(titre, corps, onOk, okOnly, isHtml){
     modalEl.style.maxWidth='92vw';
   }
   const mok=document.getElementById('mok');
-  const fermerBtn=document.querySelector('#mbg .bs');
+  // V11.3.98 — le bouton du PIED (un .bs du contenu HTML passait avant lui).
+  const fermerBtn=document.querySelector('#mbg .modal-acts .bs');
   // V11.3.62 — convention C1 : une fenêtre peut renommer ce bouton « Fermer »
   // quand il n'y a rien à annuler. On rend donc le libellé par défaut à CHAQUE
   // ouverture, sinon il déteindrait sur la modale suivante.
-  if(fermerBtn) fermerBtn.textContent='Annuler';
+  // V11.3.98 — idem pour le clic extérieur et l'aspect du bouton OK.
+  _modalReinit();
   if(onOk){
     mok.style.display=''; mok.textContent='OK'; mok.disabled=false; // V035-V11.1.2 — normalisation (le popup d'import le désactive ponctuellement)
     mcb=onOk;
     if(fermerBtn) fermerBtn.style.display=okOnly?'none':'';
+    // V11.3.98 — confirmation de suppression : le bouton qui supprime est rouge et le dit.
+    if(_modalEstSuppression(titre)){ mok.classList.add('mok-suppr'); mok.textContent='Supprimer'; }
   } else {
     mok.style.display='none'; mcb=null;
     if(fermerBtn) fermerBtn.style.display='';
+    // V11.3.98 — fenêtre d'information (okOnly, aucune action) : C1 « Fermer » + C2.
+    if(okOnly) _modalFermer();
   }
   document.getElementById('mbg').classList.add('open');
 }
 
-function closeModal(){const mbg=document.getElementById('mbg'); const modalEl=mbg?mbg.querySelector('.modal'):null; if(modalEl){ modalEl.style.width=''; modalEl.style.maxWidth=''; } if(mbg) mbg.classList.remove('open'); if(mbg&&mbg.dataset) delete mbg.dataset.kind; mcb=null; /* V020-v181.8.5 — PdC Universel : restaurer la barre d'actions par défaut au cas où elle aurait été cachée par l'éditeur de layout, et nettoyer l'état éphémère. */ const _da=mbg?mbg.querySelector('.modal-acts'):null; if(_da) _da.style.display=''; if(typeof _layoutEditor!=='undefined') _layoutEditor=null;}
+function closeModal(){const mbg=document.getElementById('mbg'); const modalEl=mbg?mbg.querySelector('.modal'):null; if(modalEl){ modalEl.style.width=''; modalEl.style.maxWidth=''; } if(mbg) mbg.classList.remove('open'); if(mbg&&mbg.dataset) delete mbg.dataset.kind; mcb=null; _modalReinit(); /* V11.3.98 — libellé, clic extérieur, bouton OK */ /* V020-v181.8.5 — PdC Universel : restaurer la barre d'actions par défaut au cas où elle aurait été cachée par l'éditeur de layout, et nettoyer l'état éphémère. */ const _da=mbg?mbg.querySelector('.modal-acts'):null; if(_da) _da.style.display=''; if(typeof _layoutEditor!=='undefined') _layoutEditor=null;}
 document.getElementById('mok').onclick=()=>{ try{ if(mcb) mcb(); } catch(err){ console.error('modal cb error',err); } finally{ closeModal(); } };
 // §5.26 (S18) — Echap ferme le modal global #mbg (séance, dialogues d'évaluation,
 // confirmations, etc.). Sémantique "annuler" : on appelle closeModal() sans
@@ -51680,6 +51735,7 @@ function _pixShowImportRecap(stats){
 
   extra.appendChild(wrap);
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 /* Traitement principal de l'import. Reçoit le contenu textuel du CSV. */
@@ -54985,6 +55041,7 @@ function showCardDetail(slot, cc, prog, seqColorMap, mapEntry){
   document.getElementById('mok').style.display='none';
   mcb=null;
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 /* ── Menu contextuel tuile Planning d'affectation ─────────────────────────────── */
@@ -59656,6 +59713,7 @@ function openAbsencesModal(){
   const refresh=()=>{ extra.innerHTML=''; buildAbsContent(extra, refresh); };
   buildAbsContent(extra, refresh);
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 function buildAbsContent(extra, refresh){
@@ -62454,7 +62512,7 @@ function openTirageModal(){
   persoRow.style.cssText='display:none;align-items:center;gap:8px;justify-content:flex-end;margin:-4px 0 8px;font-size:11px;color:var(--tx3)';
   const persoLbl=document.createElement('span'); persoLbl.textContent='Type personnel, commun à toutes les classes';
   const persoDel=document.createElement('button');
-  persoDel.style.cssText='font-size:11px;padding:2px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx3);cursor:pointer;font-family:inherit';
+  persoDel.style.cssText='font-size:11px;padding:2px 8px;border:1px solid #FCA5A5;border-radius:6px;background:var(--sur2);color:#DC2626;cursor:pointer;font-family:inherit';   // V11.3.98 — rouge
   persoRow.appendChild(persoLbl); persoRow.appendChild(persoDel); extra.appendChild(persoRow);
   let _delArme=false;
   persoDel.onclick=()=>{
@@ -62539,7 +62597,7 @@ function openTirageModal(){
     });
     const co=curCatObj();
     persoRow.style.display=co.perso?'flex':'none';
-    _delArme=false; persoDel.textContent='Supprimer ce type'; persoDel.style.color='var(--tx3)'; persoDel.style.borderColor='var(--brd)';
+    _delArme=false; persoDel.textContent='Supprimer ce type'; persoDel.style.color='#DC2626'; persoDel.style.borderColor='#FCA5A5';
     // Avec saisie : 5 élèves au plus (la grille doit rester lisible)
     const avecSaisie=co.saisie!=='aucune';
     nbIn.max=String(avecSaisie?TIRAGE_SAISIE_MAX:10);
@@ -62710,6 +62768,7 @@ function openTirageModal(){
     revealOne(0);
   };
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 // ── Outils menu ───────────────────────────────────────────────
@@ -63967,6 +64026,7 @@ function openTimerModal(){
     _tmrUpdateUI();
   };
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
 function _getAlertSettings(){
@@ -64018,6 +64078,7 @@ function _checkSeuilForStudent(uid, key){
     const ok=document.createElement('button'); ok.className='bp'; ok.style.cssText='width:100%';
     ok.textContent='✅ Compris'; ok.onclick=()=>closeModal(); extra.appendChild(ok);
     document.getElementById('mbg').classList.add('open');
+    _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
   }
 }
 
@@ -64048,6 +64109,7 @@ function checkSeuilAlerts(){
   const ok=document.createElement('button'); ok.className='bp'; ok.style.cssText='width:100%;margin-top:8px';
   ok.textContent='✅ Compris'; ok.onclick=()=>closeModal(); extra.appendChild(ok);
   document.getElementById('mbg').classList.add('open');
+  _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 /* ── Fin fonctionnalités PdC ─────────────────────────────────── */
 
