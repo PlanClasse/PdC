@@ -55,6 +55,7 @@ button,input{font-family:'DM Sans',sans-serif}
 .rb-pill.pill-rappel .rb-count{background:#EDE9FE;color:#5B21B6}
 .rb-pill.pill-rrupn .rb-count{background:#DCFCE7;color:#166534}
 .rb-pill.pill-plan .rb-count{background:#FEE2E2;color:#991B1B}
+.rb-pill.pill-fiches .rb-count{background:#FFEDD5;color:#9A3412}
 /* S28 patch 2 — Bloc "Aujourd'hui" : urgence rouge/orange/gris */
 .rb-pill.pill-retard  .rb-count{background:#FEE2E2;color:#991B1B}
 .rb-pill.pill-jour    .rb-count{background:#FED7AA;color:#9A3412}
@@ -4290,7 +4291,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.96';
+const APP_VERSION = 'v11.3.97';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -14121,6 +14122,20 @@ function renderProfAfaire(){
     list.appendChild(row); count++;
   }
 
+  // V11.3.97 — fiches d'évaluation à compléter, toutes classes
+  const nbFiches=(typeof _tirageNbFichesTotal==='function')?_tirageNbFichesTotal():0;
+  if(nbFiches){
+    const row = document.createElement('div'); row.className='afaire-row';
+    const ic = document.createElement('span'); ic.className='afaire-ic'; ic.textContent='📝';
+    const tx = document.createElement('span'); tx.className='afaire-tx';
+    const st = document.createElement('strong'); st.textContent = nbFiches+' fiche'+(nbFiches>1?'s':'')+' d’évaluation à compléter';
+    tx.appendChild(st); tx.appendChild(document.createTextNode('Tirages au sort (interrogation, cahiers…)'));
+    const btn = document.createElement('button'); btn.className='afaire-cta'; btn.textContent='Ouvrir';
+    btn.onclick = ()=>{ try{ openFichesACompleter(); }catch(e){} };
+    row.appendChild(ic); row.appendChild(tx); row.appendChild(btn);
+    list.appendChild(row); count++;
+  }
+
   if(count === 0){
     body.innerHTML='<div class="afaire-empty">✓ Aucune action en attente.</div>';
     return;
@@ -14379,6 +14394,18 @@ function renderRappelsBandeau(){
         const fresh = getPendingSeances();
         if(fresh.length) showPendingSeanceModal(fresh);
       }
+    });
+  }
+
+  // ── V11.3.97 — fiches d'évaluation à compléter, toutes classes ──
+  const nbFiches=(typeof _tirageNbFichesTotal==='function')?_tirageNbFichesTotal():0;
+  if(nbFiches){
+    pillsLeft.push({
+      cls: 'pill-fiches',
+      icon: '📝',
+      label: 'Fiche' + (nbFiches > 1 ? 's' : '') + ' d’éval. à compléter',
+      count: nbFiches,
+      onclick: () => openFichesACompleter()
     });
   }
 
@@ -62034,11 +62061,21 @@ function _tirageFicheQuand(f){
 /** Écrit les lignes dans l'observation du cours FIGÉ dans la fiche (à défaut,
  *  la cible courante, comme la popup élève). entries = [{uid, texte}].
  *  Renvoie {n, cible} ou null s'il n'y a aucun cours. Sauvegarde si écriture. */
-function _tirageEnregistrerObs(entries, fiche){
+function _tirageEnregistrerObs(entries, fiche, scope){
+  // V11.3.97 — portée explicite (vue « Fiches à compléter », toutes classes) :
+  // on écrit dans la classe DE LA FICHE, pas dans la classe ouverte.
+  const sc=(scope==null)?null:String(scope);
+  const giSc=(sc && sc.indexOf('grp:')===0)?sc.slice(4):'';
+  const cls=(sc==null)?curCls:(giSc?'':sc);
   let cible=null, grp='', gi='';
   if(fiche && fiche.slotKey){
     cible={slotKey:fiche.slotKey, dateStr:fiche.dateStr, retro:fiche.retro};
-    grp=fiche.grp||''; gi=fiche.gi||'';
+    grp=fiche.grp||''; gi=fiche.gi||giSc;
+  } else if(sc!=null){
+    cible=(cls && typeof _obsSlotCible==='function')?_obsSlotCible(cls):null;
+    if(!cible) return null;
+    gi=giSc;
+    grp=(!gi && typeof getCurrentGrpId==='function')?(getCurrentGrpId(cls, cible.slotKey)||''):'';
   } else {
     cible=(typeof _obsSlotCible==='function')?_obsSlotCible(curCls):null;
     if(!cible) return null;
@@ -62048,8 +62085,8 @@ function _tirageEnregistrerObs(entries, fiche){
   let n=0;
   (entries||[]).forEach(e=>{
     if(!e || !e.uid || !String(e.texte||'').trim()) return;
-    const cur=(readObsCours(cible.slotKey, curCls, grp, gi)||{})[e.uid]||'';
-    if(writeObsCoursEleve(cible.slotKey, curCls, grp, gi, e.uid, _tirageAjoutObs(cur, e.texte))) n++;
+    const cur=(readObsCours(cible.slotKey, cls, grp, gi)||{})[e.uid]||'';
+    if(writeObsCoursEleve(cible.slotKey, cls, grp, gi, e.uid, _tirageAjoutObs(cur, e.texte))) n++;
   });
   if(n) saveS();
   return {n, cible};
@@ -62068,6 +62105,94 @@ function _tirageMajPastille(){
   }
   p.textContent=String(n);
   p.title=n+' fiche'+(n>1?'s':'')+' d’évaluation à compléter';
+}
+
+/* ── V11.3.97 — « Fiches d'évaluation à compléter », toutes classes ─────────
+   Point d'entrée : pastille du bandeau « À faire » de l'accueil. Fiches
+   rassemblées par portée (classes dans l'ordre habituel, puis groupes), la plus
+   ancienne d'abord. « Reprendre » ouvre la saisie habituelle avec la portée DE
+   LA FICHE ; Enregistrer / Abandonner ramènent à la liste. */
+
+/** Nombre d'élèves d'une fiche sans aucune saisie. Pure. */
+function _tirageFicheATraiter(f){
+  if(!f || !Array.isArray(f.eleves)) return 0;
+  const e=f.etat||{}, niv=e.niv||{}, ou=e.oubli||{}, rq=e.rq||{};
+  return f.eleves.filter(s=>s && !(Object.values(niv[s.uid]||{}).some(Boolean) || ou[s.uid] || String(rq[s.uid]||'').trim())).length;
+}
+/** Fiches par portée : classes dans l'ordre donné (inconnues ensuite), puis
+ *  groupes ; la plus ancienne d'abord ; portées vides omises. Pure.
+ *  Renvoie [{scope, label, fiches}]. */
+function _tirageFichesParPortee(tf, ordre, groupes){
+  const estG=k=>k.indexOf('grp:')===0;
+  const rang=k=>{ const i=(ordre||[]).indexOf(k); return estG(k)?[2,0]:(i<0?[1,0]:[0,i]); };
+  return Object.keys(tf||{})
+    .filter(k=>k && Array.isArray(tf[k]) && tf[k].some(Boolean))
+    .sort((a,b)=>{ const ra=rang(a), rb=rang(b); return ra[0]-rb[0] || ra[1]-rb[1] || (a<b?-1:a>b?1:0); })
+    .map(k=>{
+      const g=estG(k)?(groupes||{})[k.slice(4)]:null;
+      return {scope:k, label:estG(k)?('👥 '+((g&&g.label)||'Groupe')):k.toUpperCase(),
+        fiches:tf[k].filter(Boolean).slice().sort((a,b)=>(a.ts||0)-(b.ts||0))};
+    });
+}
+/** Nombre de fiches à compléter, toutes portées. */
+function _tirageNbFichesTotal(){
+  return _tirageFichesParPortee(S.tirageFiches, [], {}).reduce((n,p)=>n+p.fiches.length, 0);
+}
+/** « cours du 28/09 · 08:10 » (à défaut, date du tirage). Pure. */
+function _tirageFicheCours(f){
+  if(!f || !f.slotKey) return _tirageFicheQuand(f);
+  const h=/_(\d{2}:\d{2})/.exec(String(f.slotKey));
+  return 'cours du '+_obsDateCourte(f.dateStr)+(h?' · '+h[1]:'');
+}
+
+function openFichesACompleter(note){
+  const portees=_tirageFichesParPortee(S.tirageFiches, Object.keys(S.cl||{}), S.groupes);
+  const total=portees.reduce((n,p)=>n+p.fiches.length, 0);
+  showModal('📝 Fiches d’évaluation à compléter'+(total?' · '+total:''), '', null);
+  const fermer=document.querySelector('#mbg .modal-acts .bs'); if(fermer) fermer.textContent='Fermer';
+  _attachModalClickOutsideClose();
+  const modal=document.querySelector('#mbg .modal');
+  const largeur=(px)=>{ if(modal){ modal.style.width=px+'px'; modal.style.maxWidth='96vw'; } };
+  largeur(560);
+  const extra=document.getElementById('modal-extra'); extra.innerHTML='';
+  if(note) extra.appendChild(_tasEl('div','font-size:12px;color:var(--acc);font-weight:600;margin:0 0 10px', note));
+  if(!total){ extra.appendChild(_tasEl('div','font-size:13px;color:var(--tx3);text-align:center;padding:14px 0','✓ Aucune fiche à compléter.')); return; }
+
+  const reprendre=(p, f)=>{
+    document.getElementById('mt').textContent='📝 '+p.label+' — fiche à compléter';
+    extra.innerHTML='';
+    const ret=_tasEl('button','font-size:12px;padding:4px 10px;margin-bottom:6px','← Toutes les fiches');
+    ret.className='bs'; ret.type='button'; ret.onclick=()=>openFichesACompleter();
+    extra.appendChild(ret);
+    const box=_tasEl('div',''); extra.appendChild(box);
+    largeur(f.saisie==='cahier' ? (f.eleves.length>2?720:560) : 620);
+    _tirageRenderSaisie(box, f, {scope:p.scope, onFin:(r)=>{
+      try{ if(typeof renderRappelsBandeau==='function') renderRappelsBandeau(); }catch(e){}
+      openFichesACompleter(r
+        ? ('✓ '+p.label+' : noté dans l’observation du cours du '+_obsDateCourte(r.cible.dateStr)+' — '+r.n+' élève'+(r.n>1?'s':''))
+        : ('Fiche abandonnée ('+p.label+').'));
+    }});
+  };
+
+  portees.forEach((p,pi)=>{
+    const hd=_tasEl('div','display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid var(--brd2);padding:'+(pi?'12px':'2px')+' 0 3px');
+    hd.appendChild(_tasEl('span','font-size:14px;font-weight:700;color:var(--tx)', p.label));
+    hd.appendChild(_tasEl('span','font-size:11px;color:var(--tx3)', p.fiches.length+' fiche'+(p.fiches.length>1?'s':'')));
+    extra.appendChild(hd);
+    p.fiches.forEach((f,i)=>{
+      const r=_tasEl('div','display:flex;align-items:center;gap:10px;padding:6px 0;'+(i?'border-top:1px solid var(--brd)':''));
+      const tx=_tasEl('div','flex:1;min-width:0');
+      tx.appendChild(_tasEl('div','font-size:13px;font-weight:600;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap',
+        f.label+' — '+(f.eleves||[]).map(e=>e.name).join(', ')));
+      const sub=_tasEl('div','font-size:11px;color:var(--tx3)', _tirageFicheCours(f)+' · ');
+      const n=_tirageFicheATraiter(f);
+      sub.appendChild(_tasEl('span','font-weight:600;color:'+(n?'#B45309':'var(--acc)'), n?(n+' à traiter'):'tout est saisi, à enregistrer'));
+      tx.appendChild(sub); r.appendChild(tx);
+      const go=_tasEl('button','font-size:12px;padding:5px 12px;flex:none','Reprendre'); go.className='bp'; go.type='button';
+      go.onclick=()=>reprendre(p, f);
+      r.appendChild(go); extra.appendChild(r);
+    });
+  });
 }
 
 /* ── Éléments d'interface (createElement uniquement) ─────────────────────── */
@@ -62104,7 +62229,7 @@ function _tirageRenderSaisie(box, fiche, hooks){
   const E=fiche.etat;
   const els=fiche.eleves.slice(0,TIRAGE_SAISIE_MAX);
   const cahier=fiche.saisie==='cahier';
-  const scope=_tirageScope();
+  const scope=hooks.scope||_tirageScope();   // V11.3.97 — portée de la fiche si fournie
   const persist=()=>saveS();
   const setNiv=(uid, k, v)=>{ if(!E.niv[uid]) E.niv[uid]={}; if(v) E.niv[uid][k]=v; else delete E.niv[uid][k]; persist(); };
 
@@ -62200,7 +62325,7 @@ function _tirageRenderSaisie(box, fiche, hooks){
   ok.onclick=()=>{
     const entries=_tirageTextesFiche(fiche, _tirageCahierCrit());
     if(!entries.length){ msg.style.color='#DC2626'; msg.textContent='Rien à enregistrer.'; return; }
-    const r=_tirageEnregistrerObs(entries, fiche);
+    const r=_tirageEnregistrerObs(entries, fiche, hooks.scope);
     if(!r){ msg.style.color='#DC2626'; msg.textContent='Aucun cours où rattacher l’observation.'; return; }
     _tirageFicheRetirer(scope, fiche.id); saveS(); _tirageMajPastille();
     box.innerHTML='';
