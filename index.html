@@ -4290,7 +4290,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.93';
+const APP_VERSION = 'v11.3.94';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7093,6 +7093,21 @@ function _draftOrSaved(draftVal, savedVal){
   return { value: useDraft ? draftVal : saved, fromDraft: useDraft };
 }
 
+/** V11.3.94 — À la validation d'une séance, le brouillon perd les champs DU MODAL
+ *  (contenu, taf, commentaire : l'enregistré prend le relais) mais GARDE le texte
+ *  de « Saisir mes cours » (saisie, saisieEnreg, étoiles). Avant, tout était effacé :
+ *  les /SEQ /Séance du cours disparaissaient de l'écran. null = plus rien à garder. Pure. */
+function _draftApresValidation(d){
+  if(!d || typeof d!=='object') return null;
+  const reste=Object.assign({}, d);
+  ['contenu','taf','commentaire'].forEach(k=>{ delete reste[k]; });
+  return Object.keys(reste).length ? reste : null;
+}
+function _nettoyerDraftApresValidation(cle){
+  if(!S.seanceContentDraft) return;
+  const r=_draftApresValidation(S.seanceContentDraft[cle]);
+  if(r) S.seanceContentDraft[cle]=r; else delete S.seanceContentDraft[cle];
+}
 function _persistSeanceContentDraft(cls, slotKey, fieldKey, value){
   if(!cls || !slotKey || !fieldKey) return;
   if(!S.seanceContentDraft) S.seanceContentDraft = {};
@@ -12171,7 +12186,8 @@ function saveSeanceFromSlot(item){
 
   // V020-v181.4.15 — Nettoyage du brouillon des textareas du modal séance pour ce slot,
   // maintenant que la séance est enregistrée.
-  if(S.seanceContentDraft) delete S.seanceContentDraft[clsCode+'|'+item.slotKey];
+  // V11.3.94 — seulement les champs du modal : le texte de « Saisir mes cours » reste.
+  _nettoyerDraftApresValidation(clsCode+'|'+item.slotKey);
 
   // Record decision
   if(!S.seancesDecisions) S.seancesDecisions={};
@@ -29935,6 +29951,43 @@ function _sdcTexteInitial(cls, slotKey){
   return '';
 }
 
+/** V11.3.94 — Texte d'un cours ENREGISTRÉ (écran en lecture seule, « Autres cours ») :
+ *  – le texte de « Saisir mes cours » tel qu'enregistré, si le contenu de la séance n'a
+ *    pas été retouché depuis (c'est le contenu que ce texte avait préparé) ;
+ *  – sinon : les en-têtes (/SEQ, /Séance : ceux du texte, à défaut ceux de la séance
+ *    choisie dans le modal), puis le contenu enregistré, puis ses /TAF.
+ *  Avant : le contenu seul, sans en-têtes (demande du 29/09). Pure (prog fourni). */
+function _sdcTexteCoursEnregistre(saved, draft, prog){
+  prog=Array.isArray(prog)?prog:[];
+  const cont=String((saved&&saved.contenu)||'').replace(/\s+$/,'');
+  const enr=(draft && typeof draft.saisieEnreg==='string') ? draft.saisieEnreg : '';
+  const net=(t)=>String(t||'').split('\n').map(x=>x.trim()).filter(Boolean).join('\n');
+  if(enr.trim()){
+    try{ if(net(_sdcVersSeance(_sdcInterpreter(enr, prog)).contenu)===net(cont)) return enr; }catch(e){}
+  }
+  const estEntete=(l)=>/^\s*\/(SEQ|S[ée]ance)\b/i.test(l);
+  const ent=[];
+  if(!cont.split('\n').some(estEntete)){
+    if(enr.trim()){
+      const L=enr.split('\n');
+      const s=L.find(l=>/^\s*\/SEQ/i.test(l)), n=L.find(l=>/^\s*\/S[ée]ance/i.test(l));
+      [s,n].forEach(x=>{ if(x) ent.push(x.trim()); });
+    }
+    if(!ent.length && saved && saved.seqId){
+      const k=prog.findIndex(q=>q && q.id===saved.seqId);
+      if(k>=0){
+        ent.push(_sdcLigneSeq(prog[k], k));
+        const j=(prog[k].seances||[]).findIndex(x=>x && x.id===saved.seanId);
+        if(j>=0) ent.push(_sdcLigneSean(prog[k].seances[j], j));
+      }
+    }
+  }
+  const tafs=(saved && typeof getTafArray==='function') ? (getTafArray(saved)||[]) : [];
+  const dejaTaf=/^\s*\/TAF\b/im.test(cont);
+  return ent.concat(cont?[cont]:[], dejaTaf?[]:tafs.map(t=>'/TAF '+String(t).trim()))
+    .filter(x=>String(x).trim()).join('\n');
+}
+
 /* ── Rendu ─────────────────────────────────────────────────────────────── */
 function _sdcEl(tag, cls, txt){ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
 function _sdcDateLongue(dateStr){
@@ -30164,7 +30217,8 @@ function _sdcRendre(){
   const enregistre=!!cur.saved;
   const avant=!_sdcApresBascule(cur.dateStr, cls);
   const lectureSeule=enregistre||avant;
-  let texte0=enregistre ? String(cur.saved.contenu||'') : _sdcTexteInitial(cls, slotKey);
+  // V11.3.94 — cours enregistré : avec ses en-têtes /SEQ /Séance (et son TAF).
+  let texte0=enregistre ? _sdcTexteCoursEnregistre(cur.saved, _sdcDraft(cls, slotKey), getProgression(_sdcNiveau(cls))||[]) : _sdcTexteInitial(cls, slotKey);
   const dureeCours=_sdcDureeCours(cur.debut, cur.fin);
   const lv=_sdcNiveau(cls);
   const prog=getProgression(lv)||[];
@@ -30688,7 +30742,10 @@ function _sdcCoursProche(cours, dateStr){
 /** Texte d'un cours tel qu'on peut le lire : sa saisie, sinon son brouillon,
  *  sinon le contenu enregistré. Impur (lecture). */
 function _sdcTexteLisible(cls, c){
-  return _sdcTexteInitial(cls, c.slotKey) || (c.saved && String(c.saved.contenu||'')) || '';
+  // V11.3.94 — cours enregistré : son texte avec en-têtes (les lignes prises gardent
+  // ainsi leur séance d'origine).
+  if(c && c.saved) return _sdcTexteCoursEnregistre(c.saved, _sdcDraft(cls, c.slotKey), getProgression(_sdcNiveau(cls))||[]);
+  return _sdcTexteInitial(cls, c.slotKey) || '';
 }
 
 /** La section, construite dans l'écran. `prendre(fn)` modifie le texte. */
@@ -47171,7 +47228,8 @@ function openSaveSeance(){
 
     // V020-v181.4.15 — Nettoyage du brouillon des textareas du modal séance pour ce slot,
     // maintenant que la séance est enregistrée (l'enregistré prend le relais).
-    if(S.seanceContentDraft) delete S.seanceContentDraft[curCls+'|'+slotKey];
+    // V11.3.94 — seulement les champs du modal : le texte de « Saisir mes cours » reste.
+    _nettoyerDraftApresValidation(curCls+'|'+slotKey);
 
     if(!S.planningAdjustmentsReviewedKeys) S.planningAdjustmentsReviewedKeys={};
     delete S.planningAdjustmentsReviewedKeys[curCls+'|'+slotKey];
