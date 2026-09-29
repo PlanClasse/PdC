@@ -4213,7 +4213,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.90';
+const APP_VERSION = 'v11.3.91';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28997,6 +28997,22 @@ function _sdcTafsDuCours(slotKey, cls, saved){
 function _sdcTafsTexte(txt){
   return String(txt||'').split('\n').map(t=>t.trim()).filter(Boolean);
 }
+/** V11.3.91 — « Copier » du modal Séance, cours composé : les tâches retenues
+ *  (faites ou commencées, selon `garder(clé)`) de la liste à cocher, dans son
+ *  ordre. Tâches seulement : reliées (mo_…), tapées, reports reçus — ni TAF ni
+ *  docs. Libellé nu (sans « [SEQx-Sy] », « (suite) » ni « (N mn) »). Pure. */
+function _sdcTachesACopier(items, garder){
+  const out=[];
+  (Array.isArray(items)?items:[]).forEach(it=>{
+    if(!it || !it.key) return;
+    const tache = it.source==='modeOp' || it.isReporter || _sdcFiTache(it.fi);
+    if(!tache || !garder(it.key)) return;
+    const brut = (it.fi && !it.isReporter && it.source!=='modeOp') ? it.fi.label : it.label;
+    const lbl = String(brut||'').replace(/^\[[^\]]*\]\s*/,'').replace(/\s*\(suite\)\s*$/,'').replace(/\s*\(\d+\s*mn\)\s*$/,'').trim();
+    if(lbl) out.push({key:it.key, label:lbl});
+  });
+  return out;
+}
 /** V11.3.87 — Élément libre = TÂCHE tapée dans « Saisir mes cours » : une vraie
  *  tâche du cours (✂️, report proposé à la validation), pas une « tâche libre ». Pure. */
 function _sdcFiTache(fi){
@@ -45130,6 +45146,12 @@ function openSaveSeance(){
             // pas. Libellé validé par l'utilisatrice.
             const _suffixe=(itemKey)=>(_decisions[itemKey]==='partiel' ? ' (à poursuivre au prochain cours)' : '');
 
+            // V11.3.91 — cours composé : les tâches de la liste à cocher (ordre du
+            // texte : reliées, TAPÉES, reports reçus). Avant : seul sean.modeOp était
+            // lu, les lignes tapées faites n'allaient jamais au cahier de texte.
+            if(_sdcEntreeDuCours(curSlotKey, curCls) && tachesWrap && tachesWrap._checkboxes){
+              _sdcTachesACopier(tachesWrap._checkboxes.map(x=>x.item), _isKept).forEach(t=>taskList.push(t.label+_suffixe(t.key)));
+            } else {
             // 1. Reporters du slot
             if(typeof getMapEntry==='function'){
               const entry=getMapEntry(curSlotKey+'|'+curCls);
@@ -45151,6 +45173,7 @@ function openSaveSeance(){
                 const k='mo_'+idx;
                 if(_isKept(k)) taskList.push(tt+_suffixe(k));
               });
+            }
             }
           }
         }catch(err){ console.warn('Filtre tâches agrégat copier:', err); }
