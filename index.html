@@ -2713,7 +2713,7 @@ body.is-touch .v169-source{
 .sdc-cls{font-size:14px;font-weight:700;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur)}
 .sdc-nav{min-width:36px;min-height:34px;font-size:13px}
 .sdc-quand{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--tx);min-width:0}
-.sdc-num{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--acc);color:#fff;font-size:12px;font-weight:800}
+.sdc-num{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#378ADD;color:#fff;font-size:12px;font-weight:800}
 .sdc-date{position:relative;cursor:pointer;padding:2px 6px;border-radius:var(--r1);border:1px dashed transparent}
 .sdc-date:hover{border-color:var(--acc);background:var(--acc-l)}
 .sdc-date::after{content:' 📅';font-size:12px}
@@ -2812,7 +2812,84 @@ body:has(#sdc-bg) .mobile-menu-btn{display:none}
 .sdc-etat{flex:1;font-size:12px;color:var(--tx2)}
 .sdc-etat.sdc-ok{color:var(--acc);font-weight:700}
 .sdc-etat.sdc-ko{color:#B91C1C;font-weight:700}
+/* V11.3.92 — Saisir mes cours en FENÊTRE, palette « encre et bleu » (choix du 29/09) */
+.sdc-bg{padding:0;background:#F7F6F2;align-items:stretch}
+.sdc-pan{width:100%;max-width:none;border-radius:0;box-shadow:none;background:#FFFFFF;color:#2C2C2A}
+.sdc-head{background:#2C2C2A;color:#FFFFFF;border-bottom:none;padding:8px 12px;gap:8px}
+.sdc-titre{color:#FFFFFF;font-size:15px;font-weight:800;margin:0 6px}
+.sdc-hb{display:inline-flex;align-items:center;gap:4px;min-height:34px;padding:5px 11px;border:none;border-radius:6px;background:#444441;color:#FFFFFF;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.sdc-hb:hover{background:#5F5E5A}
+.sdc-hb:disabled{opacity:.35;cursor:default}
+.sdc-hb-clair{background:#FFFFFF;color:#2C2C2A}
+.sdc-hb-clair:hover{background:#F1EFE8}
+.sdc-hb-bleu{background:#378ADD;color:#FFFFFF}
+.sdc-hb-bleu:hover{background:#185FA5}
+.sdc-head .sdc-cls{background:#FFFFFF;color:#2C2C2A;border:none;font-size:14px;font-weight:800;min-height:34px}
+.sdc-head .sdc-nav{min-width:36px;justify-content:center}
+.sdc-quand{color:#FFFFFF;font-size:14px;font-weight:700}
+.sdc-date{border:1.5px dashed #85B7EB}
+.sdc-date:hover{border-color:#FFFFFF;background:#444441}
+.sdc-vide{margin-left:auto}
+.sdc-grille{display:grid;grid-template-columns:136px minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr);flex:1;min-height:0}
+.sdc-jour{background:#F1EFE8;border-right:1.5px solid #B4B2A9;padding:10px 8px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
+.sdc-jour-t{font-size:13px;font-weight:800;color:#2C2C2A;padding:0 2px 4px}
+.sdc-jour-t::first-letter{text-transform:uppercase}
+body:has(#sdc-bg) #font-ctrl{display:none}
+.sdc-jour-h{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#444441;padding:2px 2px 0}
+.sdc-jour-sep{border-top:2px solid #2C2C2A;margin:6px 0 2px}
+.sdc-jour-vide{font-size:12px;color:#5F5E5A;font-style:italic;padding:2px}
+.sdc-jour-b{display:flex;align-items:center;gap:7px;flex-wrap:wrap;width:100%;text-align:left;padding:7px 8px;min-height:36px;border:1px solid #B4B2A9;border-radius:6px;background:#FFFFFF;color:#2C2C2A;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.sdc-jour-b:hover{border-color:#185FA5}
+.sdc-jour-b.on{background:#185FA5;border-color:#185FA5;color:#FFFFFF}
+.sdc-jour-g{font-size:10px;font-weight:800;color:#6B21A8}
+.sdc-jour-b.on .sdc-jour-g{color:#FFFFFF}
+.sdc-dot{width:9px;height:9px;border-radius:50%;flex:none;box-sizing:border-box}
+.sdc-dot-plein{background:#185FA5}
+.sdc-dot-vide{border:1.5px solid #185FA5}
+.sdc-jour-b.on .sdc-dot-plein{background:#FFFFFF}
+.sdc-jour-b.on .sdc-dot-vide{border-color:#FFFFFF}
+.sdc-aucun{grid-column:2 / -1;padding:24px;font-size:14px;color:#444441}
+.sdc-col{padding:10px 12px;overflow-y:auto}
+.sdc-col+.sdc-col{border-left:1.5px solid #D3D1C7;background:#FFFFFF}
+.sdc-col-b{background:#F7F6F2!important}
+.sdc-h{font-size:11px;font-weight:800;color:#2C2C2A;letter-spacing:.05em}
+.sdc-ta{border:1.5px solid #2C2C2A;color:#2C2C2A;font-size:13.5px}
+.sdc-ta:focus{outline:2px solid #378ADD;outline-offset:1px}
+.sdc-chip{border-color:#2C2C2A;color:#2C2C2A}
+.sdc-chip:hover{border-color:#185FA5;color:#185FA5}
+.sdc-tout{background:#185FA5;border-color:#185FA5;color:#FFFFFF}
+.sdc-tout:hover{background:#0C447C;color:#FFFFFF}
+.sdc-it{border-color:#B4B2A9;color:#2C2C2A;font-size:13px}
+.sdc-t-seq .sdc-badge,.sdc-t-sean .sdc-badge{background:#185FA5}
+.sdc-numseq{background:#E6F1FB;color:#0C447C;border-color:#185FA5}
+.sdc-etat-existe,.sdc-prov-biblio{color:#185FA5}
+.sdc-dur{color:#185FA5;font-weight:700}
+.sdc-jauge{color:#2C2C2A;font-size:13px}
+.sdc-jauge-ko{color:#712B13;background:#FAECE7;border-radius:6px;padding:4px 8px;font-weight:700}
+.sdc-resume{color:#2C2C2A}
+.sdc-effets{border-color:#B4B2A9;color:#444441}
+.sdc-autre{border-color:#B4B2A9}
+.sdc-autre-t{background:#FFFFFF;color:#2C2C2A;border-bottom:1px solid #D3D1C7}
+.sdc-autre-d{color:#444441}
+.sdc-autre-l{color:#2C2C2A}
+.sdc-bibzone{margin-top:16px;padding-top:10px;border-top:1.5px solid #B4B2A9}
+.sdc-bibzone .sdc-sels{padding:6px 0 8px;border-bottom:none;gap:8px}
+.sdc-bibzone .sdc-lab{flex:1 1 140px;color:#444441}
+.sdc-bibzone .sdc-lab select{border:1px solid #2C2C2A;color:#2C2C2A}
+.sdc-bibzone .sdc-biblio{padding:0;border-bottom:none}
+.sdc-pied{background:#FFFFFF;border-top:1.5px solid #B4B2A9}
+.sdc-enr{background:#185FA5;border-color:#185FA5;color:#FFFFFF;font-size:14px;font-weight:800;padding:8px 22px}
+.sdc-enr:hover{background:#0C447C}
+.sdc-etat.sdc-ok{color:#185FA5}
+@media (max-width:1180px){
+  .sdc-grille{grid-template-columns:120px minmax(0,1fr) minmax(0,1fr);overflow-y:auto}
+  .sdc-col-b{grid-column:2 / -1;border-left:none!important;border-top:1.5px solid #D3D1C7}
+  .sdc-col{overflow:visible}
+}
 @media (max-width:760px){
+  .sdc-grille{display:block;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .sdc-jour{flex-direction:row;flex-wrap:wrap;border-right:none;border-bottom:1.5px solid #B4B2A9}
+  .sdc-jour-b{width:auto}
   .sdc-corps{display:block;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .sdc-col{overflow:visible}
   .sdc-ta{min-height:200px;flex:none}
@@ -4213,7 +4290,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.91';
+const APP_VERSION = 'v11.3.92';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29741,19 +29818,17 @@ function openSaisieCours(opts){
   opts=opts||{};
   let cls=opts.cls?_sdcClsCanon(opts.cls):null, slotKey=opts.slotKey||null;
   const {today, now}=_sdcMaintenant();
+  // V11.3.92 — plus de saut automatique au 1er cours vide (bouton dédié) : on
+  // ouvre le cours en cours ou le prochain (de la classe demandée, sinon de toutes).
   if(!cls || !slotKey){
     const classes=cls?[cls]:_sdcClasses();
     let tous=[]; classes.forEach(c=>{ tous=tous.concat(_sdcCoursDeClasse(c)); });
-    if(S.planningBascule) tous=tous.filter(c=>c.dateStr>=S.planningBascule);
-    const p=_sdcProchainVide(tous, today, now);
+    const p=_sdcCoursOuverture(tous, today, now);
     if(p){ cls=p.cls; slotKey=p.slotKey; }
-    else if(classes.length){
-      cls=cls||classes[0];
-      const futurs=_sdcCoursDeClasse(cls).filter(c=>!c.annule && c.dateStr>=today);
-      slotKey=futurs.length?futurs[0].slotKey:null;
-    }
+    else if(classes.length){ cls=cls||classes[0]; slotKey=null; }
   }
-  _sdc={cls, slotKey};
+  // « Retour » : seulement quand on arrive depuis un créneau de cours.
+  _sdc={cls, slotKey, retour:!!opts.retour, jour:null};
   _sdcRetirerAvert();
   try{ _sdcReparerTout(); }catch(e){ console.warn('[sdc] réparation des liens', e); }
   _sdcRendre();
@@ -29851,12 +29926,8 @@ function _sdcFond(){
   let bg=document.getElementById('sdc-bg');
   if(!bg){
     bg=_sdcEl('div','sdc-bg'); bg.id='sdc-bg';
-    // V11.3.68 — clic sur le fond = Fermer. On exige que le geste COMMENCE aussi
-    // sur le fond : une sélection de texte partie du champ et relâchée dehors
-    // produit un « click » sur le fond (ancêtre commun), qui ne doit pas fermer.
-    let _sdcDownFond=false;
-    bg.addEventListener('pointerdown', e=>{ _sdcDownFond=(e.target===bg); });
-    bg.addEventListener('click', e=>{ const ok=_sdcDownFond && e.target===bg; _sdcDownFond=false; if(ok) closeSaisieCours(); });
+    // V11.3.92 — fenêtre plein écran : plus de fond cliquable. Échap = fermer
+    // (on revient là où on était).
     bg.addEventListener('keydown', e=>{
       if(e.key==='Escape'){ const mbg=document.getElementById('mbg'); if(!(mbg&&mbg.classList.contains('open'))){ e.stopPropagation(); closeSaisieCours(); } }
     });
@@ -29909,6 +29980,59 @@ function _sdcCoursPourDate(cours, dateStr){
   const c=L.find(x=>x.dateStr>=dateStr) || L[L.length-1];
   return c.slotKey;
 }
+/* V11.3.92 — Refonte (demande du 29/09) : écran en fenêtre, colonne des cours du
+   jour, trois zones (saisie | interprétation | autres cours + bibliothèque). */
+/** Cours d'une date, toutes classes, rangés matin / après-midi (coupure 12:15,
+ *  comme l'EDT de l'accueil), par heure puis classe. Annulés exclus. Pure. */
+function _sdcCoursDuJour(cours, dateStr){
+  const L=(Array.isArray(cours)?cours:[]).filter(c=>c && !c.annule && c.dateStr===dateStr && c.slotKey)
+    .slice().sort((a,b)=>String(a.debut).localeCompare(String(b.debut)) || String(a.cls).localeCompare(String(b.cls)));
+  return {matin:L.filter(c=>String(c.debut)<'12:15'), aprem:L.filter(c=>String(c.debut)>='12:15')};
+}
+/** Date choisie au calendrier : le 1er cours de la classe affichée ce jour-là,
+ *  sinon le 1er cours de la journée ; null si la journée n'a aucun cours. Pure. */
+function _sdcCoursApresDate(coursJour, cls){
+  const L=[].concat((coursJour&&coursJour.matin)||[], (coursJour&&coursJour.aprem)||[]);
+  const k=String(cls||'').toLowerCase();
+  const c=L.find(x=>String(x.cls).toLowerCase()===k) || L[0];
+  return c ? {cls:c.cls, slotKey:c.slotKey} : null;
+}
+/** Ouverture sans cours désigné : le cours en cours ou le prochain (toutes
+ *  classes), sinon le dernier. Plus de saut automatique au 1er cours vide. Pure. */
+function _sdcCoursOuverture(cours, today, now){
+  const L=(Array.isArray(cours)?cours:[]).filter(c=>c && !c.annule && c.slotKey && c.dateStr)
+    .slice().sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut) || String(a.cls).localeCompare(String(b.cls)));
+  return L.find(c=>c.dateStr>today || (c.dateStr===today && String(c.fin||c.debut||'')>String(now||''))) || L[L.length-1] || null;
+}
+/** Autres cours du même niveau : le DERNIER cours rempli à ±`jours` jours de la
+ *  date (le plus tardif dans la fenêtre) ; null s'il n'y en a pas. Pure. */
+function _sdcDernierRempli(cours, dateStr, jours){
+  const j=(typeof jours==='number')?jours:15;
+  const t=Date.parse(String(dateStr)+'T12:00:00'); if(isNaN(t)) return null;
+  const lo=new Date(t-j*864e5).toISOString().slice(0,10), hi=new Date(t+j*864e5).toISOString().slice(0,10);
+  const L=(Array.isArray(cours)?cours:[]).filter(c=>c && !c.annule && c.rempli && c.dateStr>=lo && c.dateStr<=hi);
+  L.sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut));
+  return L[L.length-1] || null;
+}
+/** Aller à un cours sans quitter l'écran (la provenance « Retour » est gardée). */
+function _sdcAller(cls, slotKey){
+  if(!_sdc) return;
+  _sdcFlushSaisie();
+  _sdc.cls=_sdcClsCanon(cls); _sdc.slotKey=slotKey; _sdc.jour=null;
+  _sdcRendre();
+}
+/** « Accueil » : ferme l'écran, les pages ouvertes derrière (par leur propre
+ *  bouton 🏠), puis revient au menu si un plan de classe était affiché. */
+function _sdcAccueil(){
+  closeSaisieCours();
+  try{
+    document.querySelectorAll('[id$="-page"].open').forEach(pg=>{
+      const b=pg.querySelector('button[title="Retour à l\'accueil"]');
+      if(b && typeof b.onclick==='function') b.onclick(); else pg.classList.remove('open');
+    });
+  }catch(e){ console.warn('[sdc] accueil', e); }
+  try{ const app=document.getElementById('app'); if(app && app.style.display!=='none' && typeof _doBackToMenu==='function') _doBackToMenu(); }catch(e){ console.warn('[sdc] accueil', e); }
+}
 function _sdcRendre(){
   if(!_sdc) return;
   const pan=_sdcFond();
@@ -29917,21 +30041,29 @@ function _sdcRendre(){
 
   // ── Bandeau
   const head=_sdcEl('div','sdc-head'); pan.appendChild(head);
-  head.appendChild(_sdcEl('div','sdc-titre','🗓️ Saisir mes cours'));
+  // V11.3.92 — « Retour » (arrivé depuis un créneau) et « Accueil ».
+  if(_sdc.retour){ const bR=_sdcEl('button','sdc-hb sdc-hb-clair','← Retour'); bR.title='Revenir au planning'; bR.onclick=closeSaisieCours; head.appendChild(bR); }
+  { const bA=_sdcEl('button','sdc-hb','🏠'); bA.title='Accueil'; bA.setAttribute('aria-label','Accueil'); bA.onclick=_sdcAccueil; head.appendChild(bA); }
+  head.appendChild(_sdcEl('div','sdc-titre','Saisir mes cours'));
   const selCls=_sdcEl('select','sdc-cls'); selCls.title='Classe';
-  selCls.onchange=()=>{ _sdcFlushSaisie(); openSaisieCours({cls:selCls.value}); };
   head.appendChild(selCls);
   const cours=cls?_sdcCoursDeClasse(cls).filter(c=>!c.annule):[];
   const i=cours.findIndex(c=>c.slotKey===slotKey);
   const cur=i>=0?cours[i]:null;
+  // Jour affiché dans la colonne : choisi au calendrier, sinon celui du cours ouvert.
+  const jourAff=_sdc.jour || (cur?cur.dateStr:_sdcMaintenant().today);
+  const toutes=_sdcClasses();
+  let coursJour=[];
+  toutes.forEach(c=>{ try{ coursJour=coursJour.concat((c===cls?cours:_sdcCoursDeClasse(c)).filter(x=>x.dateStr===jourAff)); }catch(e){} });
+  // Changer de classe : son cours du jour affiché, sinon le suivant, sinon le dernier.
+  selCls.onchange=()=>{
+    const c2=selCls.value;
+    const sk=_sdcCoursPourDate(_sdcCoursDeClasse(c2).filter(x=>!x.annule), jourAff);
+    _sdcAller(c2, sk);
+  };
   // V11.3.80 — classes du jour affiché en tête, en gras, dans l'ordre des heures ;
-  // les autres ensuite, en maigre. Jour affiché : celui du cours ouvert, sinon
-  // aujourd'hui.
+  // les autres ensuite, en maigre.
   {
-    const jourAff=cur?cur.dateStr:_sdcMaintenant().today;
-    const toutes=_sdcClasses();
-    let coursJour=[];
-    toutes.forEach(c=>{ try{ coursJour=coursJour.concat((c===cls?cours:_sdcCoursDeClasse(c)).filter(x=>x.dateStr===jourAff)); }catch(e){} });
     const ord=_sdcOrdreClasses(toutes, jourAff, coursJour);
     // Pas d'heure dans le libellé : le sélecteur fermé montrerait la 1re heure
     // de la classe même quand on ouvre son 2e cours de la journée.
@@ -29947,38 +30079,68 @@ function _sdcRendre(){
     }
     ord.autres.forEach(c=>opt(c, false, ''));
   }
-  const nav=(j)=>{ if(j<0||j>=cours.length) return; _sdcFlushSaisie(); _sdc.slotKey=cours[j].slotKey; _sdcRendre(); };
-  const bPrev=_sdcEl('button','bs sdc-nav','◀'); bPrev.title='Cours précédent de la classe'; bPrev.disabled=i<=0; bPrev.onclick=()=>nav(i-1);
-  const bNext=_sdcEl('button','bs sdc-nav','▶'); bNext.title='Cours suivant de la classe'; bNext.disabled=i<0||i>=cours.length-1; bNext.onclick=()=>nav(i+1);
+  // ◀ ▶ : cours précédent / suivant DE LA CLASSE (la colonne suit sa date).
+  const nav=(j)=>{ if(j<0||j>=cours.length) return; _sdcAller(cls, cours[j].slotKey); };
+  const bPrev=_sdcEl('button','sdc-hb sdc-nav','◀'); bPrev.title='Cours précédent de la classe'; bPrev.disabled=i<=0; bPrev.onclick=()=>nav(i-1);
+  const bNext=_sdcEl('button','sdc-hb sdc-nav','▶'); bNext.title='Cours suivant de la classe'; bNext.disabled=i<0||i>=cours.length-1; bNext.onclick=()=>nav(i+1);
   head.appendChild(bPrev);
   const quand=_sdcEl('div','sdc-quand');
   if(cur){
     const n=(typeof _edtNumeroCours==='function')?_edtNumeroCours(cls, slotKey):0;
     if(n){ const pas=_sdcEl('span','sdc-num',String(n)); pas.title=n+'ᵉ cours de l’année avec '+cls; quand.appendChild(pas); }
-    // V11.3.85 — la date ouvre un calendrier : on saute au cours de la classe ce
-    // jour-là (sinon au suivant). Champ date natif posé, invisible, sur le texte.
-    const dt=_sdcEl('span','sdc-date',_sdcDateLongue(cur.dateStr)+' · '+cur.debut+(cur.fin?' – '+cur.fin:''));
-    dt.title='Choisir une date dans le calendrier';
-    const inp=_sdcEl('input','sdc-date-inp'); inp.type='date'; inp.value=cur.dateStr;
-    if(cours.length){ inp.min=cours[0].dateStr; inp.max=cours[cours.length-1].dateStr; }
-    inp.setAttribute('aria-label','Aller au cours de cette date');
-    inp.onclick=()=>{ try{ if(typeof inp.showPicker==='function') inp.showPicker(); }catch(e){} };
-    inp.onchange=()=>{
-      const sk=_sdcCoursPourDate(cours, inp.value);
-      if(!sk || sk===slotKey) return;
-      _sdcFlushSaisie(); _sdc.slotKey=sk; _sdcRendre();
-    };
-    dt.appendChild(inp);
-    quand.appendChild(dt);
-    if(cur.demi){ const lg=_sdcLibelleGroupe(cls, cur.grpIds); if(lg) quand.appendChild(_sdcEl('span','sdc-grp',lg)); }
-  } else quand.textContent='Aucun cours à venir pour cette classe.';
+  }
+  // V11.3.92 — la date ouvre un calendrier SANS borne : la colonne passe à ce
+  // jour, et on ouvre le cours de la classe ce jour-là, sinon le 1er de la journée.
+  const dt=_sdcEl('span','sdc-date', cur ? _sdcDateLongue(cur.dateStr)+' · '+cur.debut+(cur.fin?' – '+cur.fin:'') : _sdcDateLongue(jourAff));
+  dt.title='Choisir une date dans le calendrier';
+  const inp=_sdcEl('input','sdc-date-inp'); inp.type='date'; inp.value=jourAff;
+  inp.setAttribute('aria-label','Afficher les cours de cette date');
+  inp.onclick=()=>{ try{ if(typeof inp.showPicker==='function') inp.showPicker(); }catch(e){} };
+  inp.onchange=()=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(inp.value)) return;
+    let tous=[]; toutes.forEach(c=>{ try{ tous=tous.concat(_sdcCoursDeClasse(c)); }catch(e){} });
+    const cible=_sdcCoursApresDate(_sdcCoursDuJour(tous, inp.value), cls);
+    if(cible) _sdcAller(cible.cls, cible.slotKey);
+    else { _sdcFlushSaisie(); _sdc.jour=inp.value; _sdcRendre(); }   // journée sans cours : la colonne le dit
+  };
+  dt.appendChild(inp);
+  quand.appendChild(dt);
+  if(cur && cur.demi){ const lg=_sdcLibelleGroupe(cls, cur.grpIds); if(lg) quand.appendChild(_sdcEl('span','sdc-grp',lg)); }
   head.appendChild(quand);
   head.appendChild(bNext);
-  const bVide=_sdcEl('button','bs sdc-vide','Prochain cours vide');
-  bVide.onclick=()=>{ _sdcFlushSaisie(); openSaisieCours({cls}); };
+  const bVide=_sdcEl('button','sdc-hb sdc-hb-bleu sdc-vide','1er cours non rempli →');
+  bVide.title='Premier cours à venir de '+String(cls||'').toUpperCase()+' sans contenu';
+  bVide.onclick=()=>{
+    const {today, now}=_sdcMaintenant();
+    let L=_sdcCoursDeClasse(cls); if(S.planningBascule) L=L.filter(c=>c.dateStr>=S.planningBascule);
+    const p=_sdcProchainVide(L, today, now);
+    if(p) _sdcAller(cls, p.slotKey); else { bVide.textContent='Aucun cours vide à venir'; setTimeout(()=>{ bVide.textContent='1er cours non rempli →'; }, 1800); }
+  };
   head.appendChild(bVide);
-  const bFermer=_sdcEl('button','bs sdc-fermer','Fermer'); bFermer.onclick=closeSaisieCours; head.appendChild(bFermer);
-  if(!cur) return;
+
+  // ── V11.3.92 — grille : cours du jour | saisie | interprétation | autres cours + bibliothèque
+  const grille=_sdcEl('div','sdc-grille'); pan.appendChild(grille);
+  const colJ=_sdcEl('div','sdc-jour'); grille.appendChild(colJ);
+  {
+    colJ.appendChild(_sdcEl('div','sdc-jour-t', (()=>{ try{ return new Date(jourAff+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return jourAff; } })()));
+    const J=_sdcCoursDuJour(coursJour, jourAff);
+    const bouton=(c)=>{
+      const b=_sdcEl('button','sdc-jour-b'+(c.slotKey===slotKey && String(c.cls).toLowerCase()===String(cls).toLowerCase()?' on':''));
+      b.type='button';
+      const dot=_sdcEl('span','sdc-dot '+(c.rempli?'sdc-dot-plein':'sdc-dot-vide'));
+      b.title=String(c.cls).toUpperCase()+' · '+c.debut+(c.fin?' – '+c.fin:'')+(c.rempli?' · rempli':' · à remplir');
+      b.appendChild(dot);
+      b.appendChild(document.createTextNode(c.debut+' · '+String(c.cls).toUpperCase()));
+      if(c.demi){ const lg=_sdcLibelleGroupe(c.cls, c.grpIds); if(lg) b.appendChild(_sdcEl('span','sdc-jour-g',lg)); }
+      b.onclick=()=>_sdcAller(c.cls, c.slotKey);
+      colJ.appendChild(b);
+    };
+    if(!J.matin.length && !J.aprem.length) colJ.appendChild(_sdcEl('div','sdc-jour-vide','Aucun cours ce jour.'));
+    if(J.matin.length){ colJ.appendChild(_sdcEl('div','sdc-jour-h','Matin')); J.matin.forEach(bouton); }
+    if(J.matin.length && J.aprem.length) colJ.appendChild(_sdcEl('div','sdc-jour-sep'));
+    if(J.aprem.length){ colJ.appendChild(_sdcEl('div','sdc-jour-h','Après-midi')); J.aprem.forEach(bouton); }
+  }
+  if(!cur){ grille.appendChild(_sdcEl('div','sdc-aucun', cls ? 'Aucun cours à afficher pour '+String(cls).toUpperCase()+'.' : 'Aucun cours.')); return; }
 
   const enregistre=!!cur.saved;
   const avant=!_sdcApresBascule(cur.dateStr, cls);
@@ -30001,14 +30163,20 @@ function _sdcRendre(){
   }
 
   // ── Lot B : ce qui reste des cours précédents (proposé, jamais imposé)
-  if(!lectureSeule) _sdcZoneRestes(pan, cls, slotKey, prog, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
+  // V11.3.92 — trois zones : saisie | interprétation | autres cours (haut) + bibliothèque (bas)
+  const colG=_sdcEl('div','sdc-col sdc-col-g'), colD=_sdcEl('div','sdc-col sdc-col-d'), colB=_sdcEl('div','sdc-col sdc-col-b');
+  grille.appendChild(colG); grille.appendChild(colD); grille.appendChild(colB);
+  const zAutres=_sdcEl('div','sdc-zautres'); colB.appendChild(zAutres);
+  const zBib=_sdcEl('div','sdc-bibzone'); colB.appendChild(zBib);
+  zBib.appendChild(_sdcEl('div','sdc-h','Bibliothèque'));
+  if(!lectureSeule) _sdcZoneRestes(colG, cls, slotKey, prog, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
 
   // ── Bibliothèque : choisir une séance, en prendre tout ou partie
-  const sels=_sdcEl('div','sdc-sels'); pan.appendChild(sels);
+  const sels=_sdcEl('div','sdc-sels'); zBib.appendChild(sels);
   const selSeq=_sdcEl('select'); const selSean=_sdcEl('select');
   const lab=(t,el)=>{ const w=_sdcEl('label','sdc-lab'); w.appendChild(_sdcEl('span',null,t)); w.appendChild(el); return w; };
-  sels.appendChild(lab('Bibliothèque — chapitre', selSeq)); sels.appendChild(lab('Séance', selSean));
-  const biblio=_sdcEl('div','sdc-biblio'); pan.appendChild(biblio);
+  sels.appendChild(lab('Chapitre', selSeq)); sels.appendChild(lab('Séance', selSean));
+  const biblio=_sdcEl('div','sdc-biblio'); zBib.appendChild(biblio);
   const o0=_sdcEl('option',null,'— choisir —'); o0.value=''; selSeq.appendChild(o0);
   prog.forEach((s,k)=>{ const o=_sdcEl('option',null,'SEQ'+_sdcSeqNum(s,k)+' — '+(s.titre||'')); o.value=String(k); selSeq.appendChild(o); });
   // V11.3.69 — créer par le texte (l'étoile fera le reste), ou aller retoucher la bibliothèque.
@@ -30071,8 +30239,6 @@ function _sdcRendre(){
   if(lectureSeule) Array.from(selSeq.options).forEach(o=>{ if(o.value==='__nouveau') o.remove(); });
 
   // ── Corps : saisie | interprétation
-  const corps=_sdcEl('div','sdc-corps'); pan.appendChild(corps);
-  const colG=_sdcEl('div','sdc-col'); const colD=_sdcEl('div','sdc-col'); corps.appendChild(colG); corps.appendChild(colD);
   colG.appendChild(_sdcEl('div','sdc-h','Ce qu’on fait — une ligne par élément'));
   if(recale.length) colG.appendChild(_sdcEl('div','sdc-info','ℹ La bibliothèque a changé depuis l’enregistrement de ce cours ; ses en-têtes ont été remis à jour : '+recale.join(' ; ')+'.'));
   const ta=_sdcEl('textarea','sdc-ta'); ta.value=texte0; ta.spellcheck=true; ta.readOnly=lectureSeule;
@@ -30163,7 +30329,7 @@ function _sdcRendre(){
   const liste=_sdcEl('div','sdc-liste'); colD.appendChild(liste);
   const effets=_sdcEl('div','sdc-effets'); colD.appendChild(effets);
   // ── Lot D : prendre des lignes dans d'autres cours (jamais d'écriture chez eux)
-  if(!lectureSeule) _sdcZoneAutresCours(colD, cls, cur, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
+  if(!lectureSeule) _sdcZoneAutresCours(zAutres, cls, cur, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
 
   const pied=_sdcEl('div','sdc-pied'); pan.appendChild(pied);
   const bEnr=_sdcEl('button','bp sdc-enr','Enregistrer'); pied.appendChild(bEnr);
@@ -30283,7 +30449,7 @@ function _sdcCarteLignes(inner, card, slot, cc){
   if(d && used) inner.appendChild(_sdcEl('div','sdc-carte-tot'+(used>d?' sdc-jauge-ko':''), used+' / '+d+' min'));
   card.style.cursor='pointer';
   card.title='Ouvrir ce cours dans « Saisir mes cours »';
-  card.addEventListener('click', ()=>openSaisieCours({cls:cc, slotKey:slot.slotKey}));
+  card.addEventListener('click', ()=>openSaisieCours({cls:cc, slotKey:slot.slotKey, retour:true}));
 }
 
 /* ── Lot B (v11.3.65) : « Reste des cours précédents » ────────────────────
@@ -30512,14 +30678,15 @@ function _sdcZoneAutresCours(parent, cls, cur, lectureSeule, prendre){
   const classes=_sdcClasses().filter(c=>_sdcNiveau(c).toLowerCase()===lv.toLowerCase());
   if(!classes.length) return;
   const zone=_sdcEl('div','sdc-autres'); parent.appendChild(zone);
-  zone.appendChild(_sdcEl('div','sdc-h','Autres cours — prendre des lignes'));
+  zone.appendChild(_sdcEl('div','sdc-h','Autres cours · '+String(lv).toLowerCase()+' — prendre des lignes'));
   if(!_sdcAutresPos) _sdcAutresPos={};
   classes.forEach(c2=>{
     const cours=_sdcCoursDeClasse(c2).filter(x=>!x.annule && !(c2===cls && x.slotKey===cur.slotKey));
     if(!cours.length) return;
     const cleP=c2+'|'+cur.slotKey;
     let i=cours.findIndex(x=>x.slotKey===_sdcAutresPos[cleP]);
-    if(i<0){ const p=_sdcCoursProche(cours, cur.dateStr); i=p?cours.indexOf(p):0; }
+    // V11.3.92 — par défaut : le DERNIER cours rempli à ±15 jours ; à défaut, le plus proche.
+    if(i<0){ const p=_sdcDernierRempli(cours, cur.dateStr, 15) || _sdcCoursProche(cours, cur.dateStr); i=p?cours.indexOf(p):0; }
     const carte=_sdcEl('div','sdc-autre'); zone.appendChild(carte);
     const tete=_sdcEl('div','sdc-autre-t'); carte.appendChild(tete);
     const corpsC=_sdcEl('div','sdc-autre-c'); carte.appendChild(corpsC);
