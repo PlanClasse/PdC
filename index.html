@@ -4290,7 +4290,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.95';
+const APP_VERSION = 'v11.3.96';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -12285,6 +12285,42 @@ function _buildPlanningAdjustmentFromSeance(clsCode, seance){
   };
 }
 
+/** V11.3.96 — Cours après la bascule : retire (sur place) les éléments « tâche » d'une
+ *  liste d'ajustements ; les compétences restent. Rend le nombre retiré. */
+function _retirerTachesApresBascule(items, slotKey, cls){
+  if(!Array.isArray(items) || typeof _sdcApresBascule!=='function' || !_sdcApresBascule(String(slotKey||'').slice(0,10), cls)) return 0;
+  let n=0;
+  for(let i=items.length-1;i>=0;i--){ if(items[i] && items[i].kind==='task'){ items.splice(i,1); n++; } }
+  return n;
+}
+/** V11.3.96 — Ajustements en attente : sans leurs tâches pour les cours après la
+ *  bascule ; vides → retirés. `apres(ajustement)` dit si le cours est après. Pure.
+ *  → {liste, retires} (retires = nb d'ajustements supprimés). */
+function _ajustementsSansTaches(liste, apres){
+  const out=[]; let retires=0;
+  (Array.isArray(liste)?liste:[]).forEach(a=>{
+    if(!a || !apres(a)){ out.push(a); return; }
+    const items=(Array.isArray(a.items)?a.items:[]).filter(it=>!(it && it.kind==='task'));
+    if(items.length) out.push(Object.assign({}, a, {items}));
+    else retires++;
+  });
+  return {liste:out, retires};
+}
+/** Impur. Nettoie S.planningAdjustments et S.pendingPlanningAlerts. Idempotent. */
+function _purgerAjustementsApresBascule(){
+  if(!S.planningBascule || typeof _sdcApresBascule!=='function') return 0;
+  const apres=(a)=>!a.reviewed && _sdcApresBascule(String(a.slotKey||'').slice(0,10), a.clsCode);
+  let total=0, change=false;
+  ['planningAdjustments','pendingPlanningAlerts'].forEach(k=>{
+    if(!Array.isArray(S[k]) || !S[k].length) return;
+    const avant=JSON.stringify(S[k]);
+    const r=_ajustementsSansTaches(S[k], apres);
+    if(JSON.stringify(r.liste)!==avant){ S[k]=r.liste; change=true; }
+    if(k==='planningAdjustments') total=r.retires;
+  });
+  if(change) try{ saveS(); }catch(e){}
+  return total;
+}
 function _buildPlanningItemsFromRawTaskState(curCls, slotKey, tachesWrap, tacheDecisions, tachePartiels, evalCompWrap){
   const items=[];
   const nextSlotBase=getNextSlot(curCls, slotKey);
@@ -29287,6 +29323,7 @@ function _apresRemplacementDonnees(){
   try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(); }catch(e){}
   let r={recuperes:[], ignores:[]};
   try{ r=_sdcRecupererLignes(); }catch(e){ console.warn('[sdc] récupération après remplacement', e); }
+  try{ _purgerAjustementsApresBascule(); }catch(e){ console.warn('[sdc] ajustements après remplacement', e); }   // V11.3.96
   if(r.recuperes.length || r.ignores.length){
     console.log('[sdc] après remplacement des données — lignes récupérées :', r.recuperes, '— à réenregistrer :', r.ignores);
     const lib=(dk)=>{ const i=dk.indexOf('|'); return dk.slice(0,i).toUpperCase()+' '+dk.slice(i+1,i+11).split('-').reverse().join('/'); };
@@ -47169,6 +47206,12 @@ function openSaveSeance(){
       const sig=(it.kind||'')+'|'+(it.action||'')+'|'+(it.sourceTaskKey||'')+'|'+(it.compId||'')+'|'+(it.label||'');
       if(!planningItems.some(x=>((x.kind||'')+'|'+(x.action||'')+'|'+(x.sourceTaskKey||'')+'|'+(x.compId||'')+'|'+(x.label||''))===sig)) planningItems.push(it);
     });
+    // V11.3.96 — après la bascule, rien ne glisse sur les cours suivants : une tâche
+    // reportée / commencée est PROPOSÉE dans « Saisir mes cours » (lot B, v11.3.65).
+    // Plus d'ajustement « à valider » pour les tâches (le constructeur automatique les
+    // retirait déjà, pas ce chemin), ni de décalage d'éval (Fix Éval W3). Les
+    // compétences restent. Les décisions, elles, sont gardées dans la séance.
+    _retirerTachesApresBascule(planningItems, slotKey, curCls);
 
     // Construire séance COMPLÈTE avant sauvegarde
     const statuts={};
@@ -61517,6 +61560,9 @@ migrateModeOpDurees(); // Migration durées décalées par tâches vides
 migrateCocheDates(); // V11.3.35 (Q4) — coches réunies sous la date DU COURS (one-time, idempotente)
 // V11.3.89 — cours composés : lignes effacées par l'ancien loadS, reconstruites
 // depuis le texte enregistré (idempotent : ne touche que les cours sans lignes).
+// V11.3.96 — ajustements « à valider » hérités de l'ancien report automatique : sans
+// objet après la bascule (tâches proposées dans « Saisir mes cours »). Idempotent.
+try{ window._ajustPurges=_purgerAjustementsApresBascule(); }catch(e){ console.warn('[sdc] ajustements', e); }
 try{
   const _rl=_sdcRecupererLignes();
   window._sdcRecupRapport=_rl;
