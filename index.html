@@ -4213,7 +4213,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.87';
+const APP_VERSION = 'v11.3.88';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28993,7 +28993,7 @@ function _sdcRangsCles(entry, seanPrincipale, prog){
  *  puis les lignes du texte dans leur ordre, puis le reste (TAF, ajouts…) dans
  *  l'ordre d'avant. rangs null → liste inchangée. Pure. */
 function _sdcOrdonnerItems(items, rangs){
-  if(!rangs) return items;
+  if(!rangs) return items.slice();   // V11.3.88 — toujours une COPIE (cf. appelant)
   const tete=[], texte=[], reste=[];
   items.forEach(it=>{
     if(it.isReporter) tete.push(it);
@@ -45469,8 +45469,10 @@ function openSaveSeance(){
 
     // V11.3.87 — cours composé : lignes dans l'ordre de son texte (tâches reliées,
     // docs reliés, lignes tapées mêlés comme dans « Saisir mes cours »).
-    { const _ord=_sdcOrdonnerItems(items, _sdcRangsCles(entry4, _primarySeanIdV163, prog2b));
-      items.length=0; _ord.forEach(it=>items.push(it)); }
+    // V11.3.88 — cours NON composé : on ne touche pas à la liste. (v11.3.87 la vidait :
+    // le helper rendait le MÊME tableau, remis à zéro juste avant d'être recopié.)
+    { const _rangs=_sdcRangsCles(entry4, _primarySeanIdV163, prog2b);
+      if(_rangs){ const _ord=_sdcOrdonnerItems(items, _rangs); items.splice(0, items.length, ..._ord); } }
 
     // ── v37 Bloc 2 (§5.13 fix) : pré-calcul des vérifs avant return précoce ──
     // Sans cela, un slot sans tâches propres mais avec des TAFs à vérifier ici
