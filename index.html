@@ -4213,7 +4213,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.89';
+const APP_VERSION = 'v11.3.90';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -27737,6 +27737,8 @@ function _fdjRenderCard(event, todayStr){
     if(p.propre){
       // V11.3.84 — cours composé sans séance reconnue : ses seules lignes propres.
       if(_sdcT.avant.length)  items.push({key:'taches', lbl:'Tâches',     vals: _sdcT.avant});
+      { const _tp = _sdcTafsDuCours(slotKey, cls, null) || [];   // V11.3.90
+        if(_tp.length) items.push({key:'taf', lbl:'TAF', vals: _tp}); }
       if(_sdcPr.docs.length)  items.push({key:'docs',   lbl: effectif ? ('Docs (' + effectif + ' élèves)') : 'Docs', vals: _sdcPr.docs});
       if(_sdcPr.ress.length)  items.push({key:'ress',   lbl:'Ressources', vals: _sdcPr.ress});
     }
@@ -27767,7 +27769,9 @@ function _fdjRenderCard(event, todayStr){
         tachesLabels = (_sdcT.parSean[sean.id] || []).slice();
         if(idx === 0) tachesLabels = _sdcT.avant.concat(tachesLabels);
       }
-      const tafs = Array.isArray(sean.tafs) ? sean.tafs.filter(Boolean) : (sean.taf ? [sean.taf] : []);
+      // V11.3.90 — cours composé : le TAF de son texte (1er bloc), jamais la bibliothèque.
+      const tafs = _sdcEnt ? (idx === 0 ? (_sdcTafsDuCours(slotKey, cls, null) || []) : [])
+        : Array.isArray(sean.tafs) ? sean.tafs.filter(Boolean) : (sean.taf ? [sean.taf] : []);
       let docs = Array.isArray(sean.docs) ? sean.docs.filter(Boolean) : [];
       let ress = Array.isArray(sean.ressources) ? sean.ressources.filter(Boolean) : [];
       // V11.3.82 — cours composé : seulement les lignes que son texte a reliées,
@@ -28976,6 +28980,22 @@ function _docsARemettreAbsents(slotKey, cls, grp){
 /** V11.3.85 — Élément libre = doc ou ressource tapé dans « Saisir mes cours ». Pure. */
 function _sdcFiDocRes(fi){
   return !!(fi && fi.sdc && (fi.type==='doc' || fi.type==='ressource'));
+}
+/** V11.3.90 — TAF d'un cours composé : SON TEXTE fait foi (comme docs et ressources),
+ *  jamais la bibliothèque. null = cours non composé (TAF de la séance, comme avant).
+ *  Même règle que le champ TAF du modal (_draftOrSaved) : le brouillon (préparé
+ *  par « Saisir mes cours », retouché dans le modal), sinon la séance enregistrée.
+ *  Les clés taf_i suivent CET ordre — celui de l'auto-cochage à l'enregistrement. */
+function _sdcTafsDuCours(slotKey, cls, saved){
+  if(!_sdcEntreeDuCours(slotKey, cls)) return null;
+  const D=(typeof S!=='undefined' && S && S.seanceContentDraft) || {};
+  const d=D[_sdcClsCanon(cls)+'|'+slotKey] || D[cls+'|'+slotKey];
+  const enreg=saved ? getTafArray(saved).join('\n') : '';
+  return _sdcTafsTexte(_draftOrSaved(d ? d.taf : undefined, enreg).value);
+}
+/** Une ligne = un TAF (lignes vides ignorées). Pure. */
+function _sdcTafsTexte(txt){
+  return String(txt||'').split('\n').map(t=>t.trim()).filter(Boolean);
 }
 /** V11.3.87 — Élément libre = TÂCHE tapée dans « Saisir mes cours » : une vraie
  *  tâche du cours (✂️, report proposé à la validation), pas une « tâche libre ». Pure. */
@@ -32897,7 +32917,10 @@ function getTafsForSlot(clsCode, sk){
   const _grpTS=(typeof getCurrentGrpId==='function')?getCurrentGrpId(clsCode, sk):'';
   const saved=readSeancesBucket(clsCode, _grpTS).find(s=>s.slotKey===sk);
   if(saved) pushTafs(getTafArray(saved));
-  if(!tafList.length){
+  // V11.3.90 — cours composé : son texte fait foi, jamais la bibliothèque.
+  const _sdcT=_sdcTafsDuCours(sk, clsCode, saved||null);
+  if(_sdcT){ tafList.splice(0, tafList.length); pushTafs(_sdcT); }
+  else if(!tafList.length){
     (entry.seances||[]).forEach(se=>{
       const sq=prog.find(s=>s.id===se.seqId);
       const sn=sq&&sq.seances?sq.seances.find(s=>s.id===se.seanId):null;
@@ -37812,7 +37835,11 @@ function toggleCoche(slotKey, clsCode, itemKey, checked, labelHint){
           const _saved = _sb.find(x=>x.slotKey===slotKey);
           const _tafs = (typeof getTafArray==='function')
             ? (_saved && getTafArray(_saved).length ? getTafArray(_saved) : null) : null;
+          // V11.3.90 — cours composé : repli sur le TAF de son texte, pas la bibliothèque.
+          const _tafsSdc = (_tafs && _tafs[_tafIdx]) ? null
+            : (typeof _sdcTafsDuCours==='function' ? _sdcTafsDuCours(slotKey, clsCode, _saved||null) : null);
           if(_tafs && _tafs[_tafIdx]) _label = _tafs[_tafIdx];
+          else if(_tafsSdc){ if(_tafsSdc[_tafIdx]) _label = _tafsSdc[_tafIdx]; }
           else {
             // Fallback : agréger les TAFs de toutes les séances mappées sur ce slot
             const _layout = (typeof getSlotLayout==='function') ? getSlotLayout(clsCode, slotKey) : null;
@@ -40008,7 +40035,10 @@ function renderVoletDroit(){
   // Phase 2d v32 : saved séance du slot courant (Cat A).
   const _grpVdN=(typeof getCurrentGrpId==='function')?getCurrentGrpId(clsCode, slotKey):'';
   const savedSeance=readSeancesBucket(clsCode, _grpVdN).find(s=>s.slotKey===slotKey);
-  const tafs=getTafArray(savedSeance).length
+  // V11.3.90 — cours composé : le TAF de son texte, jamais celui de la bibliothèque.
+  const _vdTafsSdc=_sdcTafsDuCours(slotKey, clsCode, savedSeance||null);
+  const tafs=_vdTafsSdc ? _vdTafsSdc.map(taf=>({taf}))
+    : getTafArray(savedSeance).length
     ? getTafArray(savedSeance).map(taf=>({taf}))
     : allSeans.flatMap(sn=>getTafArray(sn).map(taf=>({taf})));
   if(tafs.length){
@@ -40017,7 +40047,8 @@ function renderVoletDroit(){
     //  (une séance P2 ne doit pas compter pour un slot curSlot P1).
     const _vdPrevHandledTaf=new Set();
     const _allSeanR4=readAllSeancesForClass(clsCode);
-    allSeans.forEach(sn=>{
+    // V11.3.90 — sans objet pour un cours composé : ses taf_i numérotent SON texte.
+    (_vdTafsSdc ? [] : allSeans).forEach(sn=>{
       if(!sn||!sn.id) return;
       _allSeanR4.forEach(prevSe=>{
         if(!prevSe||prevSe.slotKey===slotKey||prevSe.seanId!==sn.id) return;
@@ -45408,8 +45439,8 @@ function openSaveSeance(){
         if(_reporterLabels.has(d.trim())) return;
         items.push({key:_k, icon:'📄', label:_badge+d, checked:!!coches2[_k], source:'doc', _otherSean:true});
       });
-      // 3. TAF
-      (typeof getTafArray==='function' ? (getTafArray(o.sean)||[]) : []).forEach((tafTxt,ti)=>{
+      // 3. TAF — V11.3.90 : pas pour un cours composé (son texte fait foi, cf. section 3)
+      (_sdcEntreeComposee(entry4) ? [] : typeof getTafArray==='function' ? (getTafArray(o.sean)||[]) : []).forEach((tafTxt,ti)=>{
         const _k='taf_'+o.sean.id+'_'+ti;
         if(_reporterLabels.has(String(tafTxt||'').trim())) return;
         items.push({key:_k, icon:'📌', label:_badge+tafTxt, checked:!!coches2[_k], source:'taf', _otherSean:true});
@@ -45496,7 +45527,17 @@ function openSaveSeance(){
     });
 
     // 3. TAF — sauter les TAF déjà donnés/annulés dans un slot précédent OU déjà en reporter section 0
-    if(sean2){
+    // V11.3.90 — cours composé : le TAF est celui du CHAMP TAF (rempli depuis le texte),
+    // indexé comme l'auto-cochage de l'enregistrement ; la bibliothèque n'y entre pas,
+    // ni le filtre « déjà traité dans un autre cours de la même séance » (Fix M), qui
+    // suppose la numérotation de la bibliothèque.
+    if(_sdcEntreeComposee(entry4)){
+      _sdcTafsTexte(tafTa.value).forEach((tafTxt,ti)=>{
+        const _tk='taf_'+ti;
+        if(_reporterDocTafKeys.has(_tk) || _reporterLabels.has(tafTxt)) return;
+        items.push({key:_tk, icon:'📌', label:tafTxt, checked:!!coches2[_tk], source:'taf'});
+      });
+    } else if(sean2){
       getTafArray(sean2).forEach((tafTxt,ti)=>{
         const _tk='taf_'+ti;
         if(_prevHandledDocTaf.has(_tk)) return;
@@ -46297,6 +46338,8 @@ function openSaveSeance(){
 
   if(extra._seqSel){ const oc=extra._seqSel.onchange; extra._seqSel.onchange=()=>{ if(oc)oc(); buildTachesChecklist(); }; }
   if(extra._seanSel){ const oc=extra._seanSel.onchange; extra._seanSel.onchange=()=>{ if(oc)oc(); buildTachesChecklist(); }; }
+  // V11.3.90 — cours composé : la liste à cocher suit le champ TAF (à la sortie du champ).
+  tafTa.addEventListener('change', ()=>{ if(_sdcEntreeDuCours(slotKey, curCls)) buildTachesChecklist(); });
   // Déclencher buildTachesChecklist une fois les sels restaurés (les valeurs sont déjà en place)
   buildTachesChecklist();
   // Si aucune tâche affichée mais une séquence est sélectionnée, forcer un rebuild (cas mapping anticipé)
