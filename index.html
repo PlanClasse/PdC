@@ -4290,7 +4290,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.92';
+const APP_VERSION = 'v11.3.93';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29261,6 +29261,25 @@ function _sdcLignesRecuperees(entry, texte, prog, idBase){
   if(!Array.isArray(out.seances) || !out.seances.length) out.seances=e.seances;
   if(!Array.isArray(out.freeItems)) out.freeItems=[];
   return {etat:'recupere', entry:out};
+}
+/** V11.3.93 — À appeler APRÈS tout remplacement des données (synchro reçue, import
+ *  de sauvegarde). Avant : seul le démarrage réparait les lignes ; une copie reçue
+ *  d'un appareil resté sur une ancienne version (qui les efface) laissait les
+ *  tuiles VIDES jusqu'au rechargement, et le cache du moteur gardait l'ancien
+ *  calcul. Vide le cache, répare, et le dit. Impur. */
+function _apresRemplacementDonnees(){
+  try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(); }catch(e){}
+  let r={recuperes:[], ignores:[]};
+  try{ r=_sdcRecupererLignes(); }catch(e){ console.warn('[sdc] récupération après remplacement', e); }
+  if(r.recuperes.length || r.ignores.length){
+    console.log('[sdc] après remplacement des données — lignes récupérées :', r.recuperes, '— à réenregistrer :', r.ignores);
+    const lib=(dk)=>{ const i=dk.indexOf('|'); return dk.slice(0,i).toUpperCase()+' '+dk.slice(i+1,i+11).split('-').reverse().join('/'); };
+    let m='';
+    if(r.recuperes.length) m+=r.recuperes.length+' cours de « Saisir mes cours » réparé'+(r.recuperes.length>1?'s':'');
+    if(r.ignores.length) m+=(m?' · ':'')+'à réenregistrer : '+r.ignores.map(lib).join(', ');
+    setTimeout(()=>{ try{ showDropToast(m); }catch(e){} }, 300);
+  }
+  return r;
 }
 /** Impur. Parcourt les brouillons de « Saisir mes cours ». Idempotent. */
 function _sdcRecupererLignes(){
@@ -61371,6 +61390,8 @@ function importData(input){
           if(!S.edt.vacances) S.edt.vacances=[...VACANCES_DEFAULT];
           if(!S.edt.overrides) S.edt.overrides=[];
           saveS();
+          // V11.3.93 — cache du moteur vidé + lignes des cours composés réparées.
+          _apresRemplacementDonnees();
           renderMenu();
           renderEdtList();
           if(st) st.textContent=`✓ Sauvegarde restaurée — ${file.name}`;
@@ -67091,6 +67112,8 @@ function analyseCopy(){
     Object.keys(S).forEach(k => delete S[k]);
     Object.assign(S, remoteData);
     if(typeof saveS === 'function') saveS({skipSyncStamp: true});
+    // V11.3.93 — cache du moteur vidé + lignes des cours composés réparées.
+    if(typeof _apresRemplacementDonnees === 'function') _apresRemplacementDonnees();
     if(typeof renderApp === 'function') renderApp();
   }
 
@@ -67668,6 +67691,8 @@ function analyseCopy(){
     Object.keys(S).forEach(function(k){ delete S[k]; });
     Object.assign(S, remoteData);
     if(typeof saveS === 'function') saveS({ skipSyncStamp: true });
+    // V11.3.93 — cache du moteur vidé + lignes des cours composés réparées.
+    if(typeof _apresRemplacementDonnees === 'function') _apresRemplacementDonnees();
     if(typeof renderApp === 'function') renderApp();
   }
 
