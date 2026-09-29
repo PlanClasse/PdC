@@ -4290,7 +4290,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.94';
+const APP_VERSION = 'v11.3.95';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29299,12 +29299,13 @@ function _apresRemplacementDonnees(){
 }
 /** Impur. Parcourt les brouillons de « Saisir mes cours ». Idempotent. */
 function _sdcRecupererLignes(){
-  const res={recuperes:[], ignores:[]};
-  if(!S.planningBascule || !S.seanceContentDraft) return res;
+  const res={recuperes:[], ignores:[], ignoresValides:[]};
+  if(!S.planningBascule) return res;
   if(!S.edtProgMapping) S.edtProgMapping={};
   const touchees=new Set();
-  Object.keys(S.seanceContentDraft).forEach(dk=>{
-    const d=S.seanceContentDraft[dk];
+  const D=S.seanceContentDraft||{};
+  Object.keys(D).forEach(dk=>{
+    const d=D[dk];
     if(!d || typeof d.saisieEnreg!=='string' || !d.saisieEnreg.trim()) return;
     const bar=dk.indexOf('|'); if(bar<0) return;
     const cls=dk.slice(0,bar), slotKey=dk.slice(bar+1);
@@ -29314,6 +29315,26 @@ function _sdcRecupererLignes(){
     const r=_sdcLignesRecuperees(S.edtProgMapping[key], d.saisieEnreg, prog, slotKey+cls);
     if(r.etat==='recupere'){ S.edtProgMapping[key]=r.entry; res.recuperes.push(dk); touchees.add(cls); }
     else if(r.etat==='different') res.ignores.push(dk);
+  });
+  // V11.3.95 — cours VALIDÉS dont le texte a été jeté à la validation (avant v11.3.94) :
+  // on repart de la séance enregistrée (en-têtes + contenu, cf. _sdcTexteCoursEnregistre).
+  // Même garde : accepté seulement si les lignes tapées retrouvées sont celles stockées.
+  // Un refus reste silencieux ici (un cours validé ne se réenregistre pas dans l'écran) :
+  // sa tuile montre alors le contenu enregistré (_sdcCarteLignes).
+  Object.keys(S.cl||{}).forEach(cls=>{
+    let ses=[]; try{ ses=(typeof readAllSeancesForClass==='function') ? (readAllSeancesForClass(cls)||[]) : []; }catch(e){ ses=[]; }
+    ses.forEach(se=>{
+      if(!se || !se.slotKey || !_sdcApresBascule(String(se.slotKey).slice(0,10), cls)) return;
+      const d=D[cls+'|'+se.slotKey];
+      if(d && typeof d.saisieEnreg==='string' && d.saisieEnreg.trim()) return;   // déjà traité ci-dessus
+      const prog=getProgression(_sdcNiveau(cls))||[];
+      const texte=_sdcTexteCoursEnregistre(se, d||null, prog);
+      if(!String(texte).trim()) return;
+      const key=_sdcMapKey(se.slotKey, cls);
+      const r=_sdcLignesRecuperees(S.edtProgMapping[key], texte, prog, se.slotKey+cls);
+      if(r.etat==='recupere'){ S.edtProgMapping[key]=r.entry; res.recuperes.push(cls+'|'+se.slotKey); touchees.add(cls); }
+      else if(r.etat==='different') res.ignoresValides.push(cls+'|'+se.slotKey);
+    });
   });
   if(res.recuperes.length){
     touchees.forEach(c=>{ try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(c); }catch(e){} });
@@ -30515,6 +30536,13 @@ function _sdcCarteLignes(inner, card, slot, cc){
     if(it.dureeSlot) row.appendChild(_sdcEl('span','sdc-dur',it.dureeSlot+' min'));
     liste.appendChild(row);
   });
+  // V11.3.95 — cours VALIDÉ sans lignes au planning (texte perdu, non réparable) :
+  // la tuile montre ce qui a été enregistré plutôt que « Vide ».
+  if(!liste.childNodes.length && slot.saved){
+    String(slot.saved.contenu||'').split('\n').map(x=>x.trim()).filter(Boolean).forEach(l=>{
+      const row=_sdcEl('div','sdc-carte-i sdc-carte-b'); row.appendChild(_sdcEl('span',null,l)); liste.appendChild(row);
+    });
+  }
   if(!liste.childNodes.length) liste.appendChild(_sdcEl('div','sdc-carte-vide','Vide — cliquer pour composer'));
   inner.appendChild(liste);
   const d=_sdcDureeCours(slot.debut, slot.fin||(typeof getSlotFin==='function'?getSlotFin(slot.debut):''));
@@ -53952,6 +53980,11 @@ function renderVueAnnuelle(){
   _updateUndoBtn();
 
   // Bouton volet latéral
+  // V11.3.95 — classes après la bascule : plus de volet « Progression à affecter »
+  // (le glisser-déposer y est refusé depuis v11.3.64 ; on compose dans « Saisir mes
+  // cours »). Les groupes gardent leur bibliothèque en lecture.
+  const _vaSansVolet = vaState.scopeMode==='classes' && !!S.planningBascule;
+  if(!_vaSansVolet){
   bar.appendChild(mkSep());
   const sideBtn=document.createElement('button');
   sideBtn.className='fp-tab'+(vaState.sidebarOpen?' act':'');
@@ -53959,6 +53992,7 @@ function renderVueAnnuelle(){
   sideBtn.textContent='📚 Progression';
   sideBtn.onclick=()=>{ vaState.sidebarOpen=!vaState.sidebarOpen; renderVueAnnuelle(); };
   bar.appendChild(sideBtn);
+  }
 
   mainCol.appendChild(bar);
 
@@ -54141,7 +54175,7 @@ function renderVueAnnuelle(){
   // ── Volet latéral droit ──
   // V035-v181.15.55 — Classes : volet drag éprouvé (inchangé). Groupes : bibliothèque
   // de séquences scope-aware (lecture seule). Même bouton "📚 Progression" pour ouvrir.
-  if(vaState.sidebarOpen){
+  if(vaState.sidebarOpen && !_vaSansVolet){
     if(vaState.scopeMode==='classes'){
       pane.appendChild(buildVueAnnuelleSidebar(lv, prog, classes, classSlots, seqColorMap));
     } else {
