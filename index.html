@@ -4213,7 +4213,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.88';
+const APP_VERSION = 'v11.3.89';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -5368,6 +5368,14 @@ setTimeout(()=>{
   catch(e){ console.warn('[§5.31c cleanup load]', e); }
 }, 0);
 
+/** V11.3.89 — Une entrée de planning porte-t-elle encore quelque chose ? (séance,
+ *  élément libre, ligne d'un cours composé, opération isolée / sautée, coupure). Pure. */
+function _mapEntreeUtile(e){
+  if(!e) return false;
+  const n=(a)=>Array.isArray(a) && a.length>0;
+  return n(e.seances) || n(e.freeItems) || n(e.lignes) || n(e.isolatedOps) || n(e.skippedOps)
+    || !!(e.stopAfterSlot && typeof e.stopAfterSlot==='object' && Object.keys(e.stopAfterSlot).length);
+}
 function loadS(){
   try{
     const r=localStorage.getItem('pc6');
@@ -5639,17 +5647,23 @@ function loadS(){
       if(!parsed.statutsCours) parsed.statutsCours={};
       // Migration v2 : normaliser edtProgMapping → {seances:[{seqId,seanId}], freeItems:[]}
       // Supprime tous les champs de continuation (désormais calculés à la volée)
+      // V11.3.89 — BUG : cette normalisation RECONSTRUISAIT chaque entrée avec
+      // {seances, freeItems} seulement, à CHAQUE démarrage : elle effaçait les lignes
+      // des cours composés (« Saisir mes cours »), stopAfterSlot, isolatedOps,
+      // skippedOps, et twinOfSlotKey des séances. Désormais on ne retire que
+      // l'ancien format (seqId/seanId à la racine) et les séances de continuation.
       Object.keys(parsed.edtProgMapping).forEach(k=>{
         const raw=parsed.edtProgMapping[k];
         if(!raw){ delete parsed.edtProgMapping[k]; return; }
-        const seances=(raw.seances||( raw.seqId ? [raw] : []));
+        const seances=(raw.seances||( raw.seqId ? [{seqId:raw.seqId, seanId:raw.seanId}] : []));
         const cleaned=seances
-          .filter(se=>!se.isContinuation)
-          .map(se=>({seqId:se.seqId||se.seqId, seanId:se.seanId||null}))
-          .filter(se=>se.seqId);
+          .filter(se=>se && !se.isContinuation && se.seqId)
+          .map(se=>Object.assign({}, se, {seanId:se.seanId||null}));
         const freeItems=raw.freeItems||[];
-        if(!cleaned.length&&!freeItems.length){ delete parsed.edtProgMapping[k]; return; }
-        parsed.edtProgMapping[k]={seances:cleaned, freeItems};
+        const e=Object.assign({}, raw, {seances:cleaned, freeItems});
+        if(!raw.seances){ delete e.seqId; delete e.seanId; }
+        if(!_mapEntreeUtile(e)){ delete parsed.edtProgMapping[k]; return; }
+        parsed.edtProgMapping[k]=e;
       });
       delete parsed._migrationDeduplication;
       // Migration : ancien format "chapitres" → nouvelle structure Séquences/Séances
@@ -29115,6 +29129,49 @@ function _sdcReparerTout(){
   });
   if(n){ touchees.forEach(c=>{ try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(c); }catch(e){} }); saveS(); }
   return n;
+}
+
+/* V11.3.89 — Récupération des lignes effacées au démarrage (bug de loadS, §5.75).
+   Le texte ENREGISTRÉ du cours (brouillon, `saisieEnreg`) survit : on le réinterprète
+   comme à l'enregistrement. Les identifiants des lignes tapées sont déterministes
+   (slotKey+classe, rang) : on n'accepte la reconstruction que si elle retrouve
+   EXACTEMENT les lignes tapées encore stockées (coches et décisions y sont liées). */
+/** Pure. → {etat:'intact'|'sans-texte'|'vide'|'different'|'recupere', entry?} */
+function _sdcLignesRecuperees(entry, texte, prog, idBase){
+  if(entry && Array.isArray(entry.lignes) && entry.lignes.length) return {etat:'intact'};
+  if(!String(texte||'').trim() || !Array.isArray(prog) || !prog.length) return {etat:'sans-texte'};
+  const e=_sdcConstruireEntree(_sdcInterpreter(texte, prog), entry, idBase);
+  if(!e.lignes.length) return {etat:'vide'};
+  const sig=(arr)=>JSON.stringify((Array.isArray(arr)?arr:[]).filter(f=>f && f.sdc).map(f=>[f.id, f.type, String(f.label||'').trim()]));
+  if(sig(entry && entry.freeItems)!==sig(e.freeItems)) return {etat:'different'};
+  const out=Object.assign({isolatedOps:[], skippedOps:[]}, entry||{}, {lignes:e.lignes});
+  if(!Array.isArray(out.seances) || !out.seances.length) out.seances=e.seances;
+  if(!Array.isArray(out.freeItems)) out.freeItems=[];
+  return {etat:'recupere', entry:out};
+}
+/** Impur. Parcourt les brouillons de « Saisir mes cours ». Idempotent. */
+function _sdcRecupererLignes(){
+  const res={recuperes:[], ignores:[]};
+  if(!S.planningBascule || !S.seanceContentDraft) return res;
+  if(!S.edtProgMapping) S.edtProgMapping={};
+  const touchees=new Set();
+  Object.keys(S.seanceContentDraft).forEach(dk=>{
+    const d=S.seanceContentDraft[dk];
+    if(!d || typeof d.saisieEnreg!=='string' || !d.saisieEnreg.trim()) return;
+    const bar=dk.indexOf('|'); if(bar<0) return;
+    const cls=dk.slice(0,bar), slotKey=dk.slice(bar+1);
+    if(!_sdcApresBascule(slotKey.slice(0,10), cls)) return;
+    const prog=getProgression(_sdcNiveau(cls))||[];
+    const key=_sdcMapKey(slotKey, cls);
+    const r=_sdcLignesRecuperees(S.edtProgMapping[key], d.saisieEnreg, prog, slotKey+cls);
+    if(r.etat==='recupere'){ S.edtProgMapping[key]=r.entry; res.recuperes.push(dk); touchees.add(cls); }
+    else if(r.etat==='different') res.ignores.push(dk);
+  });
+  if(res.recuperes.length){
+    touchees.forEach(c=>{ try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(c); }catch(e){} });
+    saveS();
+  }
+  return res;
 }
 /** À la réouverture d'un cours composé, les en-têtes du texte suivent la
  *  bibliothèque : si la séance liée est passée du rang 2 au rang 3, « /Séance 2 »
@@ -61112,6 +61169,20 @@ applyFontSize(currentFontSize);
 migrateSeatKeys(); // Migration seats display→clé (one-time, idempotent)
 migrateModeOpDurees(); // Migration durées décalées par tâches vides
 migrateCocheDates(); // V11.3.35 (Q4) — coches réunies sous la date DU COURS (one-time, idempotente)
+// V11.3.89 — cours composés : lignes effacées par l'ancien loadS, reconstruites
+// depuis le texte enregistré (idempotent : ne touche que les cours sans lignes).
+try{
+  const _rl=_sdcRecupererLignes();
+  window._sdcRecupRapport=_rl;
+  if(_rl.recuperes.length || _rl.ignores.length){
+    console.log('[sdc] lignes récupérées :', _rl.recuperes, '— à réenregistrer à la main :', _rl.ignores);
+    const _lib=(dk)=>{ const i=dk.indexOf('|'); return dk.slice(0,i).toUpperCase()+' '+dk.slice(i+1,i+11).split('-').reverse().join('/'); };
+    let _msg='';
+    if(_rl.recuperes.length) _msg+=_rl.recuperes.length+' cours de « Saisir mes cours » réparé'+(_rl.recuperes.length>1?'s':'');
+    if(_rl.ignores.length) _msg+=(_msg?' · ':'')+'à réenregistrer : '+_rl.ignores.map(_lib).join(', ');
+    setTimeout(()=>{ try{ showDropToast(_msg); }catch(e){} }, 1500);
+  }
+}catch(e){ console.warn('[sdc] récupération des lignes', e); }
 
 /* ═══════════════════════════════════════════════════════════════
    MODE CONTRAINTES — Mes Plans de classe uniquement
