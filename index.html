@@ -4213,7 +4213,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.86';
+const APP_VERSION = 'v11.3.87';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28963,6 +28963,46 @@ function _docsARemettreAbsents(slotKey, cls, grp){
 function _sdcFiDocRes(fi){
   return !!(fi && fi.sdc && (fi.type==='doc' || fi.type==='ressource'));
 }
+/** V11.3.87 — Élément libre = TÂCHE tapée dans « Saisir mes cours » : une vraie
+ *  tâche du cours (✂️, report proposé à la validation), pas une « tâche libre ». Pure. */
+function _sdcFiTache(fi){
+  return !!(fi && fi.sdc && fi.type==='modeOp');
+}
+/** V11.3.87 — Rang, dans le texte d'un cours composé, de chaque clé de la liste à
+ *  cocher du modal Séance (mo_i / doc_i pour la séance principale, mo_<seanId>_i /
+ *  doc_<seanId>_i pour une autre, fi_<id> pour une ligne tapée). null = cours non
+ *  composé. Les tâches reliées sont relocalisées comme dans le moteur. Pure. */
+function _sdcRangsCles(entry, seanPrincipale, prog){
+  if(!_sdcEntreeComposee(entry)) return null;
+  const rangs={};
+  let r=0;
+  const poser=(k)=>{ if(k && !(k in rangs)) rangs[k]=r++; };
+  const cle=(pfx, seanId, idx)=>seanId===seanPrincipale ? pfx+idx : pfx+seanId+'_'+idx;
+  entry.lignes.forEach(l=>{
+    if(!l) return;
+    if(l.src==='cours'){ poser('fi_'+l.fiId); return; }
+    if(l.src!=='biblio' || !l.seanId) return;
+    if(l.kind==='tache'){
+      const it=_sdcLigneVersItem(l, entry.freeItems, prog);
+      if(it && it.type==='task' && typeof it.taskIdx==='number') poser(cle('mo_', l.seanId, it.taskIdx));
+    } else if(l.kind==='doc' && typeof l.idx==='number') poser(cle('doc_', l.seanId, l.idx));
+  });
+  return rangs;
+}
+/** V11.3.87 — Liste à cocher dans l'ordre du texte : reports reçus en tête (inchangé),
+ *  puis les lignes du texte dans leur ordre, puis le reste (TAF, ajouts…) dans
+ *  l'ordre d'avant. rangs null → liste inchangée. Pure. */
+function _sdcOrdonnerItems(items, rangs){
+  if(!rangs) return items;
+  const tete=[], texte=[], reste=[];
+  items.forEach(it=>{
+    if(it.isReporter) tete.push(it);
+    else if(it.key in rangs) texte.push(it);
+    else reste.push(it);
+  });
+  texte.sort((a,b)=>rangs[a.key]-rangs[b.key]);
+  return tete.concat(texte, reste);
+}
 /** V11.3.83 — Entrée composée d'un cours (slotKey, classe ; casse tolérée), sinon null. */
 function _sdcEntreeDuCours(slotKey, cls){
   if(!slotKey || !cls) return null;
@@ -45418,13 +45458,19 @@ function openSaveSeance(){
     // V11.3.85 — une ressource tapée dans « Saisir mes cours » n'est pas à cocher
     // (pas plus que celles de la bibliothèque) ; un doc propre au cours, si.
     (entry4.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif'&&!(fi.sdc&&fi.type==='ressource')).forEach(fi=>{
-      items.push({key:'fi_'+fi.id, icon:fi.icon||'📝', label:fi.label+(fi.duree?' ('+fi.duree+'mn)':''), checked:!!coches2['fi_'+fi.id], source:'free', fi});
+      // V11.3.87 — durée portée par l'item : c'est elle que reprennent ✂️ et ↩.
+      items.push({key:'fi_'+fi.id, icon:fi.icon||'📝', label:fi.label+(fi.duree?' ('+fi.duree+'mn)':''), checked:!!coches2['fi_'+fi.id], source:'free', fi, duree:fi.duree||0});
     });
 
     // 5. Extra tâches ajoutées manuellement
     extraTaches.forEach((et,ei)=>{
       items.push({key:'ex_'+ei, icon:et.icon||'➕', label:et.label, checked:!!coches2['ex_'+ei], source:et.source||'extra', duree:et.duree||0, suiviSynthese:et.suiviSynthese});
     });
+
+    // V11.3.87 — cours composé : lignes dans l'ordre de son texte (tâches reliées,
+    // docs reliés, lignes tapées mêlés comme dans « Saisir mes cours »).
+    { const _ord=_sdcOrdonnerItems(items, _sdcRangsCles(entry4, _primarySeanIdV163, prog2b));
+      items.length=0; _ord.forEach(it=>items.push(it)); }
 
     // ── v37 Bloc 2 (§5.13 fix) : pré-calcul des vérifs avant return précoce ──
     // Sans cela, un slot sans tâches propres mais avec des TAFs à vérifier ici
@@ -45637,8 +45683,8 @@ function openSaveSeance(){
 
       actionsDiv.appendChild(mkActionBtn('↩','reporter','#0EA5E9','#fff'));
       actionsDiv.appendChild(mkActionBtn('✕','annuler','#EF4444','#fff'));
-      // ✂️ Partiel (seulement pour modeOp, reporters et extra)
-      if(item.source==='modeOp'||item.isReporter||item.source==='extra'){
+      // ✂️ Partiel (seulement pour modeOp, reporters, extra et — V11.3.87 — tâches tapées dans « Saisir mes cours »)
+      if(item.source==='modeOp'||item.isReporter||item.source==='extra'||_sdcFiTache(item.fi)){
         const isPartiel=tacheDecisions[item.key]==='partiel';
         const partielBtn=document.createElement('button');
         partielBtn.textContent='✂️'; partielBtn.title='Commencé mais non terminé';
@@ -46487,7 +46533,8 @@ function openSaveSeance(){
     // ajoutées manuellement (type != 'reporter' && type != 'taf-verif' && type != 'eval').
     // V11.3.85 — ni les docs / ressources de « Saisir mes cours » : ce ne sont pas
     // des tâches, et ils se modifient depuis cet écran-là.
-    const visibleFreeItems=entry2.freeItems.filter(fi=>fi.type!=='reporter'&&fi.type!=='taf-verif'&&fi.type!=='eval'&&!_sdcFiDocRes(fi));
+    // V11.3.87 — ni ses tâches : elles sont déjà dans la liste à cocher (doublon).
+    const visibleFreeItems=entry2.freeItems.filter(fi=>fi.type!=='reporter'&&fi.type!=='taf-verif'&&fi.type!=='eval'&&!_sdcFiTache(fi)&&!_sdcFiDocRes(fi));
     if(!visibleFreeItems.length) return;
     const lbl=document.createElement('div'); lbl.style.cssText='font-size:10px;color:var(--tx3);margin-bottom:2px'; lbl.textContent='Tâches libres dans ce cours :';
     freeAddedList.appendChild(lbl);
@@ -47120,7 +47167,7 @@ function openSaveSeance(){
     return tachesWrap._checkboxes.filter(x=>
       !x.cb.checked &&
       !tacheDecisions[x.item.key] &&
-      (x.item.source==='modeOp'||x.item.source==='extra'||x.item.isReporter)
+      (x.item.source==='modeOp'||x.item.source==='extra'||x.item.isReporter||_sdcFiTache(x.item.fi))
     );
   }
 
