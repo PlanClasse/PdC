@@ -4303,7 +4303,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.0';
+const APP_VERSION = 'v11.4.1';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -10968,6 +10968,7 @@ function _ytpExecuteTransition(){
     Snext.absences            = [];   // Année écoulée
     Snext.tirageHistory       = {};   // V11.3.77 — tirages de l'an passé (uid d'élèves partis)
     Snext.tirageFiches        = {};   // V11.3.78 — fiches d'évaluation non remplies
+    Snext.delegues            = {};   // V11.4.1 — délégués de l'an passé (S.responsabilites gardées)
     Snext.tirageAnneeTag      = String(anneeNew||'');
 
     // EDT : remis à zéro avec une période DATÉE (1er sept → 10 juillet suivant),
@@ -32162,6 +32163,7 @@ function resetAll(){
       if(S.obsCours) S.obsCours={};   // V11.3.44
       S.tirageHistory={};             // V11.3.77 — historique de tirage (uid d'élèves)
       S.tirageFiches={};              // V11.3.78 — fiches d'évaluation en attente
+      S.delegues={};                  // V11.4.1 — délégués (uid d'élèves)
       S.uidCounter=0;
     },
     comps:   ()=>{ const d=defaultState(); S.liveComps=d.liveComps; S.evalComps=d.evalComps; S.groupesComps=d.groupesComps; S.seanceCompsAffect=d.seanceCompsAffect; S.evalEcrit=d.evalEcrit; S.slotEvalCompPlans=d.slotEvalCompPlans; S.compsAffectations=d.compsAffectations; S.customComps=d.customComps; S.customConns=d.customConns; S.groupeCompsParCls=d.groupeCompsParCls; },
@@ -45300,21 +45302,25 @@ function showAboutModal(){
   // dans le mémo de passation. Une rubrique = un thème, une ou deux phrases.
   root.appendChild(_aboutRubriques([
     ['🗓️ Saisir mes cours', 'septembre 2026',
-     'Un écran pour composer chaque cours, ligne par ligne, en piochant dans la bibliothèque, la progression ou dans les cours déjà faits d’autres classes du niveau ; ce qui reste du cours précédent est proposé d’office, et la complétion suggère pendant la frappe. L’étoile ☆ enrichit la bibliothèque. Le planning d’affectation devient une vue d’ensemble.'],
+     'Composer chaque cours en piochant dans la bibliothèque, la progression ou dans les cours déjà faits d’autres classes du niveau ; ce qui reste du cours précédent est proposé, la complétion suggère pendant la frappe, l’étoile ☆ enrichit la bibliothèque. Le réalisé du cours précédent reste visible. Le planning d’affectation devient une vue d’ensemble.'],
     ['📋 Cahier de texte du jour', 'septembre 2026',
-     'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement ; les tâches commencées portent « (à poursuivre au prochain cours) ».'],
+     'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement et ne répète plus le prévu ; les tâches commencées portent « (à poursuivre au prochain cours) ».'],
+    ['🎲 Tirage et évaluations', 'septembre 2026',
+     'Le tirage au sort accepte vos propres types ; « Choisir » désigne les élèves. Une fiche note chaque élève dans l’observation du cours, maintenant ou plus tard ; l’accueil rappelle celles à compléter.'],
+    ['📝 Suivi des élèves', 'septembre 2026',
+     'Suivi › Observations : par classe et par période, les observations de chaque élève, ou tout son suivi (statuts, participation, TAF non faits). Délégués et responsabilités s’affichent sur le plan.'],
     ['👩‍🏫 En classe', 'septembre 2026',
-     'Une popup de statuts plus lisible, dont vous fixez la disposition dans Paramètres, avec des avertissements à deux ou trois niveaux (AVT1, AVT2, AVT3), et un statut rapide ⚡ : on en arme un, chaque appui sur un élève le pose. Une observation vierge à chaque cours, l’historique à portée de main. Le tirage au sort accepte vos propres types ; après une interrogation ou une vérification de cahier, une fiche note chaque élève dans l’observation du cours, maintenant ou plus tard. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. La Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
+     'Statuts plus lisibles, avertissements à deux ou trois niveaux, statut rapide ⚡. Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes ; la Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
     ['⏱️ Compte à rebours', 'septembre 2026',
      'Chaque alerte (5, 3, 2, 1 min, fin) se coupe, se règle en volume et peut jouer votre propre son.'],
     ['🔄 Synchronisation et sécurité des données', 'septembre 2026',
-     'Dropbox ou Google Drive. Une barre de synchro sur le plan de classe, grande sur iPad, compacte sur ordinateur. Avant chaque synchro, une copie de sécurité de ce qui va être remplacé. Une alerte si la mémoire du navigateur est pleine.'],
+     'Dropbox ou Google Drive. Une barre de synchro sur le plan de classe, grande sur iPad, compacte sur ordinateur. Une copie de sécurité de ce qui va être remplacé, une alerte si la mémoire du navigateur est pleine ; une donnée abîmée n’empêche plus le démarrage.'],
     ['🪑 Plan de classe', 'septembre 2026',
      'Impression PDF, une classe par page. Dispositions réutilisables d’une classe à l’autre. Placement mixte en îlots. Le PAI n’apparaît plus dans les vues EBEP.'],
     ['📚 Référentiels et disciplines', 'juillet 2026',
-     'Votre discipline et son référentiel importé deviennent le socle de la progression ; on peut emprunter des compétences à d’autres référentiels. L’import des classes est plus tolérant.'],
+     'Votre discipline et son référentiel importé deviennent le socle de la progression, que d’autres référentiels peuvent compléter. L’import des classes est plus tolérant.'],
     ['⌨️ Prise en main', 'début 2026',
-     'Palette d’actions (Ctrl+K), Paramètres réorganisés avec démarrage guidé, import de référentiels avec rapport d’analyse.']
+     'Palette d’actions (Ctrl+K), démarrage guidé. Un clic à côté ferme les fenêtres ; ce qui supprime est en rouge.']
   ]));
 
   root.appendChild(_aboutBlock('Éditeur', 'N. Jeunehomme — Développé avec l\u2019aide de Claude AI.'));
