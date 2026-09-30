@@ -4302,7 +4302,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.100';
+const APP_VERSION = 'v11.3.101';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7099,6 +7099,20 @@ let _seanceDraftSaveT = null;
  *  reste prioritaire — c'est bien une saisie en cours, on ne peut pas deviner.
  *  @returns {{value:string, fromDraft:boolean}}
  */
+/** V11.3.101 — Un cours ENREGISTRÉ est-il renseigné ? Avant, seul un contenu non
+ *  vide (ou `valide`, jamais posé par le modal) le disait : or le contenu ne porte
+ *  plus le prévu (il ne sert qu'à ce qui s'est fait EN PLUS) et peut être vide.
+ *  Tâches suivies, TAF, commentaire ou compétences suffisent donc aussi. Pure. */
+function _seanceRenseignee(saved){
+  if(!saved) return false;
+  const t=(x)=>!!String(x==null?'':x).trim();
+  if(t(saved.contenu) || saved.valide || t(saved.commentaire)) return true;
+  if(Array.isArray(saved.taskRows) && saved.taskRows.length) return true;
+  if(Array.isArray(saved.tafs) ? saved.tafs.some(t) : t(saved.taf)) return true;
+  if(saved.competences && Object.keys(saved.competences).length) return true;
+  return false;
+}
+
 function _draftOrSaved(draftVal, savedVal){
   const saved = String(savedVal==null ? '' : savedVal);
   const useDraft = (typeof draftVal === 'string') && (draftVal.trim() !== '' || !saved.trim());
@@ -7409,6 +7423,51 @@ function _migrationProtegee(nom, fn){
     window._migrationsEchouees.push({nom, erreur:String((e&&e.message)||e), retabli});
     return undefined;
   }
+}
+
+/* V11.3.101 — Le contenu du modal Séance était prérempli par la liste des tâches
+   prévues (« Saisir mes cours ») : le cahier de texte la montrait DEUX fois (le
+   contenu, puis les tâches faites). Rattrapage, après la bascule seulement :
+   – séance enregistrée dont le contenu n'est QUE le prévu (toutes ses lignes sont
+     des tâches de la séance ou du texte saisi) → contenu vidé, ancienne valeur
+     gardée dans `contenuPrevu` (jamais lue, pour revenir en arrière) ;
+     un contenu retouché (au moins une ligne à soi) n'est pas touché ;
+   – brouillon d'un cours composé non validé → lignes prévues retirées.
+   Idempotente. Renvoie {seances, brouillons}. */
+function _migrerContenuPrevu(){
+  const res={seances:0, brouillons:0};
+  const bascule=S && S.planningBascule;
+  if(!bascule) return res;
+  const prevusDuTexte=(cls, slotKey)=>{
+    const d=S.seanceContentDraft && S.seanceContentDraft[cls+'|'+slotKey];
+    if(!d || typeof d.saisieEnreg!=='string' || !d.saisieEnreg.trim()) return '';
+    try{ return _sdcVersSeance(_sdcInterpreter(d.saisieEnreg, getProgression(_sdcNiveau(cls))||[])).contenu; }catch(e){ return ''; }
+  };
+  let modif=false;
+  Object.keys(S.seances||{}).forEach(bucket=>{
+    const cls=String(bucket).split('|')[0];
+    (S.seances[bucket]||[]).forEach(se=>{
+      if(!se || !se.slotKey || String(se.slotKey).slice(0,10)<bascule) return;
+      if(!String(se.contenu||'').trim()) return;
+      const prevus=(Array.isArray(se.taskRows)?se.taskRows:[]).map(tr=>tr&&tr.label).filter(Boolean)
+        .concat((Array.isArray(se.taskRows)?se.taskRows:[]).map(tr=>tr&&tr.label?'Évaluation : '+tr.label:'').filter(Boolean))
+        .join('\n')+'\n'+prevusDuTexte(cls, se.slotKey);
+      if(!_sdcContenuQuePrevu(se.contenu, prevus)) return;
+      se.contenuPrevu=se.contenu; se.contenu='';
+      res.seances++; modif=true;
+    });
+  });
+  Object.keys(S.seanceContentDraft||{}).forEach(k=>{
+    const d=S.seanceContentDraft[k];
+    if(!d || typeof d.contenu!=='string' || !d.contenu.trim() || typeof d.saisieEnreg!=='string') return;
+    const i=k.indexOf('|'); if(i<0) return;
+    const cls=k.slice(0,i), slotKey=k.slice(i+1);
+    if(slotKey.slice(0,10)<bascule) return;
+    const libre=_sdcContenuLibre(d.contenu, prevusDuTexte(cls, slotKey));
+    if(libre!==d.contenu.split('\n').filter(l=>l.trim()).join('\n')){ d.contenu=libre; res.brouillons++; modif=true; }
+  });
+  if(modif) saveS();
+  return res;
 }
 
 function migrateModeOpDurees(){
@@ -13851,10 +13910,8 @@ function renderProfSeqProgress(){
             try{
               const slots = buildYearSlots(cls) || [];
               const slot = slots.find(sl=>sl.slotKey===slotKey);
-              if(slot && slot.saved && (
-                (slot.saved.contenu && String(slot.saved.contenu).trim()) ||
-                slot.saved.valide
-              )){
+              // V11.3.101 — le contenu peut être vide sur un cours bien enregistré.
+              if(slot && _seanceRenseignee(slot.saved)){
                 foundContenu = true;
               }
             }catch(e){}
@@ -13929,11 +13986,7 @@ function renderProfCoursNonSaisis(){
       if(slot.dateStr >= today) return;
       if(typeof isSlotCancelled==='function' && isSlotCancelled(slot.dateStr, slot.debut, cls)) return;
       const saved = slot.saved;
-      const hasContent = saved && (
-        (saved.contenu && String(saved.contenu).trim()) ||
-        saved.valide ||
-        (saved.competences && Object.keys(saved.competences).length)
-      );
+      const hasContent = _seanceRenseignee(saved);   // V11.3.101
       if(!hasContent){
         items.push({clsCode:cls, dateStr:slot.dateStr, debut:slot.debut});
       }
@@ -15148,11 +15201,7 @@ function _homeGetCoursNonSaisis(){
       if(slot.dateStr<cutoffStr) return;         // trop ancien
       if(typeof isSlotCancelled==='function' && isSlotCancelled(slot.dateStr, slot.debut, cls)) return;
       const saved=slot.saved;
-      const hasContent = saved && (
-        (saved.contenu && String(saved.contenu).trim()) ||
-        saved.valide ||
-        (saved.competences && Object.keys(saved.competences).length)
-      );
+      const hasContent = _seanceRenseignee(saved);   // V11.3.101
       if(!hasContent){
         out.push({
           clsCode:cls, dateStr:slot.dateStr, debut:slot.debut, fin:slot.fin,
@@ -15373,10 +15422,7 @@ function _homeGetCoursDemainAPreparer(){
     slots.filter(s=>s.dateStr===tStr).forEach(slot=>{
       if(typeof isSlotCancelled==='function' && isSlotCancelled(slot.dateStr, slot.debut, cls)) return;
       const saved=slot.saved;
-      const hasContent = saved && (
-        (saved.contenu && String(saved.contenu).trim()) ||
-        saved.valide
-      );
+      const hasContent = _seanceRenseignee(saved);   // V11.3.101
       if(hasContent) return;
       const ps=_homeProgSeanceFromMapping(slot.slotKey, cls);
       const seanceTitre = ps && ps.sean ? (ps.sean.titre || '') : '';
@@ -29103,7 +29149,9 @@ function _sdcConstruireEntree(r, base, idBase){
 }
 
 /** Contenu prévu vers le modal Séance : une ligne par tâche (SANS durées — le
- *  cahier de texte est lu par les familles), TAF un par ligne. Pure. */
+ *  cahier de texte est lu par les familles), TAF un par ligne. Pure.
+ *  V11.3.101 — `contenu` n'est PLUS écrit dans le modal (redite des tâches dans le
+ *  cahier de texte) : il sert à reconnaître les lignes prévues (_sdcContenuLibre). */
 function _sdcVersSeance(r){
   const c=[];
   (r&&r.items||[]).forEach(it=>{
@@ -29111,6 +29159,20 @@ function _sdcVersSeance(r){
     else if(it.type==='eval') c.push('Évaluation : '+(it.label||''));
   });
   return {contenu:c.join('\n'), taf:(r&&r.tafs||[]).map(t=>t.label).filter(Boolean).join('\n')};
+}
+
+/** V11.3.101 — Retire d'un contenu les lignes PRÉVUES (texte, casse et espaces
+ *  normalisés) ; garde le reste, dans l'ordre. Pure. */
+function _sdcNormLigne(x){ return String(x==null?'':x).replace(/\s+/g,' ').trim().toLowerCase(); }
+function _sdcContenuLibre(contenu, prevus){
+  const P=new Set(String(prevus==null?'':prevus).split('\n').map(_sdcNormLigne).filter(Boolean));
+  return String(contenu==null?'':contenu).split('\n').filter(l=>l.trim() && !P.has(_sdcNormLigne(l))).join('\n');
+}
+/** V11.3.101 — Le contenu d'une séance enregistrée n'est-il QUE la liste prévue
+ *  (lignes toutes reconnues parmi `prevus`) ? Vide → false (rien à retirer). Pure. */
+function _sdcContenuQuePrevu(contenu, prevus){
+  const L=String(contenu==null?'':contenu).split('\n').filter(l=>l.trim());
+  return L.length>0 && _sdcContenuLibre(contenu, prevus)==='';
 }
 
 /** Une ligne stockée → l'élément que lisent les 36 consommateurs du moteur. Pure. */
@@ -29822,7 +29884,8 @@ function _sdcTextesAutresCours(cls, slotKey){
 
 /** Un cours est « rempli » s'il a un contenu (saisi ou enregistré). Pure. */
 function _sdcEstRempli(saved, draft){
-  if(saved && ((saved.contenu && String(saved.contenu).trim()) || saved.valide)) return true;
+  // V11.3.101 — critère commun (typeof : certains harnais chargent cette fonction seule).
+  if(typeof _seanceRenseignee==='function' ? _seanceRenseignee(saved) : !!(saved && ((saved.contenu && String(saved.contenu).trim()) || saved.valide))) return true;
   if(draft && ((draft.saisie && String(draft.saisie).trim()) || (draft.contenu && String(draft.contenu).trim()))) return true;
   return false;
 }
@@ -29996,7 +30059,13 @@ function _sdcEnregistrer(cls, slotKey, text, etoiles){
   const dk=cls+'|'+slotKey;
   const d=S.seanceContentDraft[dk]||{};
   const vs=_sdcVersSeance(r);
-  d.saisie=String(text||''); d.saisieEnreg=d.saisie; d.contenu=vs.contenu; d.taf=vs.taf;
+  // V11.3.101 — le contenu du modal part VIDE : il sert à ce qui n'était pas prévu.
+  // Un brouillon déjà tapé dans le modal est gardé, sans les lignes prévues (ni
+  // celles de ce texte, ni celles du texte enregistré avant).
+  let prevus=vs.contenu;
+  try{ if(typeof d.saisieEnreg==='string' && d.saisieEnreg.trim()) prevus+='\n'+_sdcVersSeance(_sdcInterpreter(d.saisieEnreg, progE)).contenu; }catch(e){}
+  d.contenu=(typeof _sdcContenuLibre==='function') ? _sdcContenuLibre(d.contenu, prevus) : '';   // typeof : harnais isolés
+  d.saisie=String(text||''); d.saisieEnreg=d.saisie; d.taf=vs.taf;
   delete d.etoiles;
   S.seanceContentDraft[dk]=d;
   if(_sdcSaisieT){ clearTimeout(_sdcSaisieT); _sdcSaisieT=null; }
@@ -30128,7 +30197,18 @@ function _sdcTexteCoursEnregistre(saved, draft, prog){
   const enr=(draft && typeof draft.saisieEnreg==='string') ? draft.saisieEnreg : '';
   const net=(t)=>String(t||'').split('\n').map(x=>x.trim()).filter(Boolean).join('\n');
   if(enr.trim()){
-    try{ if(net(_sdcVersSeance(_sdcInterpreter(enr, prog)).contenu)===net(cont)) return enr; }catch(e){}
+    try{
+      if(net(_sdcVersSeance(_sdcInterpreter(enr, prog)).contenu)===net(cont)) return enr;
+      // V11.3.101 — le contenu ne porte plus le prévu : vide, ou ce qui s'est fait
+      // EN PLUS (ajouté après le texte, sans les lignes prévues qu'il répéterait).
+      const libre=(typeof _sdcContenuLibre==='function') ? _sdcContenuLibre(cont, _sdcVersSeance(_sdcInterpreter(enr, prog)).contenu) : cont;
+      if(!libre) return enr;
+      if(!cont.split('\n').some(l=>/^\s*\/(SEQ|S[ée]ance)\b/i.test(l))){
+        const L=enr.replace(/\s+$/,'').split('\n');
+        let i=L.findIndex(l=>/^\s*\/TAF\b/i.test(l)); if(i<0) i=L.length;   // avant le /TAF
+        return L.slice(0,i).concat(libre.split('\n'), L.slice(i)).join('\n');
+      }
+    }catch(e){}
   }
   const estEntete=(l)=>/^\s*\/(SEQ|S[ée]ance)\b/i.test(l);
   const ent=[];
@@ -61727,6 +61807,7 @@ applyFontSize(currentFontSize);
 _migrationProtegee('migrateSeatKeys', migrateSeatKeys); // Migration seats display→clé (one-time, idempotent)
 _migrationProtegee('migrateModeOpDurees', migrateModeOpDurees); // Migration durées décalées par tâches vides
 _migrationProtegee('migrateCocheDates', migrateCocheDates); // V11.3.35 (Q4) — coches réunies sous la date DU COURS (one-time, idempotente)
+_migrationProtegee('_migrerContenuPrevu', _migrerContenuPrevu); // V11.3.101 — contenu = redite du prévu → vidé (copie gardée)
 if(window._migrationsEchouees && window._migrationsEchouees.length){
   const _noms=window._migrationsEchouees.map(m=>m.nom).join(', ');
   setTimeout(()=>{ try{ showDropToast('⚠️ Mise à jour des données interrompue ('+_noms+') : rien n’a été modifié. Faites une sauvegarde et signalez-le.'); }catch(e){} }, 2500);
