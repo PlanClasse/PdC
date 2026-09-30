@@ -747,7 +747,7 @@ body.mode-prof #prof-act-col-right{display:flex;flex-direction:column;gap:10px;m
 .suivi-week-nav button:hover{background:var(--sur2)}
 .suivi-week-lbl{font-size:13px;font-weight:600;color:var(--tx);flex:1;text-align:center}
 /* Onglets internes RUPN */
-#rupn-tab-seances.rupn-act,#rupn-tab-acces.rupn-act{border-bottom-color:var(--acc)!important;color:var(--acc)!important}
+#rupn-tab-seances.rupn-act,#rupn-tab-acces.rupn-act,#rupn-tab-demandes.rupn-act,#rupn-tab-obs.rupn-act{border-bottom-color:var(--acc)!important;color:var(--acc)!important}
 /* Tableau Suivi Accès */
 .acces-tbl{width:100%;border-collapse:collapse;font-size:12px}
 .acces-tbl th{padding:6px 8px;text-align:center;border-bottom:2px solid var(--brd);white-space:nowrap;font-size:11px;color:var(--tx2);font-weight:600;vertical-align:bottom}
@@ -4302,7 +4302,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.102';
+const APP_VERSION = 'v11.3.104';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -51450,6 +51450,7 @@ function buildSeanceCard(lv, seq, sean, seanIdx, refresh){
 
 function openSuivi(){
   document.getElementById('suivi-page').classList.add('open');
+  try{ _obsOngletAssurer(); }catch(e){}   // V11.3.104
   if(!suiviCls){
     // Phase 2d v32 : ignorer les buckets composites cls|grp, ne prendre qu'une clé de classe pure.
     suiviCls=Object.keys(S.seances).find(k=>!k.includes('|')&&S.seances[k]&&S.seances[k].length);
@@ -51558,15 +51559,179 @@ let demandesDom='all';
 
 function showRupnTab(tab){
   rupnTab=tab;
+  _obsOngletAssurer();   // V11.3.104 — onglet « Observations » (créé à la volée)
   document.getElementById('rupn-pane-seances').style.display=tab==='seances'?'flex':'none';
   document.getElementById('rupn-pane-acces').style.display=tab==='acces'?'flex':'none';
   document.getElementById('rupn-pane-demandes').style.display=tab==='demandes'?'flex':'none';
-  ['seances','acces','demandes'].forEach(t=>{
+  const _po=document.getElementById('rupn-pane-obs'); if(_po) _po.style.display=tab==='obs'?'flex':'none';
+  ['seances','acces','demandes','obs'].forEach(t=>{
     const el=document.getElementById('rupn-tab-'+t);
     if(el) el.classList.toggle('rupn-act',t===tab);
   });
   if(tab==='acces') renderAccesCls();
   if(tab==='demandes') renderDemandesCls();
+  if(tab==='obs') renderObsSuivi();
+}
+
+/* ══ V11.3.104 — Suivi → « Observations » (demande du 30/09) ══════════════════
+   Toutes les observations des élèves qui en ont eu, par classe. Sources :
+   – S.obsCours['<slotKey>|<cls>(|<grp>)'] ou ['<slotKey>|grp:<gid>'] : la donnée
+     vivante de chaque cours (tirage, popup élève) ;
+   – seance.observations : la copie figée à l'enregistrement (cours antérieurs au
+     magasin vivant) — sans doublon, et sans le texte égal à la note permanente
+     (ancien réestampillage du profil, §5.29 / v11.3.52).
+   La NOTE PERMANENTE (S.observations['<cls>|<uid>']) est affichée, jamais copiée.
+   Période : les mêmes bornes que la Vue globale (computeVgDateBounds). */
+let obsSuivi={cls:null, periode:'all', du:'', au:'', q:''};
+
+/** Observations par élève pour une classe. Pure.
+ *  membres = uids de la classe (pour les groupes inter-classes) ; notes = {uid: note}.
+ *  Renvoie {uid: [{slotKey, dateStr, heure, texte}]}, du plus récent au plus ancien. */
+function _obsCollecter(obsCours, seances, cls, membres, du, au, notes){
+  const M=membres instanceof Set ? membres : new Set(membres||[]);
+  const c=String(cls||'').toLowerCase();
+  const out={}, vus={};
+  const dansPeriode=(d)=>(!du || d>=du) && (!au || d<=au);
+  const ajouter=(slotKey, uid, texte)=>{
+    const t=String(texte==null?'':texte).trim(); if(!t || !uid) return;
+    const d=String(slotKey).slice(0,10); if(!dansPeriode(d)) return;
+    const k=slotKey+'|'+uid;
+    if(vus[k]){ if(vus[k].texte.split('\n').indexOf(t)<0 && vus[k].texte!==t) vus[k].texte+='\n'+t; return; }
+    const h=/_(\d{2}:\d{2})/.exec(String(slotKey));
+    const o={slotKey, dateStr:d, heure:h?h[1]:'', texte:t};
+    vus[k]=o; (out[uid]=out[uid]||[]).push(o);
+  };
+  Object.keys(obsCours||{}).forEach(key=>{
+    const i=key.indexOf('|'); if(i<0) return;
+    const slotKey=key.slice(0,i), reste=key.slice(i+1);
+    const grp=reste.indexOf('grp:')===0;
+    if(!grp && reste.split('|')[0].toLowerCase()!==c) return;
+    const m=obsCours[key]||{};
+    Object.keys(m).forEach(uid=>{ if(grp && !M.has(uid)) return; ajouter(slotKey, uid, m[uid]); });
+  });
+  (seances||[]).forEach(se=>{
+    if(!se || !se.slotKey || !se.observations || typeof se.observations!=='object') return;
+    Object.keys(se.observations).forEach(uid=>{
+      const t=String(se.observations[uid]||'').trim();
+      if(!t || (notes && String(notes[uid]||'').trim()===t)) return;
+      if(vus[se.slotKey+'|'+uid]) return;
+      ajouter(se.slotKey, uid, t);
+    });
+  });
+  Object.keys(out).forEach(u=>out[u].sort((a,b)=>String(b.slotKey).localeCompare(String(a.slotKey))));
+  return out;
+}
+/** Texte copié pour un élève : SANS la note permanente. Pure. */
+function _obsTexteCopie(nom, cls, liste){
+  return [nom+' ('+String(cls||'').toUpperCase()+')'].concat((liste||[]).map(o=>{
+    const d=String(o.dateStr||''), jj=d.slice(8,10)+'/'+d.slice(5,7);
+    return jj+' : '+String(o.texte||'').replace(/\n+/g,' · ');
+  })).join('\n');
+}
+function _obsOngletAssurer(){
+  if(document.getElementById('rupn-tab-obs')) return;
+  const modele=document.getElementById('rupn-tab-demandes'), page=document.getElementById('suivi-page');
+  if(!modele || !page) return;
+  const b=document.createElement('button'); b.id='rupn-tab-obs'; b.type='button';
+  b.style.cssText=modele.style.cssText; b.textContent='📝 Observations';
+  b.onclick=()=>showRupnTab('obs');
+  modele.parentNode.insertBefore(b, modele.nextSibling);
+  const pane=document.createElement('div'); pane.id='rupn-pane-obs';
+  pane.style.cssText='display:none;flex-direction:column;flex:1;overflow:hidden';
+  const pd=document.getElementById('rupn-pane-demandes');
+  if(pd && pd.parentNode) pd.parentNode.insertBefore(pane, pd.nextSibling); else page.appendChild(pane);
+}
+function _obsClassesSuivi(){
+  const L=[];
+  LEVELS.forEach(lv=>{ if(!S.en[lv]) return; for(let i=1;i<=N_SUB;i++){ const k=lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k)) L.push(k); } });
+  return L;
+}
+function _obsDonneesClasse(cls){
+  const {dateFrom, dateTo}=computeVgDateBounds(obsSuivi.periode, obsSuivi.du, obsSuivi.au);
+  const membres=(S.cl[cls]&&S.cl[cls].students)||[];
+  const notes={}; Object.keys(S.observations||{}).forEach(k=>{ const i=k.indexOf('|'); if(i>0 && k.slice(0,i).toLowerCase()===cls.toLowerCase()) notes[k.slice(i+1)]=S.observations[k]; });
+  let seances=[]; try{ seances=_getSavedSeanceEntriesForClsCode(cls).map(x=>x.se); }catch(e){ seances=[]; }
+  return {par:_obsCollecter(S.obsCours, seances, cls, membres, dateFrom, dateTo, notes), notes};
+}
+function renderObsSuivi(){
+  _obsOngletAssurer();
+  const pane=document.getElementById('rupn-pane-obs'); if(!pane) return;
+  pane.textContent='';
+  const classes=_obsClassesSuivi();
+  if(!obsSuivi.cls || classes.indexOf(obsSuivi.cls)<0) obsSuivi.cls=classes[0]||null;
+  const el=(tag, css, txt)=>{ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; };
+  // Classes (avec le nombre d'élèves concernés sur la période)
+  const tabs=el('div'); tabs.className='fp-tabs'; pane.appendChild(tabs);
+  classes.forEach(k=>{
+    const n=Object.keys(_obsDonneesClasse(k).par).length;
+    const b=el('button',null,k.toUpperCase()+(n?' · '+n:'')); b.className='fp-tab'+(k===obsSuivi.cls?' act':'');
+    b.onclick=()=>{ obsSuivi.cls=k; renderObsSuivi(); };
+    tabs.appendChild(b);
+  });
+  // Période + recherche
+  const bar=el('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:.45rem 1.2rem;border-bottom:1px solid var(--brd);background:var(--sur)');
+  pane.appendChild(bar);
+  bar.appendChild(el('span','font-size:11px;font-weight:600;color:var(--tx3)','Période :'));
+  [{v:'all',l:'Année'},{v:'s1',l:'Sem. 1'},{v:'s2',l:'Sem. 2'},{v:'t1',l:'Trim. 1'},{v:'t2',l:'Trim. 2'},{v:'t3',l:'Trim. 3'},{v:'custom',l:'Dates…'}].forEach(x=>{
+    const b=el('button',null,x.l); b.className='fp-tab'+(obsSuivi.periode===x.v?' act':'');
+    b.onclick=()=>{ obsSuivi.periode=x.v; renderObsSuivi(); };
+    bar.appendChild(b);
+  });
+  if(obsSuivi.periode==='custom'){
+    [['Du','du'],['Au','au']].forEach(([l,k])=>{
+      const w=el('label','display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--tx3)',l+' ');
+      const i=el('input','padding:3px 6px;border:1px solid var(--brd);border-radius:var(--r1);font-size:12px;background:var(--bg);color:var(--tx)'); i.type='date'; i.value=obsSuivi[k]||'';
+      i.onchange=()=>{ obsSuivi[k]=i.value; renderObsSuivi(); };
+      w.appendChild(i); bar.appendChild(w);
+    });
+  }
+  const q=el('input','margin-left:auto;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r1);font-size:12px;background:var(--bg);color:var(--tx);min-width:160px');
+  q.type='search'; q.placeholder='Rechercher (élève, mot)…'; q.value=obsSuivi.q||'';
+  bar.appendChild(q);
+  const corps=el('div','flex:1;overflow:auto;padding:12px 1.2rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;align-content:start');
+  pane.appendChild(corps);
+  const cls=obsSuivi.cls;
+  if(!cls){ corps.appendChild(el('div','color:var(--tx3);font-size:13px','Aucune classe.')); return; }
+  const {par, notes}=_obsDonneesClasse(cls);
+  const uids=Object.keys(par).sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+  const dessiner=()=>{
+    corps.textContent='';
+    const f=String(obsSuivi.q||'').trim().toLowerCase();
+    let n=0;
+    uids.forEach(uid=>{
+      const nom=getFullName(uid), liste=par[uid];
+      if(f && nom.toLowerCase().indexOf(f)<0 && !liste.some(o=>o.texte.toLowerCase().indexOf(f)>=0)) return;
+      n++;
+      const carte=el('div','background:var(--sur);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;min-width:0');
+      const hd=el('div','display:flex;align-items:baseline;gap:8px');
+      hd.appendChild(el('span','font-size:14px;font-weight:700;color:var(--tx)',nom));
+      hd.appendChild(el('span','font-size:11px;color:var(--tx3)',liste.length+' obs.'));
+      const cp=el('button','margin-left:auto;font-size:11px;padding:2px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','📋 Copier');
+      cp.type='button'; cp.title='Copier les observations de la période (sans la note permanente)';
+      cp.onclick=()=>{
+        const t=_obsTexteCopie(nom, cls, liste);
+        const ok=()=>{ cp.textContent='✔ Copié'; setTimeout(()=>{ cp.textContent='📋 Copier'; },1500); };
+        try{ navigator.clipboard.writeText(t).then(ok, ()=>{ try{ showDropToast('Copie impossible'); }catch(e){} }); }catch(e){ try{ showDropToast('Copie impossible'); }catch(e2){} }
+      };
+      hd.appendChild(cp); carte.appendChild(hd);
+      const note=String(notes[uid]||'').trim();
+      if(note){ const nb=el('div','margin:6px 0 2px;padding:4px 8px;border-radius:6px;background:#FEF3C7;color:#92400E;font-size:12px;white-space:pre-wrap','Note : '+note); nb.title='Note permanente (popup élève) — non copiée'; carte.appendChild(nb); }
+      liste.forEach(o=>{
+        const r=el('div','font-size:12px;line-height:1.5;padding:3px 0;border-top:1px solid var(--brd);display:flex;gap:6px;align-items:baseline');
+        let dl=o.dateStr; try{ dl=new Date(o.dateStr+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'}); }catch(e){}
+        const d=el('button','flex:none;background:none;border:none;padding:0;font:inherit;font-size:11px;color:var(--tx3);cursor:pointer;text-decoration:underline dotted',dl+(o.heure?' '+o.heure:''));
+        d.type='button'; d.title='Résumé de ce cours';
+        d.onclick=()=>{ try{ openCourseSummaryModal(o.slotKey, cls); }catch(e){ console.warn('[obs] résumé', e); } };
+        r.appendChild(d);
+        r.appendChild(el('span','flex:1;min-width:0;color:var(--tx);white-space:pre-wrap',o.texte));
+        carte.appendChild(r);
+      });
+      corps.appendChild(carte);
+    });
+    if(!n) corps.appendChild(el('div','color:var(--tx3);font-size:13px', uids.length?'Aucun résultat pour cette recherche.':'Aucune observation sur cette période pour '+cls.toUpperCase()+'.'));
+  };
+  q.oninput=()=>{ obsSuivi.q=q.value; dessiner(); };
+  dessiner();
 }
 
 /* ── Gestion des demandes ── */
@@ -62238,9 +62403,10 @@ function _tirageFiches(scope){
 function _tirageNbFiches(){ return _tirageFiches(_tirageScope()).length; }
 
 /** Crée et range une fiche. Pure hormis S. Ne sauvegarde pas. */
-function _tirageFicheCreer(scope, cat, eleves, cible, grp, gi, now){
+function _tirageFicheCreer(scope, cat, eleves, cible, grp, gi, now, sansPlafond){
   if(!scope || !cat || cat.saisie==='aucune') return null;
-  const els=(eleves||[]).slice(0,TIRAGE_SAISIE_MAX).map(s=>({uid:s.uid, name:String(s.name||'')}));
+  // V11.3.103 — un CHOIX (geste volontaire) n'a pas de plafond ; le tirage garde ses 5.
+  const els=(sansPlafond ? (eleves||[]) : (eleves||[]).slice(0,TIRAGE_SAISIE_MAX)).map(s=>({uid:s.uid, name:String(s.name||'')}));
   if(!els.length) return null;
   if(!S.tirageFiches) S.tirageFiches={};
   if(!Array.isArray(S.tirageFiches[scope])) S.tirageFiches[scope]=[];
@@ -62288,6 +62454,15 @@ function _tirageListeChoix(eleves, absents, avecAbsents){
   const pres=L.filter(e=>!A.has(e.uid)).sort(tri).map(e=>({uid:e.uid, name:e.name, absent:false}));
   const abs=avecAbsents ? L.filter(e=>A.has(e.uid)).sort(tri).map(e=>({uid:e.uid, name:e.name, absent:true})) : [];
   return pres.concat(abs);
+}
+/** V11.3.103 — Cahier : tableau retourné (un élève par ligne) au-delà de 5. Pure. */
+function _tirageCahierRetourne(n){ return (n|0)>TIRAGE_SAISIE_MAX; }
+/** V11.3.103 — Largeur de la fenêtre pour une fiche. Pure (nombre de critères fourni). */
+function _tirageLargeurFiche(f, nbCrit){
+  if(!f || f.saisie!=='cahier') return 620;
+  const n=Array.isArray(f.eleves)?f.eleves.length:0;
+  if(_tirageCahierRetourne(n)) return Math.min(1240, 150+(nbCrit|0)*118+86+180);
+  return n>2 ? 720 : 560;
 }
 /** « tirée le 26/09 à 10:42 ». Pure. */
 function _tirageFicheQuand(f){
@@ -62404,7 +62579,7 @@ function openFichesACompleter(note){
     ret.className='bs'; ret.type='button'; ret.onclick=()=>openFichesACompleter();
     extra.appendChild(ret);
     const box=_tasEl('div',''); extra.appendChild(box);
-    largeur(f.saisie==='cahier' ? (f.eleves.length>2?720:560) : 620);
+    largeur(_tirageLargeurFiche(f, _tirageCahierCrit().length));   // V11.3.103
     _tirageRenderSaisie(box, f, {scope:p.scope, onFin:(r)=>{
       try{ if(typeof renderRappelsBandeau==='function') renderRappelsBandeau(); }catch(e){}
       openFichesACompleter(r
@@ -62466,7 +62641,7 @@ function _tirageRenderSaisie(box, fiche, hooks){
   if(!fiche.etat) fiche.etat={niv:{}, oubli:{}, rq:{}};
   ['niv','oubli','rq'].forEach(k=>{ if(!fiche.etat[k]) fiche.etat[k]={}; });
   const E=fiche.etat;
-  const els=fiche.eleves.slice(0,TIRAGE_SAISIE_MAX);
+  const els=fiche.mode==='choix' ? fiche.eleves.slice() : fiche.eleves.slice(0,TIRAGE_SAISIE_MAX);   // V11.3.103
   const cahier=fiche.saisie==='cahier';
   const scope=hooks.scope||_tirageScope();   // V11.3.97 — portée de la fiche si fournie
   const persist=()=>saveS();
@@ -62497,7 +62672,7 @@ function _tirageRenderSaisie(box, fiche, hooks){
     const crits=_tirageCahierCrit();
     const bar=_tasEl('div','display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px');
     bar.appendChild(_tasEl('span','font-size:11px;color:var(--tx3)','Tout remplir'));
-    const all=_tasSegNiveaux(true, v=>{ if(v) cells.forEach(c=>{ if(!E.oubli[c.uid]){ c.seg.set(v); if(!E.niv[c.uid]) E.niv[c.uid]={}; E.niv[c.uid][c.nom]=v; } }); persist(); all.set(''); });
+    const all=_tasSegNiveaux(true, v=>{ if(v) (all._cells||[]).forEach(c=>{ if(!E.oubli[c.uid]){ c.seg.set(v); if(!E.niv[c.uid]) E.niv[c.uid]={}; E.niv[c.uid][c.nom]=v; } }); persist(); all.set(''); });
     all.el.style.width='112px'; bar.appendChild(all.el);
     const critBtn=_tasEl('button','margin-left:auto;font-size:11px;padding:3px 9px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','Critères…');
     critBtn.type='button'; bar.appendChild(critBtn); wrap.appendChild(bar);
@@ -62514,6 +62689,34 @@ function _tirageRenderSaisie(box, fiche, hooks){
     critDef.onclick=()=>applyCrit([]);
 
     const sc=_tasEl('div','overflow-x:auto;-webkit-overflow-scrolling:touch');
+    // V11.3.103 — au-delà de 5 élèves (choix sans plafond), le tableau se RETOURNE :
+    // un élève par ligne, critères en colonnes (on le parcourt de haut en bas).
+    if(_tirageCahierRetourne(els.length)){
+      const nc=crits.length;
+      const grid=_tasEl('div','display:grid;grid-template-columns:minmax(110px,1.2fr) repeat('+nc+',112px) 80px minmax(110px,1fr);column-gap:6px;align-items:stretch;min-width:'+(110+nc*118+86+116)+'px');
+      sc.appendChild(grid); wrap.appendChild(sc);
+      const th=(t)=>_tasEl('div','font-size:11px;font-weight:700;color:var(--tx2);text-align:center;padding-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',t);
+      grid.appendChild(th('')); crits.forEach(n=>grid.appendChild(th(n))); grid.appendChild(th('Oubli')); grid.appendChild(th('Remarque'));
+      const rc='display:flex;align-items:center;min-height:36px;border-top:1px solid var(--brd)';
+      const cells=[]; const cols={};
+      els.forEach(s=>{ cols[s.uid]=[]; });
+      const griser=(uid)=>cols[uid].forEach(x=>{ x.style.opacity=E.oubli[uid]?'.3':'1'; x.style.pointerEvents=E.oubli[uid]?'none':''; });
+      els.forEach(s=>{
+        grid.appendChild(_tasEl('div',rc+';font-size:12px;font-weight:700;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', s.name));
+        crits.forEach(nom=>{ const c=_tasEl('div',rc+';justify-content:center'); const seg=_tasSegNiveaux(true, v=>setNiv(s.uid, nom, v));
+          seg.set((E.niv[s.uid]||{})[nom]||''); c.appendChild(seg.el); grid.appendChild(c);
+          cells.push({uid:s.uid, nom, seg}); cols[s.uid].push(c); });
+        const co=_tasEl('div',rc+';justify-content:center');
+        const b=_tasEl('button','height:26px;padding:0 10px;border:1.5px solid var(--brd);border-radius:13px;background:var(--sur);color:var(--tx2);font-size:11px;cursor:pointer;font-family:inherit','Oublié');
+        b.type='button';
+        const peindre=()=>{ const on=!!E.oubli[s.uid]; b.style.background=on?'#D97706':'var(--sur)'; b.style.color=on?'#fff':'var(--tx2)'; b.style.borderColor=on?'#D97706':'var(--brd)'; griser(s.uid); };
+        b.onclick=()=>{ if(E.oubli[s.uid]) delete E.oubli[s.uid]; else E.oubli[s.uid]=true; persist(); peindre(); };
+        co.appendChild(b); grid.appendChild(co); setTimeout(peindre,0);
+        const cr=_tasEl('div',rc); cr.appendChild(rqInput(s.uid,'width:100%','…')); grid.appendChild(cr);
+      });
+      // « Tout remplir » agit sur ces cellules (même mécanisme que la grille d'origine).
+      all._cells=cells;
+    } else {
     const grid=_tasEl('div','display:grid;grid-template-columns:106px repeat('+els.length+',minmax(96px,1fr));align-items:stretch;min-width:'+(106+els.length*100)+'px');
     sc.appendChild(grid); wrap.appendChild(sc);
     const cellCss='display:flex;align-items:center;justify-content:center;min-height:38px;padding:0 3px;border-top:1px solid var(--brd)';
@@ -62542,6 +62745,8 @@ function _tirageRenderSaisie(box, fiche, hooks){
     });
     grid.appendChild(_tasEl('div',rowLbl,'Remarque'));
     els.forEach(s=>{ const c=_tasEl('div',cellCss); c.appendChild(rqInput(s.uid,'width:100%','…')); grid.appendChild(c); });
+    all._cells=cells;
+    }
     const lg=_tasEl('div','display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--tx3);margin-top:8px');
     TIRAGE_NIVEAUX.forEach(n=>{ const it=_tasEl('span','display:inline-flex;align-items:center;gap:4px'); it.appendChild(_tasEl('span','display:inline-block;width:9px;height:9px;border-radius:2px;background:'+n.col)); it.appendChild(document.createTextNode(n.court+' '+n.label)); lg.appendChild(it); });
     wrap.appendChild(lg);
@@ -62717,7 +62922,7 @@ function openTirageModal(){
     ficheOuverte=f.id;
     // Les noms sont dans le panneau : la liste des résultats ferait doublon.
     rWrap.style.display='none';
-    _tasLargeur(f.saisie==='cahier' ? (f.eleves.length>2?720:560) : 620);
+    _tasLargeur(_tirageLargeurFiche(f, _tirageCahierCrit().length));   // V11.3.103
     _tirageRenderSaisie(saisieBox, f, {onFin:()=>{ ficheOuverte=''; _tasLargeur(0); rWrap.style.display=''; renderAttente(); }});
     renderAttente();
     try{ saisieBox.scrollIntoView({block:'nearest'}); }catch(e){}
@@ -62822,12 +63027,19 @@ function openTirageModal(){
       choixBox.appendChild(w);
       const hd=_tasEl('div','display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px');
       hd.appendChild(_tasEl('span','font-size:13px;font-weight:700;color:var(--tx)','Choisir — '+_tirageNomSansEmoji(cat.label)));
-      hd.appendChild(_tasEl('span','font-size:11px;color:var(--tx3)', sel.size+' / '+TIRAGE_SAISIE_MAX+' au plus'));
+      hd.appendChild(_tasEl('span','font-size:11px;color:var(--tx3)', sel.size+' choisi'+(sel.size>1?'s':'')));
+      // V11.3.103 — pas de plafond pour un choix ; « Tous » (ramasser les cahiers de la classe).
+      const liste=_tirageListeChoix(_tousSieges, absSet, _choixAbs);
+      const bTous=_tasEl('button','margin-left:auto;font-size:11px;padding:3px 9px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','Tous');
+      bTous.type='button'; bTous.onclick=()=>{ liste.forEach(e=>sel.add(e.uid)); dessiner(); };
+      const bAucun=_tasEl('button','font-size:11px;padding:3px 9px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','Aucun');
+      bAucun.type='button'; bAucun.onclick=()=>{ sel.clear(); dessiner(); };
+      hd.appendChild(bTous); hd.appendChild(bAucun);
       w.appendChild(hd);
       const grille=_tasEl('div','display:flex;flex-wrap:wrap;gap:5px;max-height:190px;overflow-y:auto;padding:2px 0');
       w.appendChild(grille);
-      _tirageListeChoix(_tousSieges, absSet, _choixAbs).forEach(e=>{
-        const on=sel.has(e.uid), plein=!on && sel.size>=TIRAGE_SAISIE_MAX;
+      liste.forEach(e=>{
+        const on=sel.has(e.uid), plein=false;   // V11.3.103 — plus de plafond
         const b=_tasEl('button','font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;font-family:inherit;border:1.5px solid '+(on?'var(--acc)':'var(--brd)')
           +';background:'+(on?'var(--acc)':'var(--sur2)')+';color:'+(on?'#fff':(e.absent?'var(--tx3)':'var(--tx)'))+(plein?';opacity:.4;cursor:not-allowed':''),
           (on?'✓ ':'')+e.name+(e.absent?' (abs.)':''));
@@ -62853,7 +63065,7 @@ function openTirageModal(){
         const cib=(typeof _obsSlotCible==='function')?_obsSlotCible(curCls):null;
         const gi=(typeof _isScopeGrpInter==='function' && _isScopeGrpInter())?curGrpInter:'';
         const grp=(cib && !gi && typeof getCurrentGrpId==='function')?(getCurrentGrpId(curCls, cib.slotKey)||''):'';
-        const fiche=_tirageFicheCreer(_tirageScope(), cat, chosen, cib, grp, gi);
+        const fiche=_tirageFicheCreer(_tirageScope(), cat, chosen, cib, grp, gi, undefined, true);   // V11.3.103 : sans plafond
         if(fiche) fiche.mode='choix';
         saveS(); fermerChoix();
         if(fiche){ _tirageMajPastille(); ouvrirFiche(fiche); }
