@@ -2872,6 +2872,14 @@ body:has(#sdc-bg) #font-ctrl{display:none}
 .sdc-jauge-ko{color:#712B13;background:#FAECE7;border-radius:6px;padding:4px 8px;font-weight:700}
 .sdc-resume{color:#2C2C2A}
 .sdc-effets{border-color:#B4B2A9;color:#444441}
+/* V11.3.100 — Réalisé au cours précédent */
+.sdc-realise{margin-top:12px;padding-top:8px;border-top:1.5px solid #378ADD}
+.sdc-realise-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.sdc-realise-t{background:none;border:none;padding:0;font:inherit;font-size:12px;font-weight:800;color:#185FA5;cursor:pointer}
+.sdc-realise-d{font-size:11px;color:#5F5E5A;white-space:nowrap}
+.sdc-realise-fiche{margin-top:6px;font-size:12px}
+.sdc-realise-vide{margin-top:6px;font-size:12px;color:#5F5E5A;font-style:italic}
+.sdc-realise-lien{margin-top:6px;background:none;border:none;padding:0;font:inherit;font-size:12px;font-weight:700;color:#185FA5;cursor:pointer;text-decoration:underline}
 .sdc-autre{border-color:#B4B2A9}
 .sdc-autre-t{background:#FFFFFF;color:#2C2C2A;border-bottom:1px solid #D3D1C7}
 .sdc-autre-d{color:#444441}
@@ -4294,7 +4302,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.99';
+const APP_VERSION = 'v11.3.100';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -30558,6 +30566,8 @@ function _sdcRendre(){
   const resume=_sdcEl('div','sdc-resume'); colD.appendChild(resume);
   const liste=_sdcEl('div','sdc-liste'); colD.appendChild(liste);
   const effets=_sdcEl('div','sdc-effets'); colD.appendChild(effets);
+  // V11.3.100 — ce qui a VRAIMENT été fait au cours précédent (demande du 30/09).
+  _sdcZoneRealise(colD, cls, cours, cur);
   // ── Lot D : prendre des lignes dans d'autres cours (jamais d'écriture chez eux)
   if(!lectureSeule) _sdcZoneAutresCours(zAutres, cls, cur, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
 
@@ -30783,6 +30793,52 @@ function _sdcReprendreDansTexte(text, p, prog){
  *  même jour, sinon le plus proche AVANT (c'est ce qu'on veut recopier), sinon
  *  le plus proche après. cours : [{slotKey, dateStr, demi, grpIds}]. Pure.
  *  (getJumelSlot, existant, ne cherche qu'en avant quand ce n'est pas le même jour.) */
+/* ── V11.3.100 — « Réalisé au cours précédent » (demande du 30/09) ─────────
+   Cas : le cours N est composé avec la séance 2, la classe avance et entame la
+   séance 3 (ajoutée au modal Séance à la validation). En composant N+1, l'écran
+   ne montrait que le PRESCRIT. Ce bloc montre, en bas de l'interprétation, le
+   résumé ENREGISTRÉ du cours précédent (celui de « Sc.Préc. », dernier cours
+   seulement), déplié, avec un lien vers le Sc.Préc. complet. Lecture seule. */
+
+/** Cours précédent de la classe (annulés déjà exclus par l'appelant). En
+ *  demi-groupe : le dernier cours du MÊME groupe ou de la classe entière. Pure. */
+function _sdcCoursPrecedent(cours, cur){
+  if(!cur || !Array.isArray(cours)) return null;
+  const g=(cur.demi && Array.isArray(cur.grpIds)) ? cur.grpIds : [];
+  const memeGroupe=(c)=>!g.length || !Array.isArray(c.grpIds) || !c.grpIds.length || c.grpIds.some(x=>g.indexOf(x)>=0);
+  let p=null;
+  cours.forEach(c=>{
+    if(!c || !c.slotKey || c.annule || !(String(c.slotKey)<String(cur.slotKey)) || !memeGroupe(c)) return;
+    if(!p || String(c.slotKey)>String(p.slotKey)) p=c;
+  });
+  return p;
+}
+function _sdcZoneRealise(parent, cls, cours, cur){
+  const p=_sdcCoursPrecedent(cours, cur);
+  const z=_sdcEl('div','sdc-realise'); parent.appendChild(z);
+  const h=_sdcEl('div','sdc-realise-h'); z.appendChild(h);
+  const bT=_sdcEl('button','sdc-realise-t','▾ Réalisé au cours précédent'); bT.type='button';
+  h.appendChild(bT);
+  const quand=p ? ((()=>{ try{ return new Date(p.dateStr+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'}); }catch(e){ return p.dateStr; } })()+(p.debut?' · '+p.debut:'')) : '';
+  if(p) h.appendChild(_sdcEl('span','sdc-realise-d', quand));
+  const corps=_sdcEl('div','sdc-realise-c'); z.appendChild(corps);
+  bT.onclick=()=>{ const ouvert=corps.style.display!=='none'; corps.style.display=ouvert?'none':''; bT.textContent=(ouvert?'▸':'▾')+' Réalisé au cours précédent'; };
+  if(!p){ corps.appendChild(_sdcEl('div','sdc-realise-vide','Aucun cours précédent.')); return; }
+  if(!p.saved){
+    corps.appendChild(_sdcEl('div','sdc-realise-vide','Cours du '+quand+' pas encore enregistré : rien à montrer du réalisé.'));
+  } else {
+    // Même rendu que « Sc.Préc. » (fiche dense), produit par le code existant.
+    const fiche=_sdcEl('div','sdc-realise-fiche');
+    try{ fiche.innerHTML=buildCourseSummaryHtml(p.slotKey, cls, null, {compactForHistory:true}); }
+    catch(e){ fiche.textContent='Résumé indisponible.'; console.warn('[sdc] réalisé', e); }
+    corps.appendChild(fiche);
+  }
+  const lien=_sdcEl('button','sdc-realise-lien','Tout le Sc.Préc. →'); lien.type='button';
+  lien.title='Les trois derniers cours enregistrés de la classe';
+  lien.onclick=()=>{ try{ openScPrecModal(cls, cur.slotKey); }catch(e){ console.warn('[sdc] Sc.Préc.', e); } };
+  corps.appendChild(lien);
+}
+
 function _sdcJumeau(cours, slotKey){
   const L=Array.isArray(cours)?cours:[];
   const i=L.findIndex(c=>c && c.slotKey===slotKey);
