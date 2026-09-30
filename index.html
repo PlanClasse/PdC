@@ -4294,7 +4294,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.98';
+const APP_VERSION = 'v11.3.99';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7377,6 +7377,32 @@ function normalizeAllTafs(){
    MIGRATION modeOpDurees — réaligne les durées quand modeOp[0] est vide
    Idempotente.
 ══════════════════════════════════════════════════════════════════ */
+/* V11.3.99 (§5.24) — Migration de démarrage protégée.
+   Une migration modifie S EN PLACE et n'appelle saveS() qu'à la fin : si elle
+   lève en cours de route, rien n'est encore écrit, mais S est à moitié
+   transformé en mémoire — et le prochain saveS() de l'utilisateur figerait cet
+   état partiel. D'où : copie de S avant, et en cas d'exception, S rétabli EN
+   PLACE (même objet) depuis la copie, erreur journalisée dans
+   window._migrationsEchouees, démarrage poursuivi. La migration sera retentée
+   au prochain démarrage (elles sont idempotentes).
+   Si S n'est pas sérialisable, pas de copie possible : saveS() ne pourrait pas
+   l'écrire non plus, l'état partiel ne peut donc pas être figé. */
+function _migrationProtegee(nom, fn){
+  let copie=null;
+  try{ copie=JSON.stringify(S); }catch(e){ copie=null; }
+  try{ return fn(); }
+  catch(e){
+    let retabli=false;
+    if(copie!==null){
+      try{ const avant=JSON.parse(copie); Object.keys(S).forEach(k=>{ delete S[k]; }); Object.assign(S, avant); retabli=true; }catch(e2){}
+    }
+    console.error('[migration] '+nom+' a échoué'+(retabli?' — état d’avant rétabli':''), e);
+    if(!Array.isArray(window._migrationsEchouees)) window._migrationsEchouees=[];
+    window._migrationsEchouees.push({nom, erreur:String((e&&e.message)||e), retabli});
+    return undefined;
+  }
+}
+
 function migrateModeOpDurees(){
   let changed=false;
   Object.values(S.progression||{}).forEach(seqs=>{
@@ -61640,9 +61666,15 @@ function applyFontSize(sz){
 function changeFontSize(delta){ applyFontSize(currentFontSize+(delta>0?10:-10)); }
 applyFontSize(currentFontSize);
 
-migrateSeatKeys(); // Migration seats display→clé (one-time, idempotent)
-migrateModeOpDurees(); // Migration durées décalées par tâches vides
-migrateCocheDates(); // V11.3.35 (Q4) — coches réunies sous la date DU COURS (one-time, idempotente)
+// V11.3.99 (§5.24) — chaque migration est protégée : une exception ne décapite
+// plus le reste du démarrage, et l'état d'avant est rétabli (cf. _migrationProtegee).
+_migrationProtegee('migrateSeatKeys', migrateSeatKeys); // Migration seats display→clé (one-time, idempotent)
+_migrationProtegee('migrateModeOpDurees', migrateModeOpDurees); // Migration durées décalées par tâches vides
+_migrationProtegee('migrateCocheDates', migrateCocheDates); // V11.3.35 (Q4) — coches réunies sous la date DU COURS (one-time, idempotente)
+if(window._migrationsEchouees && window._migrationsEchouees.length){
+  const _noms=window._migrationsEchouees.map(m=>m.nom).join(', ');
+  setTimeout(()=>{ try{ showDropToast('⚠️ Mise à jour des données interrompue ('+_noms+') : rien n’a été modifié. Faites une sauvegarde et signalez-le.'); }catch(e){} }, 2500);
+}
 // V11.3.89 — cours composés : lignes effacées par l'ancien loadS, reconstruites
 // depuis le texte enregistré (idempotent : ne touche que les cours sans lignes).
 // V11.3.96 — ajustements « à valider » hérités de l'ancien report automatique : sans
