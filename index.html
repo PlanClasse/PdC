@@ -4302,7 +4302,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.104';
+const APP_VERSION = 'v11.3.105';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -51582,7 +51582,7 @@ function showRupnTab(tab){
      (ancien réestampillage du profil, §5.29 / v11.3.52).
    La NOTE PERMANENTE (S.observations['<cls>|<uid>']) est affichée, jamais copiée.
    Période : les mêmes bornes que la Vue globale (computeVgDateBounds). */
-let obsSuivi={cls:null, periode:'all', du:'', au:'', q:''};
+let obsSuivi={cls:null, periode:'all', du:'', au:'', q:'', mode:'obs'};   // V11.3.105 — mode 'obs' | 'tout'
 
 /** Observations par élève pour une classe. Pure.
  *  membres = uids de la classe (pour les groupes inter-classes) ; notes = {uid: note}.
@@ -51621,11 +51621,74 @@ function _obsCollecter(obsCours, seances, cls, membres, du, au, notes){
   Object.keys(out).forEach(u=>out[u].sort((a,b)=>String(b.slotKey).localeCompare(String(a.slotKey))));
   return out;
 }
-/** Texte copié pour un élève : SANS la note permanente. Pure. */
+/** V11.3.105 — Clé d'un magasin par cours ('<slotKey>|<cls>(|<grp>)' ou
+ *  '<slotKey>|grp:<gid>') : concerne-t-elle cette classe ? Pure.
+ *  Renvoie {slotKey, grp:bool} ou null. */
+function _obsCleClasse(key, cls){
+  const i=String(key).indexOf('|'); if(i<0) return null;
+  const slotKey=key.slice(0,i), reste=key.slice(i+1);
+  if(reste.indexOf('grp:')===0) return {slotKey, grp:true};
+  return reste.split('|')[0].toLowerCase()===String(cls||'').toLowerCase() ? {slotKey, grp:false} : null;
+}
+/** V11.3.105 — Mode « Tout » : observations + statuts + participations + TAF non
+ *  faits, cours par cours. src = {obsCours, statutsCours, participations, tafCoches,
+ *  seances, statutsDef:[{key,label}]}. Pure.
+ *  Renvoie {uid: [{slotKey, dateStr, heure, texte, statuts:[libellés], partic, tnf}]}. */
+function _obsCollecterTout(src, cls, membres, du, au, notes){
+  src=src||{};
+  const M=membres instanceof Set ? membres : new Set(membres||[]);
+  const obs=_obsCollecter(src.obsCours, src.seances, cls, M, du, au, notes);
+  const par={}, idx={};
+  const dansPeriode=(d)=>(!du || d>=du) && (!au || d<=au);
+  const entree=(slotKey, uid)=>{
+    const k=slotKey+'|'+uid; if(idx[k]) return idx[k];
+    const h=/_(\d{2}:\d{2})/.exec(String(slotKey));
+    const e={slotKey, dateStr:String(slotKey).slice(0,10), heure:h?h[1]:'', texte:'', statuts:[], partic:0, tnf:0};
+    idx[k]=e; (par[uid]=par[uid]||[]).push(e); return e;
+  };
+  Object.keys(obs).forEach(uid=>obs[uid].forEach(o=>{ entree(o.slotKey, uid).texte=o.texte; }));
+  const lib={}; (src.statutsDef||[]).forEach(s=>{ if(s && s.key) lib[s.key]=s.label||s.key; });
+  const poserStatuts=(slotKey, uid, v)=>{
+    const L=Array.isArray(v)?v:(v?[v]:[]); if(!L.length) return;
+    const e=entree(slotKey, uid);
+    L.forEach(k=>{ const l=lib[k]||k; if(e.statuts.indexOf(l)<0) e.statuts.push(l); });
+  };
+  const parcourir=(store, faire)=>Object.keys(store||{}).forEach(key=>{
+    const c=_obsCleClasse(key, cls); if(!c || !dansPeriode(c.slotKey.slice(0,10))) return;
+    const m=store[key]||{};
+    Object.keys(m).forEach(uid=>{ if(c.grp && !M.has(uid)) return; faire(c.slotKey, uid, m[uid]); });
+  });
+  parcourir(src.statutsCours, poserStatuts);
+  (src.seances||[]).forEach(se=>{
+    if(!se || !se.slotKey || !se.statuts || !dansPeriode(String(se.slotKey).slice(0,10))) return;
+    Object.keys(se.statuts).forEach(uid=>poserStatuts(se.slotKey, uid, se.statuts[uid]));
+  });
+  parcourir(src.participations, (slotKey, uid, n)=>{ n=+n||0; if(n>0){ const e=entree(slotKey, uid); e.partic=Math.max(e.partic, n); } });
+  Object.keys(src.tafCoches||{}).forEach(k=>{
+    if(!src.tafCoches[k]) return;
+    const p=k.split('|'); if(p.length!==3) return;
+    const uid=p[1], slotKey=p[2];
+    if(!M.has(uid) || !dansPeriode(String(slotKey).slice(0,10))) return;
+    entree(slotKey, uid).tnf++;
+  });
+  Object.keys(par).forEach(u=>par[u].sort((a,b)=>String(b.slotKey).localeCompare(String(a.slotKey))));
+  return par;
+}
+/** V11.3.105 — Une ligne lisible d'une entrée (sans la date). Pure. */
+function _obsLigneTout(e){
+  const L=[];
+  if(e.statuts && e.statuts.length) L.push(e.statuts.join(', '));
+  if(e.partic) L.push('✋ '+e.partic);
+  if(e.tnf) L.push(e.tnf+' TAF non fait'+(e.tnf>1?'s':''));
+  if(e.texte) L.push(String(e.texte).replace(/\n+/g,' · '));
+  return L.join(' · ');
+}
+/** Texte copié pour un élève : SANS la note permanente. Pure.
+ *  V11.3.105 — en mode « Tout », une ligne réunit statuts, participation, TAF et observation. */
 function _obsTexteCopie(nom, cls, liste){
   return [nom+' ('+String(cls||'').toUpperCase()+')'].concat((liste||[]).map(o=>{
     const d=String(o.dateStr||''), jj=d.slice(8,10)+'/'+d.slice(5,7);
-    return jj+' : '+String(o.texte||'').replace(/\n+/g,' · ');
+    return jj+' : '+(o.statuts ? _obsLigneTout(o) : String(o.texte||'').replace(/\n+/g,' · '));
   })).join('\n');
 }
 function _obsOngletAssurer(){
@@ -51651,6 +51714,11 @@ function _obsDonneesClasse(cls){
   const membres=(S.cl[cls]&&S.cl[cls].students)||[];
   const notes={}; Object.keys(S.observations||{}).forEach(k=>{ const i=k.indexOf('|'); if(i>0 && k.slice(0,i).toLowerCase()===cls.toLowerCase()) notes[k.slice(i+1)]=S.observations[k]; });
   let seances=[]; try{ seances=_getSavedSeanceEntriesForClsCode(cls).map(x=>x.se); }catch(e){ seances=[]; }
+  if(obsSuivi.mode==='tout'){   // V11.3.105
+    let def=[]; try{ def=getStatuts(); }catch(e){ def=[]; }
+    return {par:_obsCollecterTout({obsCours:S.obsCours, statutsCours:S.statutsCours, participations:S.participations,
+      tafCoches:S.tafCoches, seances, statutsDef:def}, cls, membres, dateFrom, dateTo, notes), notes};
+  }
   return {par:_obsCollecter(S.obsCours, seances, cls, membres, dateFrom, dateTo, notes), notes};
 }
 function renderObsSuivi(){
@@ -51671,6 +51739,14 @@ function renderObsSuivi(){
   // Période + recherche
   const bar=el('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:.45rem 1.2rem;border-bottom:1px solid var(--brd);background:var(--sur)');
   pane.appendChild(bar);
+  // V11.3.105 — Observations seules | Tout (statuts, participation, TAF non faits).
+  [{v:'obs',l:'Observations'},{v:'tout',l:'Tout le suivi'}].forEach(x=>{
+    const b=el('button',null,x.l); b.className='fp-tab'+(obsSuivi.mode===x.v?' act':'');
+    b.title=x.v==='tout'?'Observations, statuts, participation et TAF non faits, cours par cours':'Observations seulement';
+    b.onclick=()=>{ obsSuivi.mode=x.v; renderObsSuivi(); };
+    bar.appendChild(b);
+  });
+  bar.appendChild(el('span','width:1px;height:18px;background:var(--brd);margin:0 4px'));
   bar.appendChild(el('span','font-size:11px;font-weight:600;color:var(--tx3)','Période :'));
   [{v:'all',l:'Année'},{v:'s1',l:'Sem. 1'},{v:'s2',l:'Sem. 2'},{v:'t1',l:'Trim. 1'},{v:'t2',l:'Trim. 2'},{v:'t3',l:'Trim. 3'},{v:'custom',l:'Dates…'}].forEach(x=>{
     const b=el('button',null,x.l); b.className='fp-tab'+(obsSuivi.periode===x.v?' act':'');
@@ -51700,12 +51776,12 @@ function renderObsSuivi(){
     let n=0;
     uids.forEach(uid=>{
       const nom=getFullName(uid), liste=par[uid];
-      if(f && nom.toLowerCase().indexOf(f)<0 && !liste.some(o=>o.texte.toLowerCase().indexOf(f)>=0)) return;
+      if(f && nom.toLowerCase().indexOf(f)<0 && !liste.some(o=>(o.statuts?_obsLigneTout(o):o.texte).toLowerCase().indexOf(f)>=0)) return;
       n++;
       const carte=el('div','background:var(--sur);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;min-width:0');
       const hd=el('div','display:flex;align-items:baseline;gap:8px');
       hd.appendChild(el('span','font-size:14px;font-weight:700;color:var(--tx)',nom));
-      hd.appendChild(el('span','font-size:11px;color:var(--tx3)',liste.length+' obs.'));
+      hd.appendChild(el('span','font-size:11px;color:var(--tx3)',liste.length+(obsSuivi.mode==='tout'?' cours':' obs.')));
       const cp=el('button','margin-left:auto;font-size:11px;padding:2px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','📋 Copier');
       cp.type='button'; cp.title='Copier les observations de la période (sans la note permanente)';
       cp.onclick=()=>{
@@ -51723,12 +51799,22 @@ function renderObsSuivi(){
         d.type='button'; d.title='Résumé de ce cours';
         d.onclick=()=>{ try{ openCourseSummaryModal(o.slotKey, cls); }catch(e){ console.warn('[obs] résumé', e); } };
         r.appendChild(d);
-        r.appendChild(el('span','flex:1;min-width:0;color:var(--tx);white-space:pre-wrap',o.texte));
+        if(o.statuts){   // V11.3.105 — mode « Tout »
+          const z=el('span','flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:3px 5px;align-items:baseline');
+          const puce=(t,bg,fg)=>z.appendChild(el('span','font-size:10px;font-weight:700;padding:0 5px;border-radius:3px;background:'+bg+';color:'+fg,t));
+          // Couleurs du tableau Suivi : neg-l gris, neg-r orange, pos vert.
+          o.statuts.forEach(t=>{ let col=''; try{ const st=getStatuts().find(x=>x.label===t); col=st?st.col:''; }catch(e){}
+            if(col==='pos') puce(t,'#DCFCE7','#166534'); else if(col==='neg-r') puce(t,'#FFEDD5','#9A3412'); else puce(t,'#E5E7EB','#374151'); });
+          if(o.partic) puce('✋ '+o.partic,'#DCFCE7','#166534');
+          if(o.tnf) puce(o.tnf+' TAF non fait'+(o.tnf>1?'s':''),'#FEE2E2','#991B1B');
+          if(o.texte) z.appendChild(el('span','color:var(--tx);white-space:pre-wrap',o.texte));
+          r.appendChild(z);
+        } else r.appendChild(el('span','flex:1;min-width:0;color:var(--tx);white-space:pre-wrap',o.texte));
         carte.appendChild(r);
       });
       corps.appendChild(carte);
     });
-    if(!n) corps.appendChild(el('div','color:var(--tx3);font-size:13px', uids.length?'Aucun résultat pour cette recherche.':'Aucune observation sur cette période pour '+cls.toUpperCase()+'.'));
+    if(!n) corps.appendChild(el('div','color:var(--tx3);font-size:13px', uids.length?'Aucun résultat pour cette recherche.':(obsSuivi.mode==='tout'?'Aucun suivi':'Aucune observation')+' sur cette période pour '+cls.toUpperCase()+'.'));
   };
   q.oninput=()=>{ obsSuivi.q=q.value; dessiner(); };
   dessiner();
