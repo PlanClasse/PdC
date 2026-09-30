@@ -4302,7 +4302,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.101';
+const APP_VERSION = 'v11.3.102';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -62278,11 +62278,23 @@ function _tirageTextesFiche(f, crits){
     return {uid:s.uid, texte};
   }).filter(x=>x.texte);
 }
+/** V11.3.102 — Élèves proposés au CHOIX : présents, puis (si demandé) absents,
+ *  chacun trié par nom. eleves = [{uid, name}], absents = Set d'uids. Pure.
+ *  Renvoie [{uid, name, absent}]. */
+function _tirageListeChoix(eleves, absents, avecAbsents){
+  const A=absents instanceof Set ? absents : new Set(absents||[]);
+  const tri=(a,b)=>String(a.name||'').localeCompare(String(b.name||''),'fr',{sensitivity:'base'});
+  const L=(eleves||[]).filter(e=>e && e.uid);
+  const pres=L.filter(e=>!A.has(e.uid)).sort(tri).map(e=>({uid:e.uid, name:e.name, absent:false}));
+  const abs=avecAbsents ? L.filter(e=>A.has(e.uid)).sort(tri).map(e=>({uid:e.uid, name:e.name, absent:true})) : [];
+  return pres.concat(abs);
+}
 /** « tirée le 26/09 à 10:42 ». Pure. */
 function _tirageFicheQuand(f){
   const d=new Date((f&&f.ts)||0);
   const p=n=>String(n).padStart(2,'0');
-  return 'tirée le '+p(d.getDate())+'/'+p(d.getMonth()+1)+' à '+p(d.getHours())+':'+p(d.getMinutes());
+  // V11.3.102 — une fiche peut naître d'un CHOIX (élèves désignés), pas d'un tirage.
+  return ((f&&f.mode==='choix')?'choisie le ':'tirée le ')+p(d.getDate())+'/'+p(d.getMonth()+1)+' à '+p(d.getHours())+':'+p(d.getMinutes());
 }
 
 /** Écrit les lignes dans l'observation du cours FIGÉ dans la fiche (à défaut,
@@ -62721,10 +62733,18 @@ function openTirageModal(){
   nbRow.appendChild(nbLbl); nbRow.appendChild(nbIn); nbRow.appendChild(nbHint); extra.appendChild(nbRow);
 
   // ── Bouton tirer ──
+  // V11.3.102 — « 👆 Choisir » : désigner soi-même les élèves (types avec saisie).
+  const tirRow=document.createElement('div'); tirRow.style.cssText='display:flex;gap:8px;margin-bottom:10px';
   const tirBtn=document.createElement('button'); tirBtn.className='bp';
-  tirBtn.style.cssText='width:100%;font-size:13px;padding:9px;margin-bottom:10px';
+  tirBtn.style.cssText='flex:1;font-size:13px;padding:9px';
   tirBtn.textContent='🎲 Tirer au sort';
-  extra.appendChild(tirBtn);
+  const choixBtn=document.createElement('button'); choixBtn.className='bs'; choixBtn.type='button';
+  choixBtn.style.cssText='flex:none;font-size:13px;padding:9px 14px';
+  choixBtn.textContent='👆 Choisir'; choixBtn.title='Désigner vous-même les élèves à évaluer';
+  tirRow.appendChild(tirBtn); tirRow.appendChild(choixBtn); extra.appendChild(tirRow);
+  const choixBox=document.createElement('div'); choixBox.style.display='none';
+  extra.appendChild(choixBox);
+  const fermerChoix=()=>{ choixBox.innerHTML=''; choixBox.style.display='none'; };
 
   // ── Historique ──
   const histHdr=document.createElement('div');
@@ -62772,6 +62792,7 @@ function openTirageModal(){
     nbIn.max=String(avecSaisie?TIRAGE_SAISIE_MAX:10);
     if((parseInt(nbIn.value)||1)>+nbIn.max) nbIn.value=nbIn.max;
     nbHint.textContent=avecSaisie?('puis saisie ('+TIRAGE_SAISIE_MAX+' max.)'):'';
+    choixBtn.style.display=avecSaisie?'':'none'; fermerChoix();   // V11.3.102
     rWrap.innerHTML='';
     clearSaisie();
     renderHist();
@@ -62782,9 +62803,70 @@ function openTirageModal(){
 
   hReset.onclick=()=>{ setHist([]); saveS(); renderHist(); rWrap.innerHTML=''; };
 
+  // ── V11.3.102 — Choisir les élèves (au lieu de les tirer) ──
+  // Même fiche que le tirage (type actif, cours figé, reprise). Absents masqués,
+  // affichables. « Compter dans l'historique » : l'élève ne sera plus tiré au sort
+  // pour ce type tant que la liste n'est pas épuisée (comme après un tirage).
+  let _choixAbs=false, _choixHist=true;
+  const _tousSieges=_getActiveSeatUids().map(uid=>({uid, name:getSeatLabel(uid)}));
+  choixBtn.onclick=()=>{
+    if(_anim) return;
+    if(choixBox.style.display!=='none'){ fermerChoix(); return; }
+    clearSaisie(); rWrap.innerHTML='';
+    const cat=curCatObj(); if(!cat || cat.saisie==='aucune') return;
+    const sel=new Set();
+    choixBox.style.display='';
+    const dessiner=()=>{
+      choixBox.innerHTML='';
+      const w=_tasEl('div','border:1.5px solid var(--acc);border-radius:var(--r2);padding:8px 10px;margin-bottom:10px;background:var(--sur)');
+      choixBox.appendChild(w);
+      const hd=_tasEl('div','display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px');
+      hd.appendChild(_tasEl('span','font-size:13px;font-weight:700;color:var(--tx)','Choisir — '+_tirageNomSansEmoji(cat.label)));
+      hd.appendChild(_tasEl('span','font-size:11px;color:var(--tx3)', sel.size+' / '+TIRAGE_SAISIE_MAX+' au plus'));
+      w.appendChild(hd);
+      const grille=_tasEl('div','display:flex;flex-wrap:wrap;gap:5px;max-height:190px;overflow-y:auto;padding:2px 0');
+      w.appendChild(grille);
+      _tirageListeChoix(_tousSieges, absSet, _choixAbs).forEach(e=>{
+        const on=sel.has(e.uid), plein=!on && sel.size>=TIRAGE_SAISIE_MAX;
+        const b=_tasEl('button','font-size:12px;padding:4px 10px;border-radius:14px;cursor:pointer;font-family:inherit;border:1.5px solid '+(on?'var(--acc)':'var(--brd)')
+          +';background:'+(on?'var(--acc)':'var(--sur2)')+';color:'+(on?'#fff':(e.absent?'var(--tx3)':'var(--tx)'))+(plein?';opacity:.4;cursor:not-allowed':''),
+          (on?'✓ ':'')+e.name+(e.absent?' (abs.)':''));
+        b.type='button';
+        b.onclick=()=>{ if(on) sel.delete(e.uid); else if(!plein) sel.add(e.uid); dessiner(); };
+        grille.appendChild(b);
+      });
+      const opts=_tasEl('div','display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:12px;color:var(--tx2)');
+      const caseA=(txt, val, set)=>{ const l=_tasEl('label','display:inline-flex;align-items:center;gap:5px;cursor:pointer');
+        const c=_tasEl('input','width:14px;height:14px;accent-color:var(--acc)'); c.type='checkbox'; c.checked=val; c.onchange=()=>{ set(c.checked); dessiner(); };
+        l.appendChild(c); l.appendChild(document.createTextNode(txt)); return l; };
+      if(absSet.size) opts.appendChild(caseA('Afficher les absents ('+absSet.size+')', _choixAbs, v=>{ _choixAbs=v; if(!v) absSet.forEach(u=>sel.delete(u)); }));
+      opts.appendChild(caseA('Compter dans l’historique du tirage', _choixHist, v=>{ _choixHist=v; }));
+      w.appendChild(opts);
+      const ft=_tasEl('div','display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:8px');
+      const msg=_tasEl('span','margin-right:auto;font-size:11px;color:#DC2626',''); ft.appendChild(msg);
+      const fer=_tasEl('button','font-size:12px;padding:6px 12px','Fermer'); fer.className='bs'; fer.type='button'; fer.onclick=fermerChoix;
+      const ok=_tasEl('button','font-size:12px;padding:6px 14px', sel.size?('Créer la fiche ('+sel.size+')'):'Créer la fiche'); ok.className='bp'; ok.type='button';
+      ok.onclick=()=>{
+        if(!sel.size){ msg.textContent='Choisissez au moins un élève.'; return; }
+        const chosen=_tirageListeChoix(_tousSieges, absSet, true).filter(e=>sel.has(e.uid));
+        if(_choixHist){ setHist([...getHist(), chosen.map(e=>e.uid)]); renderHist(); }
+        const cib=(typeof _obsSlotCible==='function')?_obsSlotCible(curCls):null;
+        const gi=(typeof _isScopeGrpInter==='function' && _isScopeGrpInter())?curGrpInter:'';
+        const grp=(cib && !gi && typeof getCurrentGrpId==='function')?(getCurrentGrpId(curCls, cib.slotKey)||''):'';
+        const fiche=_tirageFicheCreer(_tirageScope(), cat, chosen, cib, grp, gi);
+        if(fiche) fiche.mode='choix';
+        saveS(); fermerChoix();
+        if(fiche){ _tirageMajPastille(); ouvrirFiche(fiche); }
+      };
+      ft.appendChild(fer); ft.appendChild(ok); w.appendChild(ft);
+    };
+    dessiner();
+  };
+
   let _anim=null;
   tirBtn.onclick=()=>{
     if(_anim) return;
+    fermerChoix();   // V11.3.102
     const nb=Math.max(1,Math.min(+nbIn.max||10,parseInt(nbIn.value)||1));
     const catTirage=curCatObj();
     clearSaisie();
