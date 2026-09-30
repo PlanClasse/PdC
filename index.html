@@ -1362,6 +1362,7 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .seat.drag-over{border-color:var(--acc);background:var(--acc-l);border-style:solid}
 .seat.occupied{border-style:solid;cursor:grab}.seat.occupied:hover{box-shadow:var(--sh)}
 .seat-n{display:none}
+.seat-role{position:absolute;top:2px;right:3px;font-size:9px;font-weight:800;line-height:1;padding:2px 4px;border-radius:4px;background:#7C3AED;color:#fff;letter-spacing:.02em;z-index:2;pointer-events:auto;cursor:help}  /* V11.4.0 — délégués */
 .seat-nm{font-size:17px;font-weight:700;text-align:center;color:#000;padding:0 4px;line-height:1.1;pointer-events:none;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .seat-nm.long{font-size:15px}
 .seat-nm.vlong{font-size:12px}
@@ -4302,7 +4303,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.3.105';
+const APP_VERSION = 'v11.4.0';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -35393,6 +35394,7 @@ function makeSeat(idx,name,extraCls){
     const nlen=displayName.length;
     nm.className='seat-nm'+(nlen>13?' long':'')+(nlen>17?' vlong':'');
     nm.textContent=displayName; seat.appendChild(nm);
+    try{ _delBadgeSiege(seat, name); }catch(e){}   // V11.4.0 — délégués / responsabilités
     // Status badges in normal flow (no absolute) — tight under the name
     if(keys.length>0){
       const shownKeys=keys.includes('absent')?['absent']:keys;
@@ -35688,6 +35690,7 @@ function togglePlusMenu(e){
   updateGenderMenuLabel();
   updateGroupesMenuItems();
   updatePlanDateMenuItems();
+  try{ _delMenuItems(); }catch(e){ console.warn('[délégués] menu', e); }   // V11.4.0
 }
 function closePlusMenu(){
   const m=document.getElementById('plus-menu');
@@ -35734,6 +35737,174 @@ function _applyGenderColor(seat, name){
 // V020-v177 — Maintenant que F/G est une .pmcard avec icône + texte
 // dans des span séparés, on ne peut plus écraser via textContent.
 // On bascule la classe .pmcard--active qui ajoute outline + cocheur.
+/* ══ V11.4.0 — Délégués et responsabilités (demande du 30/09) ═════════════════
+   S.delegues = {<cls>: {<uid>: [roleId…]}} ; S.responsabilites = [{id, label, court}]
+   (responsabilités personnelles, communes à toutes les classes) ;
+   S.reglages.showDelegues : badges sur le plan.
+   Menu ⋯ Plus : « 🎖 Délégués » (Affichage : badges + liste au survol) et
+   « Déclarer les délégués » (Données). */
+const DELEGUE_ROLES=[
+  {id:'delegue',   label:'Délégué(e) de classe',    court:'D'},
+  {id:'suppleant', label:'Délégué(e) suppléant(e)', court:'DS'},
+  {id:'eco',       label:'Éco-délégué(e)',          court:'ÉCO'},
+];
+/** Rôles : ceux d'origine puis les responsabilités personnelles. Pure. */
+function _delRoles(perso){
+  return DELEGUE_ROLES.concat((Array.isArray(perso)?perso:[]).filter(r=>r && r.id && r.label));
+}
+/** Abréviation d'une responsabilité : initiales (3 au plus), sinon 3 lettres. Pure. */
+function _delCourt(label){
+  const m=String(label||'').trim().split(/[\s'’\-]+/).filter(w=>w && !/^(de|du|des|la|le|les|l|d|et)$/i.test(w));
+  if(!m.length) return '?';
+  if(m.length===1) return m[0].slice(0,3).toUpperCase();
+  return m.slice(0,3).map(w=>w.charAt(0).toUpperCase()).join('');
+}
+/** Rôles d'un élève (ids), dans l'ordre des rôles. Toutes classes si cls vide. Pure. */
+function _delRolesEleve(delegues, cls, uid, roles){
+  const D=delegues||{}; const out=new Set();
+  const lire=(c)=>{ const m=D[c]; if(m && Array.isArray(m[uid])) m[uid].forEach(r=>out.add(r)); };
+  if(cls) lire(cls); else Object.keys(D).forEach(lire);
+  return (roles||[]).map(r=>r.id).filter(id=>out.has(id));
+}
+/** Liste par rôle (texte du survol) : « Délégué(e) de classe : A, B ». Pure. */
+function _delTexteListe(delegues, cls, roles, nomDe){
+  const m=(delegues||{})[cls]||{};
+  const L=(roles||[]).map(r=>{
+    const noms=Object.keys(m).filter(u=>Array.isArray(m[u]) && m[u].indexOf(r.id)>=0).map(u=>nomDe?nomDe(u):u).sort((a,b)=>String(a).localeCompare(String(b),'fr'));
+    return noms.length ? r.label+' : '+noms.join(', ') : '';
+  }).filter(Boolean);
+  return L.length ? L.join('\n') : 'Aucun délégué déclaré.';
+}
+/** Pose / retire un rôle. Ne sauvegarde pas. */
+function _delBasculer(cls, uid, roleId){
+  if(!cls || !uid || !roleId) return false;
+  if(!S.delegues) S.delegues={};
+  if(!S.delegues[cls]) S.delegues[cls]={};
+  const L=Array.isArray(S.delegues[cls][uid]) ? S.delegues[cls][uid] : [];
+  const i=L.indexOf(roleId);
+  if(i>=0) L.splice(i,1); else L.push(roleId);
+  if(L.length) S.delegues[cls][uid]=L; else delete S.delegues[cls][uid];
+  if(!Object.keys(S.delegues[cls]).length) delete S.delegues[cls];
+  return i<0;
+}
+function _delBadgeSiege(seat, uid){
+  if(!seat || !uid || !(S.reglages && S.reglages.showDelegues)) return;
+  const roles=_delRoles(S.responsabilites);
+  const cls=(typeof _isScopeGrpInter==='function' && _isScopeGrpInter()) ? '' : curCls;
+  const ids=_delRolesEleve(S.delegues, cls, uid, roles);
+  if(!ids.length) return;
+  const R=ids.map(id=>roles.find(r=>r.id===id)).filter(Boolean);
+  const b=document.createElement('span'); b.className='seat-role';
+  b.textContent=R.map(r=>r.court).join('·');
+  b.title=R.map(r=>r.label).join('\n');
+  seat.appendChild(b);
+}
+function toggleDeleguesPlan(){
+  if(!S.reglages) S.reglages={};
+  S.reglages.showDelegues=!S.reglages.showDelegues;
+  saveS(); renderApp();
+  showDropToast(S.reglages.showDelegues ? '🎖 Délégués affichés sur le plan' : '🎖 Délégués masqués');
+}
+function _delMenuItems(){
+  const g=document.getElementById('pmi-gender');
+  if(g && !document.getElementById('pmi-delegues')){
+    const b=document.createElement('button'); b.className='pmcard'; b.id='pmi-delegues'; b.type='button';
+    const ic=document.createElement('span'); ic.className='pmcard-ic'; ic.textContent='🎖';
+    b.appendChild(ic); b.appendChild(document.createTextNode('Délégués'));
+    b.onclick=()=>{ closePlusMenu(); toggleDeleguesPlan(); };
+    g.parentNode.insertBefore(b, g.nextSibling);
+  }
+  const z=document.querySelector('#plus-menu .pm-zone--donnees');
+  if(z && !document.getElementById('pmi-delegues-decl')){
+    const b=document.createElement('button'); b.className='pmcard'; b.id='pmi-delegues-decl'; b.type='button';
+    const ic=document.createElement('span'); ic.className='pmcard-ic'; ic.textContent='🎖';
+    b.appendChild(ic); b.appendChild(document.createTextNode('Déclarer les délégués'));
+    b.onclick=()=>{ closePlusMenu(); setTimeout(openDeclarerDelegues, 50); };
+    z.appendChild(b);
+  }
+  const bd=document.getElementById('pmi-delegues');
+  if(bd){
+    bd.classList.toggle('pmcard--active', !!(S.reglages && S.reglages.showDelegues));
+    bd.title=curCls ? (String(curCls).toUpperCase()+'\n'+_delTexteListe(S.delegues, curCls, _delRoles(S.responsabilites), getFullName)) : 'Délégués';
+  }
+}
+function openDeclarerDelegues(){
+  const cls=curCls;
+  if(!cls || !S.cl || !S.cl[cls]){ showDropToast('ℹ️ Ouvrez d’abord une classe'); return; }
+  showModal('🎖 Délégués — '+String(cls).toUpperCase(), '', null);
+  _modalFermer();
+  const modal=document.querySelector('#mbg .modal');
+  const extra=document.getElementById('modal-extra'); extra.innerHTML='';
+  const el=(tag, css, txt)=>{ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; };
+  const eleves=((S.cl[cls].students)||[]).filter(Boolean).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+  let armeSuppr='';
+  const dessiner=()=>{
+    extra.innerHTML='';
+    const roles=_delRoles(S.responsabilites);
+    if(modal){ modal.style.width=Math.min(1100, 260+roles.length*86)+'px'; modal.style.maxWidth='96vw'; }
+    const m=(S.delegues||{})[cls]||{};
+    const sc=el('div','overflow:auto;max-height:62vh;border:1px solid var(--brd);border-radius:var(--r1)');
+    const t=el('div','display:grid;grid-template-columns:minmax(150px,1fr) repeat('+roles.length+',80px);align-items:stretch;font-size:12px');
+    sc.appendChild(t); extra.appendChild(sc);
+    const th=(node)=>{ const c=el('div','position:sticky;top:0;z-index:1;background:var(--sur2);padding:5px 4px;border-bottom:1px solid var(--brd);text-align:center;font-weight:700;color:var(--tx2)'); c.appendChild(node); t.appendChild(c); return c; };
+    th(el('span','','Élève')).style.textAlign='left';
+    roles.forEach(r=>{
+      const n=Object.keys(m).filter(u=>(m[u]||[]).indexOf(r.id)>=0).length;
+      const w=el('div','display:flex;flex-direction:column;align-items:center;gap:1px');
+      w.appendChild(el('span','',r.court+(n?' ('+n+')':'')));
+      w.appendChild(el('span','font-size:9px;font-weight:500;color:var(--tx3);line-height:1.15',r.label));
+      if(!DELEGUE_ROLES.some(d=>d.id===r.id)){
+        const x=el('button','margin-top:2px;font-size:10px;padding:0 5px;border:1px solid #FCA5A5;border-radius:4px;background:var(--sur);color:#DC2626;cursor:pointer;font-family:inherit', armeSuppr===r.id?'Confirmer':'×');
+        x.type='button'; x.title='Supprimer cette responsabilité (pour toutes les classes)';
+        x.onclick=()=>{
+          if(armeSuppr!==r.id){ armeSuppr=r.id; dessiner(); return; }
+          S.responsabilites=(S.responsabilites||[]).filter(q=>q.id!==r.id);
+          Object.keys(S.delegues||{}).forEach(c=>Object.keys(S.delegues[c]).forEach(u=>{ _delRetirerRole(c, u, r.id); }));
+          armeSuppr=''; saveS(); dessiner(); try{ renderApp(); }catch(e){}
+        };
+        w.appendChild(x);
+      }
+      th(w);
+    });
+    eleves.forEach((uid,i)=>{
+      const fond=i%2?'var(--sur)':'var(--bg)';
+      t.appendChild(el('div','padding:4px 6px;background:'+fond+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx)',getFullName(uid)));
+      roles.forEach(r=>{
+        const c=el('label','display:flex;align-items:center;justify-content:center;background:'+fond+';cursor:pointer');
+        const cb=el('input','width:16px;height:16px;accent-color:#7C3AED;cursor:pointer'); cb.type='checkbox';
+        cb.checked=(m[uid]||[]).indexOf(r.id)>=0; cb.title=r.label+' — '+getFullName(uid);
+        cb.onchange=()=>{ _delBasculer(cls, uid, r.id); saveS(); dessiner(); try{ renderApp(); }catch(e){} };
+        c.appendChild(cb); t.appendChild(c);
+      });
+    });
+    // Autre responsabilité
+    const add=el('div','display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px');
+    const inp=el('input','flex:1 1 220px;min-width:0;height:30px;padding:0 8px;border:1.5px solid var(--brd);border-radius:var(--r1);font-size:12px;font-family:inherit;background:var(--bg);color:var(--tx)');
+    inp.placeholder='Autre responsabilité (ex. Responsable du matériel)'; inp.maxLength=40;
+    const ok=el('button','font-size:12px;padding:6px 12px','＋ Ajouter'); ok.className='bp'; ok.type='button';
+    const msg=el('span','flex-basis:100%;font-size:11px;color:#DC2626','');
+    ok.onclick=()=>{
+      const lb=inp.value.trim();
+      if(!lb){ msg.textContent='Donnez un nom à la responsabilité.'; return; }
+      if(_delRoles(S.responsabilites).some(r=>r.label.toLowerCase()===lb.toLowerCase())){ msg.textContent='Cette responsabilité existe déjà.'; return; }
+      if(!Array.isArray(S.responsabilites)) S.responsabilites=[];
+      S.responsabilites.push({id:'resp_'+Date.now().toString(36), label:lb, court:_delCourt(lb)});
+      saveS(); dessiner();
+    };
+    inp.onkeydown=(e)=>{ if(e.key==='Enter') ok.onclick(); };
+    add.appendChild(inp); add.appendChild(ok); add.appendChild(msg);
+    extra.appendChild(add);
+    extra.appendChild(el('div','font-size:11px;color:var(--tx3);margin-top:6px','Chaque case est enregistrée aussitôt. Les responsabilités ajoutées valent pour toutes les classes. Sur le plan : ⋯ Plus → Affichage → 🎖 Délégués.'));
+  };
+  dessiner();
+}
+/** Retire un rôle d'un élève (s'il l'a). Ne sauvegarde pas. */
+function _delRetirerRole(cls, uid, roleId){
+  const L=S.delegues && S.delegues[cls] && S.delegues[cls][uid];
+  if(!Array.isArray(L) || L.indexOf(roleId)<0) return;
+  _delBasculer(cls, uid, roleId);
+}
+
 function updateGenderMenuLabel(){
   const it=document.getElementById('pmi-gender');
   if(!it) return;
