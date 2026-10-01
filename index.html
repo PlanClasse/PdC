@@ -2908,6 +2908,7 @@ body:has(#sdc-bg) #font-ctrl{display:none}
   .sdc-ta{min-height:200px;flex:none}
   .sdc-col+.sdc-col{border-left:none;border-top:1px solid var(--brd)}
   .sdc-vide{margin-left:0}
+  .sdc-hb-accueil{margin-left:auto}   /* V11.4.2 — 🏠 reste à droite sur écran étroit */
   .sdc-bg{padding:0}
   .sdc-pan{border-radius:0}
 }
@@ -4303,7 +4304,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.1';
+const APP_VERSION = 'v11.4.2';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -30362,7 +30363,8 @@ function _sdcRendre(){
   const head=_sdcEl('div','sdc-head'); pan.appendChild(head);
   // V11.3.92 — « Retour » (arrivé depuis un créneau) et « Accueil ».
   if(_sdc.retour){ const bR=_sdcEl('button','sdc-hb sdc-hb-clair','← Retour'); bR.title='Revenir au planning'; bR.onclick=closeSaisieCours; head.appendChild(bR); }
-  { const bA=_sdcEl('button','sdc-hb','🏠'); bA.title='Accueil'; bA.setAttribute('aria-label','Accueil'); bA.onclick=_sdcAccueil; head.appendChild(bA); }
+  // V11.4.2 — 🏠 posé tout à droite du bandeau (comme partout ailleurs), après « 1er cours non rempli ».
+  const bA=_sdcEl('button','sdc-hb sdc-hb-accueil','🏠'); bA.title='Accueil'; bA.setAttribute('aria-label','Accueil'); bA.onclick=_sdcAccueil;
   head.appendChild(_sdcEl('div','sdc-titre','Saisir mes cours'));
   const selCls=_sdcEl('select','sdc-cls'); selCls.title='Classe';
   head.appendChild(selCls);
@@ -30436,6 +30438,7 @@ function _sdcRendre(){
     if(p) _sdcAller(cls, p.slotKey); else { bVide.textContent='Aucun cours vide à venir'; setTimeout(()=>{ bVide.textContent='1er cours non rempli →'; }, 1800); }
   };
   head.appendChild(bVide);
+  head.appendChild(bA);   // V11.4.2 — tout à droite
 
   // ── V11.3.92 — grille : cours du jour | saisie | interprétation | autres cours + bibliothèque
   const grille=_sdcEl('div','sdc-grille'); pan.appendChild(grille);
