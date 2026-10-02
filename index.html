@@ -424,6 +424,8 @@ body.mode-prof #prof-act-col-right{display:flex;flex-direction:column;gap:10px;m
 .hwn-h-week{font-size:11px;color:var(--tx3);font-weight:600}
 .hwn-h-chev{font-size:11px;color:var(--tx3);transition:transform .15s;margin-left:.4rem}
 .hwn-h-chev.hwn-open{transform:rotate(90deg)}
+.hwn-reprendre{font-size:11px;font-weight:700;padding:2px 9px;border-radius:9px;border:1.5px solid #B45309;background:#FFFBEB;color:#92400E;cursor:pointer;font-family:inherit;margin-left:.4rem}  /* V11.4.3 */
+.hwn-reprendre:hover{background:#FEF3C7}
 .hwn-h-cnt{font-size:10px;font-weight:800;background:#991B1B;color:#fff;padding:1px 7px;border-radius:9px;margin-left:.3rem}
 .hwn-body{padding:.5rem .9rem .85rem;border-top:1px solid var(--brd);background:var(--sur)}
 .hwn-ta{width:100%;min-height:90px;border:1px solid var(--brd);border-radius:var(--r1);padding:.55rem .7rem;font-family:inherit;font-size:13px;line-height:1.5;color:var(--tx);background:var(--bg);resize:vertical;outline:none;box-sizing:border-box;transition:border-color .15s}
@@ -4304,7 +4306,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.2';
+const APP_VERSION = 'v11.4.3';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -13003,6 +13005,55 @@ function _hwnFormatWeekRange(lundiStr){
   }catch(e){ return lundiStr; }
 }
 
+/* V11.4.3 — Note de la semaine : (1) enregistrée PENDANT la frappe (avant :
+   seulement à la sortie du champ — fermer l'onglet en pleine frappe perdait le
+   texte) ; (2) le lundi, si la note est vide, la note de la semaine précédente
+   est PROPOSÉE (« ↩ Reprendre »), sans ses lignes faites — jamais recopiée seule. */
+/** Note précédente non vide (clé de lundi la plus récente avant `lundiStr`). Pure. */
+function _hwnSemainePrecedente(notes, lundiStr){
+  let best=null;
+  Object.keys(notes||{}).forEach(k=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(k) || !(k<lundiStr)) return;
+    if(!String(notes[k]||'').trim()) return;
+    if(!best || k>best) best=k;
+  });
+  return best ? {key:best, texte:String(notes[best])} : null;
+}
+/** Lignes à reprendre : sans les lignes faites ([FAIT], ou « … FAIT » en fin de
+ *  ligne, mais pas « NON FAIT »), sans lignes vides en tête ni en fin. Pure. */
+function _hwnLignesAReprendre(texte){
+  const L=String(texte||'').split('\n').filter(l=>{
+    if(/\[\s*FAIT\s*\]/i.test(l)) return false;
+    if(/\bFAIT\b[\s.!]*$/i.test(l) && !/\bNON\s+FAIT\b[\s\].!]*$/i.test(l)) return false;
+    return true;
+  });
+  while(L.length && !L[0].trim()) L.shift();
+  while(L.length && !L[L.length-1].trim()) L.pop();
+  return L.join('\n');
+}
+let _hwnSaisieT=null;
+/** Écrit la note pendant la frappe (sauvegarde différée). */
+function _hwnEcrireNote(lundiStr, val){
+  if(!S.agendaNotes) S.agendaNotes={};
+  if(!S.agendaNotes._global) S.agendaNotes._global={};
+  S.agendaNotes._global[lundiStr]=val;
+  if(_hwnSaisieT) clearTimeout(_hwnSaisieT);
+  _hwnSaisieT=setTimeout(()=>{ _hwnSaisieT=null; saveS(); }, 400);
+}
+/** Reprend la note précédente dans la semaine courante (si elle est encore vide). */
+function _hwnReprendre(lundiStr){
+  const cur=String(((S.agendaNotes||{})._global||{})[lundiStr]||'');
+  if(cur.trim()) return false;
+  const prec=_hwnSemainePrecedente((S.agendaNotes||{})._global, lundiStr);
+  const txt=prec ? _hwnLignesAReprendre(prec.texte) : '';
+  if(!txt) return false;
+  S.agendaNotes._global[lundiStr]=txt;
+  try{ _tdlProcessNote(lundiStr); }catch(e){ console.error('TDL',e); }
+  try{ _reuProcessNote(lundiStr); }catch(e){ console.error('REU',e); }
+  saveS();
+  return true;
+}
+
 let _hwnExpanded=false;
 let _hwnUserToggled=false; // Flag : l'utilisateur a manuellement ouvert/fermé pendant la session
 
@@ -13041,6 +13092,20 @@ function renderHomeWeekNote(){
   } else {
     head.appendChild(ic); head.appendChild(tx); head.appendChild(wk);
   }
+  // V11.4.3 — note vide : proposer celle de la semaine précédente (sans ses lignes faites).
+  if(!noteTrim){
+    const prec=_hwnSemainePrecedente(S.agendaNotes._global, lundiStr);
+    const txt=prec ? _hwnLignesAReprendre(prec.texte) : '';
+    if(txt){
+      const n=txt.split('\n').filter(l=>l.trim()).length;
+      let lib=prec.key; try{ lib=new Date(prec.key+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}); }catch(e){}
+      const bR=document.createElement('button'); bR.type='button'; bR.className='hwn-reprendre';
+      bR.textContent='↩ Reprendre la semaine du '+lib+' ('+n+' ligne'+(n>1?'s':'')+')';
+      bR.title='Recopier ici la note de la semaine du '+lib+', sans les lignes marquées FAIT :\n'+txt;
+      bR.onclick=(e)=>{ e.stopPropagation(); if(_hwnReprendre(lundiStr)){ _hwnExpanded=true; _hwnUserToggled=true; renderHomeWeekNote(); } };
+      head.appendChild(bR);
+    }
+  }
   const chev = document.createElement('span'); chev.className='hwn-h-chev'+(_hwnExpanded?' hwn-open':''); chev.textContent='▶';
   head.appendChild(chev);
   head.onclick = ()=>{ _hwnExpanded = !_hwnExpanded; _hwnUserToggled=true; renderHomeWeekNote(); };
@@ -13052,7 +13117,9 @@ function renderHomeWeekNote(){
     ta.className = 'hwn-ta';
     ta.placeholder = 'Notes, rappels, documents à préparer…\nAstuce : TDL[25/06/26] X — devient une tâche à faire';
     ta.value = noteVal;
+    ta.oninput = ()=>_hwnEcrireNote(lundiStr, ta.value);   // V11.4.3 — enregistrée pendant la frappe
     ta.onchange = ()=>{
+      if(_hwnSaisieT){ clearTimeout(_hwnSaisieT); _hwnSaisieT=null; }
       if(!S.agendaNotes._global) S.agendaNotes._global={};
       S.agendaNotes._global[lundiStr] = ta.value;
       // S28 patch 10 — Traitement TDL : tagger / propager / cleanup
@@ -13072,7 +13139,7 @@ function renderHomeWeekNote(){
     body.appendChild(help);
 
     const foot = document.createElement('div'); foot.className='hwn-foot';
-    const fInfo = document.createElement('span'); fInfo.textContent='Sauvegarde à la sortie du champ.';
+    const fInfo = document.createElement('span'); fInfo.textContent='Enregistré pendant la frappe.';   // V11.4.3
     const fLink = document.createElement('button'); fLink.className='hwn-link'; fLink.textContent='Ouvrir Vue hebdo';
     fLink.onclick = (e)=>{ e.stopPropagation(); openProgression(); showProgTab('agenda'); };
     foot.appendChild(fInfo); foot.appendChild(fLink);
@@ -54437,7 +54504,9 @@ function renderAgenda(){
       const ta=document.createElement('textarea'); ta.className='agenda-todo-inp';
       ta.placeholder='Notes, rappels, documents à préparer…';
       ta.value=noteVal;
+      ta.oninput=()=>_hwnEcrireNote(lundiStr, ta.value);   // V11.4.3 — enregistrée pendant la frappe
       ta.onchange=()=>{
+        if(_hwnSaisieT){ clearTimeout(_hwnSaisieT); _hwnSaisieT=null; }
         if(!S.agendaNotes._global) S.agendaNotes._global={};
         S.agendaNotes._global[lundiStr]=ta.value;
         // S28 patch 10 — Traitement TDL également depuis la vue hebdo
