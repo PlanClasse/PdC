@@ -4311,7 +4311,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.4';
+const APP_VERSION = 'v11.4.5';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -36052,8 +36052,28 @@ function openEcranAccueil(cls, slotKey){
 }
 function _eaClavier(e){
   if(!document.getElementById('ea-bg')) return;
-  if(e.key==='Escape'){ const mbg=document.getElementById('mbg'); if(mbg && mbg.classList.contains('open')) return; e.stopPropagation(); closeEcranAccueil(); }
+  if(e.key==='Escape'){
+    const mbg=document.getElementById('mbg'); if(mbg && mbg.classList.contains('open')) return;
+    e.stopPropagation();
+    // V11.4.5 — on revient d'où l'on vient : menu ☰ → écran ; préparation ouverte par ✎ → écran.
+    if(_ea && _ea.menu){ _ea.menu=false; _eaRendre(); return; }
+    if(_ea && _ea.prep && _ea.depuisEcran){ _ea.prep=false; _ea.depuisEcran=false; _eaRendre(); return; }
+    closeEcranAccueil();
+  }
 }
+/** V11.4.5 — Valeur suivante dans une liste (clics successifs). Pure. */
+function _eaSuivant(liste, val){
+  const L=Array.isArray(liste)?liste:[]; if(!L.length) return val;
+  const i=L.indexOf(val); return L[(i+1)%L.length];
+}
+/** V11.4.5 — Clic sur 🌐 : sans site → chaque site → sans site. Un seul site à la fois. Pure. */
+function _eaSiteSuivant(sites, glob){
+  const ids=[''].concat(EA_SITES.concat(((glob&&glob.sites)||[]).filter(x=>x && x.id)).map(x=>x.id));
+  const cur=(Array.isArray(sites) && sites.length) ? sites[0] : '';
+  const n=_eaSuivant(ids, ids.indexOf(cur)>=0 ? cur : '');
+  return n ? [n] : [];
+}
+const EA_MINUTEURS=[0, 60, 120, 180, 300, 600];
 function closeEcranAccueil(){
   if(_ea && _ea.t) clearInterval(_ea.t);
   const bg=document.getElementById('ea-bg'); if(bg) bg.remove();
@@ -36081,6 +36101,7 @@ function _eaRendreEcran(bg){
   bg.style.background=V.style==='v4'?'#FFFFFF':V.style==='v3'?'#FDFCF8':P.fond;
   const E=_eaEl, scr=E('div','position:relative;min-height:100vh;box-sizing:border-box;padding:2.6vw 3.4vw 4vw;color:#2C2C2A;font-family:inherit');
   bg.appendChild(scr);
+  if(_ea.menu) scr.onclick=()=>{ _ea.menu=false; _eaRendre(); };   // V11.4.5 — clic à côté : menu fermé
   const fs=(a,b,c)=>'font-size:clamp('+a+'px,'+b+'vw,'+c+'px)';
   // Minuteur (anneau + chiffres), mis à jour par l'intervalle
   const minut=()=>{
@@ -36211,19 +36232,67 @@ function _eaRendreEcran(bg){
     if(V.pastilles.length){ const col=E('div','display:flex;flex-direction:column;gap:.5vw'); V.pastilles.forEach(p=>col.appendChild(pastille(p))); bas.appendChild(col); }
     if(bas.childNodes.length) scr.appendChild(bas);
   }
-  // Commandes discrètes
-  const ctl=E('div','position:fixed;right:12px;bottom:10px;display:flex;gap:5px;opacity:.28;transition:opacity .2s;z-index:2');
-  ctl.onmouseenter=()=>{ ctl.style.opacity='1'; }; ctl.onmouseleave=()=>{ ctl.style.opacity='.28'; };
-  const B=(t,title,fn)=>{ const b=E('button','font-size:12px;padding:4px 9px;border:1px solid #B4B2A9;border-radius:8px;background:#fff;color:#444441;cursor:pointer;font-family:inherit', t); b.type='button'; b.title=title; b.onclick=fn; ctl.appendChild(b); };
+  // Commandes discrètes — V11.4.5 : chaque bouton parcourt ses valeurs à chaque clic ;
+  // ☰ ouvre la liste des champs (allumer / éteindre). Rien d'autre à ouvrir.
+  const glob=st.global;
+  const ctl=E('div','position:fixed;right:12px;bottom:10px;display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:96vw;opacity:'+(_ea.menu?'1':'.28')+';transition:opacity .2s;z-index:3');
+  ctl.onmouseenter=()=>{ ctl.style.opacity='1'; }; ctl.onmouseleave=()=>{ if(!_ea.menu) ctl.style.opacity='.28'; };
+  const B=(t,title,fn,on)=>{ const b=E('button','font-size:12px;padding:4px 9px;border:1px solid '+(on?'#185FA5':'#B4B2A9')+';border-radius:8px;background:'+(on?'#E6F1FB':'#fff')+';color:#444441;cursor:pointer;font-family:inherit;white-space:nowrap', t); b.type='button'; b.title=title; b.onclick=(e)=>{ e.stopPropagation(); fn(); }; ctl.appendChild(b); return b; };
   const change=(f)=>{ f(); _eaEnregistrer(); _eaRendre(); };
-  B(cfg.mode==='eval'?'📝 Éval.':'📖 Séance','Basculer Séance / Évaluation', ()=>change(()=>{ cfg.mode=cfg.mode==='eval'?'seance':'eval'; }));
-  B(cfg.dispo==='classique'?'⊞':'⠿','Îlots / classique', ()=>change(()=>{ cfg.dispo=cfg.dispo==='classique'?'ilots':'classique'; }));
-  if(cfg.mode!=='eval') B(cfg.appareil==='tablette'?'📱':cfg.appareil==='aucun'?'🚫':'💻','Ordinateur / tablette / aucun', ()=>change(()=>{ cfg.appareil=({ordi:'tablette',tablette:'aucun',aucun:'ordi'})[cfg.appareil]||'ordi'; }));
-  B('⏱','Relancer le minuteur', ()=>{ _ea.fin=Date.now()+((cfg.minuteur&&cfg.minuteur.sec)||120)*1000; _eaRendre(); });
-  B('✎','Préparer cet écran', ()=>{ _ea.prep=true; _eaRendre(); });
+  B(cfg.mode==='eval'?'📝 Éval.':'📖 Séance','Séance / Évaluation (clic : suivant)', ()=>change(()=>{ cfg.mode=cfg.mode==='eval'?'seance':'eval'; }));
+  const STY={v1:'V1 Cartes',v2:'V2 Rituel',v3:'V3 Ludique',v4:'V4 Grand'};
+  B('🎨 '+(STY[V.style]||'V1'),'Style : V1 → V2 → V3 → V4', ()=>change(()=>{ cfg.style=_eaSuivant(['v1','v2','v3','v4'], V.style); }));
+  B(cfg.dispo==='classique'?'⊞ Classique':'⠿ Îlots','Disposition : îlots / classique', ()=>change(()=>{ cfg.dispo=cfg.dispo==='classique'?'ilots':'classique'; }));
+  if(cfg.mode!=='eval'){
+    const AP={ordi:'💻 Ordinateur',tablette:'📱 Tablette',aucun:'🚫 Aucun'};
+    B(AP[cfg.appareil]||AP.ordi,'Appareil : ordinateur → tablette → aucun', ()=>change(()=>{ cfg.appareil=_eaSuivant(['ordi','tablette','aucun'], cfg.appareil||'ordi'); }));
+  }
+  const ss=_eaSites(cfg, glob);
+  B('🌐 '+(ss.length>1 ? ss.length+' sites' : ss.length ? ss[0].label : 'Sans site'),'Site : sans site → Elea → Vittascience → mBlock → MakeCode → Tinkercad → vos sites (un seul à la fois ; plusieurs : ✎)',
+    ()=>change(()=>{ cfg.sites=_eaSiteSuivant(cfg.sites, glob); }));
+  const sec=(cfg.minuteur&&cfg.minuteur.sec)|0;
+  B('⏱ '+(sec ? (sec%60 ? (sec/60).toFixed(1).replace('.',',') : sec/60)+'′' : 'non'),'Minuteur : 0 → 1 → 2 → 3 → 5 → 10 min (relancé à chaque clic)', ()=>{
+    const n=_eaSuivant(EA_MINUTEURS, EA_MINUTEURS.indexOf(sec)>=0 ? sec : 120);
+    cfg.minuteur=Object.assign({}, cfg.minuteur, {sec:n}); _ea.fin=n ? Date.now()+n*1000 : null; _eaEnregistrer(); _eaRendre(); });
+  if(sec) B('↻','Relancer le minuteur', ()=>{ _ea.fin=Date.now()+sec*1000; _eaRendre(); });
+  B('☰ Afficher','Champs affichés (allumer / éteindre)', ()=>{ _ea.menu=!_ea.menu; _eaRendre(); }, _ea.menu);
+  B('✎','Préparer cet écran (Échap : retour ici)', ()=>{ _ea.menu=false; _ea.prep=true; _ea.depuisEcran=true; _eaRendre(); });
   B('⛶','Plein écran', ()=>{ try{ const r=document.getElementById('ea-bg'); if(document.fullscreenElement) document.exitFullscreen(); else if(r && r.requestFullscreen) r.requestFullscreen(); }catch(e){} });
   B('✕','Fermer (Échap)', closeEcranAccueil);
   bg.appendChild(ctl);
+  // Menu ☰ : une ligne par champ ; un clic allume / éteint ; les variantes défilent au clic.
+  if(_ea.menu){
+    const m=E('div','position:fixed;right:12px;bottom:52px;z-index:3;background:#fff;border:1px solid #D3D1C7;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:8px;min-width:280px;max-height:70vh;overflow:auto;font-size:13px;color:#2C2C2A');
+    m.onclick=(e)=>e.stopPropagation();
+    const ligne=(lab, on, fn, extra)=>{ const r=E('div','display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:8px;cursor:pointer');
+      r.onmouseenter=()=>{ r.style.background='#F1EFE8'; }; r.onmouseleave=()=>{ r.style.background=''; };
+      r.appendChild(E('span','width:18px;text-align:center;font-weight:700;color:'+(on?'#3B6D11':'#B4B2A9'), on?'✓':'—'));
+      r.appendChild(E('span','flex:1;'+(on?'':'color:#888780'), lab));
+      r.onclick=()=>change(fn);
+      if(extra){ const x=E('button','font-size:11px;padding:2px 8px;border:1px solid #D3D1C7;border-radius:6px;background:#FAF7EE;cursor:pointer;font-family:inherit', extra[0]); x.type='button'; x.title=extra[2]||''; x.onclick=(e)=>{ e.stopPropagation(); change(extra[1]); }; r.appendChild(x); }
+      m.appendChild(r); };
+    const ch=(id)=>{ if(!cfg.champs) cfg.champs={}; cfg.champs[id]=!_eaChampOn(cfg, id); };
+    const vide=(id)=>String(((cfg.textes||{})[id])||'').trim() ? '' : ' (vide : ✎)';
+    m.appendChild(E('div','font-size:10px;font-weight:800;letter-spacing:.06em;color:#888780;padding:2px 6px 4px','AFFICHER'));
+    ligne('Chapitre · séance', _eaChampOn(cfg,'chap'), ()=>ch('chap'));
+    if(cfg.mode!=='eval'){
+      ligne('🎯 Objectif'+vide('objectif'), _eaChampOn(cfg,'objectif'), ()=>ch('objectif'));
+      ligne('🎒 Matériel'+vide('materiel'), _eaChampOn(cfg,'materiel'), ()=>ch('materiel'));
+      ligne('🧩 Défi du jour'+vide('defi'), _eaChampOn(cfg,'defi'), ()=>ch('defi'));
+      ligne('📌 TAF du cours précédent', _eaChampOn(cfg,'taf'), ()=>ch('taf'));
+      ligne('🔁 Absents la dernière fois', _eaChampOn(cfg,'absents'), ()=>ch('absents'),
+        [cfg.absentsNoms===false?'message':'prénoms', ()=>{ cfg.absentsNoms=cfg.absentsNoms===false; }, 'Prénoms / message']);
+    }
+    ligne('🎖 Délégués', _eaChampOn(cfg,'delegues'), ()=>ch('delegues'));
+    ligne('✎ Mot du prof'+(String(cfg.mot||'').trim()?'':' (vide : ✎)'), _eaChampOn(cfg,'mot'), ()=>ch('mot'),
+      [cfg.motStyle==='bandeau'?'bandeau':'post-it', ()=>{ cfg.motStyle=cfg.motStyle==='bandeau'?'postit':'bandeau'; }, 'Post-it / bandeau']);
+    ligne('   … signé', cfg.motSigne!==false, ()=>{ cfg.motSigne=cfg.motSigne===false; });
+    if(cfg.mode==='eval'){
+      m.appendChild(E('div','font-size:10px;font-weight:800;letter-spacing:.06em;color:#A32D2D;padding:8px 6px 4px','CONSIGNES D’ÉVALUATION'));
+      _eaConsignes(cfg, glob, 'eval').forEach(x=>ligne(x.ic+' '+x.t, x.on, ()=>{ if(!cfg.consignes) cfg.consignes={}; cfg.consignes[x.id]=!x.on; }));
+    }
+    bg.appendChild(m);
+  }
 }
 
 /* ── Préparation ── */
@@ -36237,8 +36306,11 @@ function _eaRendrePreparation(bg){
   const prev=st.scopes[_ea.portee.key];
   if(prev && prev.slotKey && prev.slotKey!==_ea.slotKey) barre.appendChild(E('span','color:#FAC775','◐ repris du '+String(prev.slotKey).slice(8,10)+'/'+String(prev.slotKey).slice(5,7)));
   const bOk=E('button','margin-left:auto;font-size:13px;padding:5px 14px;border:none;border-radius:8px;background:#3B6D11;color:#fff;cursor:pointer;font-family:inherit;font-weight:700','✓ Valider'); bOk.type='button';
-  bOk.onclick=()=>{ cfg.valide=true; _eaEnregistrer(); _ea.prep=false; _ea.fin=null; _eaRendre(); };
+  bOk.onclick=()=>{ cfg.valide=true; _eaEnregistrer(); _ea.prep=false; _ea.depuisEcran=false; _ea.fin=null; _eaRendre(); };
   const bF=E('button','font-size:13px;padding:5px 12px;border:1px solid #888780;border-radius:8px;background:transparent;color:#fff;cursor:pointer;font-family:inherit','Fermer'); bF.type='button'; bF.onclick=closeEcranAccueil;
+  // V11.4.5 — venu de l'écran par ✎ : on y retourne (bouton ou Échap).
+  if(_ea.depuisEcran){ const bR=E('button','font-size:13px;padding:5px 12px;border:1px solid #888780;border-radius:8px;background:transparent;color:#fff;cursor:pointer;font-family:inherit','← Écran (Échap)'); bR.type='button';
+    bR.onclick=()=>{ _ea.prep=false; _ea.depuisEcran=false; _eaRendre(); }; barre.appendChild(bR); }
   barre.appendChild(bOk); barre.appendChild(bF);
   const corps=E('div','display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;padding:16px;max-width:1500px;margin:0 auto;font-size:13px;color:#2C2C2A');
   bg.appendChild(corps);
