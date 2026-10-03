@@ -4311,7 +4311,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.5';
+const APP_VERSION = 'v11.4.6';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -36056,6 +36056,7 @@ function _eaClavier(e){
     const mbg=document.getElementById('mbg'); if(mbg && mbg.classList.contains('open')) return;
     e.stopPropagation();
     // V11.4.5 — on revient d'où l'on vient : menu ☰ → écran ; préparation ouverte par ✎ → écran.
+    if(_ea && _ea.edition){ _ea.edition=null; _eaRendre(); return; }   // V11.4.6 — saisie directe annulée
     if(_ea && _ea.menu){ _ea.menu=false; _eaRendre(); return; }
     if(_ea && _ea.prep && _ea.depuisEcran){ _ea.prep=false; _ea.depuisEcran=false; _eaRendre(); return; }
     closeEcranAccueil();
@@ -36146,8 +36147,10 @@ function _eaRendreEcran(bg){
     return k;
   };
   const COUL={objectif:['#534AB7','#EEEDFE'], materiel:['#0F6E56','#E1F5EE'], defi:['#993556','#FBEAF0']};
+  // V11.4.6 — un texte saisi se modifie d'un clic, sur l'écran même.
+  const editable=(k, id)=>{ k.style.cursor='text'; k.title='Cliquer pour modifier'; k.onclick=(e)=>{ e.stopPropagation(); _eaEditer(id); }; return k; };
   const bloc=(b)=>{ const [fg,bd]=COUL[b.id]||['#5F5E5A','#E5E7EB'];
-    const k=E('div','background:#fff;border-radius:14px;border:2px solid '+bd+';padding:1vw 1.3vw');
+    const k=editable(E('div','background:#fff;border-radius:14px;border:2px solid '+bd+';padding:1vw 1.3vw'), b.id);
     k.appendChild(E('div','font-size:clamp(9px,.95vw,14px);font-weight:700;letter-spacing:.05em;color:'+fg, b.lab));
     k.appendChild(E('div',fs(13,1.7,27)+';margin-top:.3vw', b.txt)); return k; };
   const PCOL={taf:['#FAEEDA','#633806'], delegues:['#EAF3DE','#27500A'], absents:['#E6F1FB','#0C447C']};
@@ -36160,7 +36163,7 @@ function _eaRendreEcran(bg){
       : E('div','background:#FFF8E1;border-radius:4px 18px 18px 18px;border-left:6px solid #EF9F27;padding:1vw 1.6vw;transform:rotate(-.6deg);max-width:'+(max||'100%'));
     k.appendChild(E('div',fs(14,1.9,30)+';font-style:italic;font-family:\'DM Serif Display\',Georgia,serif;color:#412402', V.mot));
     if(V.signature) k.appendChild(E('div',fs(11,1.1,17)+';color:#854F0B;margin-top:.3vw','— '+V.signature));
-    return k; };
+    return editable(k, 'mot'); };
   const entete=(grand)=>{
     const h=E('div','display:flex;align-items:center;gap:1.4vw;flex-wrap:wrap');
     h.appendChild(E('div',fs(grand?24:22,grand?4.4:3.6,grand?76:62)+';font-weight:700;line-height:1.1', V.titre));
@@ -36190,7 +36193,7 @@ function _eaRendreEcran(bg){
       r.appendChild(ic); r.appendChild(E('span',fs(16,2.1,34)+(l.c&&l.c.interdit?';color:'+P.acc+';font-weight:700':''), l.t)); pas.appendChild(r); });
     const mo=motEl('92%'); if(mo){ mo.style.marginTop='2.4vw'; gauche.appendChild(mo); }
     const m=minut(); if(m){ m.style.alignSelf='flex-start'; droite.appendChild(m); }
-    V.blocs.concat(V.pastilles).forEach(b=>{ const k=E('div'); k.appendChild(E('div','font-size:clamp(9px,.95vw,14px);font-weight:700;letter-spacing:.06em;color:#C0DD97', b.lab)); k.appendChild(E('div',fs(13,1.6,26), b.txt)); droite.appendChild(k); });
+    V.blocs.concat(V.pastilles).forEach(b=>{ const k=E('div'); k.appendChild(E('div','font-size:clamp(9px,.95vw,14px);font-weight:700;letter-spacing:.06em;color:#C0DD97', b.lab)); k.appendChild(E('div',fs(13,1.6,26), b.txt)); if(V.blocs.indexOf(b)>=0) editable(k, b.id); droite.appendChild(k); });
   } else if(V.style==='v4'){
     const h=E('div','display:flex;align-items:baseline;gap:1.2vw');
     h.appendChild(E('span',fs(14,1.8,30)+';color:'+P.acc+';font-weight:700', V.eval ? V.titre : V.classe));
@@ -36205,7 +36208,7 @@ function _eaRendreEcran(bg){
     V.sites.forEach(s=>{ const k=E('div'); k.appendChild(E('div','height:clamp(70px,10vw,170px);display:flex;align-items:flex-end;justify-content:center;'+fs(56,8.5,150)+';line-height:1','🌐'));
       k.appendChild(E('div',fs(16,2.6,44)+';font-weight:700;margin-top:1vw', s.label+(s.code?' · '+s.code:''))); rang.appendChild(k); });
     scr.appendChild(rang);
-    if(V.mot) scr.appendChild(E('div','text-align:center;margin-top:4vw;'+fs(15,2.1,34)+';font-style:italic;font-family:\'DM Serif Display\',Georgia,serif;color:#444441','« '+V.mot+' »'+(V.signature?' — '+V.signature:'')));
+    if(V.mot) scr.appendChild(editable(E('div','text-align:center;margin-top:4vw;'+fs(15,2.1,34)+';font-style:italic;font-family:\'DM Serif Display\',Georgia,serif;color:#444441','« '+V.mot+' »'+(V.signature?' — '+V.signature:'')), 'mot'));
     const pied=E('div',fs(11,1.15,18)+';position:absolute;left:5vw;right:5vw;bottom:2.4vw;display:flex;gap:2vw;justify-content:center;flex-wrap:wrap;color:#888780;border-top:1px solid #D3D1C7;padding-top:.8vw');
     V.blocs.concat(V.pastilles).forEach(b=>pied.appendChild(E('span','', b.lab.split(' ')[0]+' '+b.txt)));
     if(pied.childNodes.length) scr.appendChild(pied);
@@ -36255,7 +36258,8 @@ function _eaRendreEcran(bg){
     const n=_eaSuivant(EA_MINUTEURS, EA_MINUTEURS.indexOf(sec)>=0 ? sec : 120);
     cfg.minuteur=Object.assign({}, cfg.minuteur, {sec:n}); _ea.fin=n ? Date.now()+n*1000 : null; _eaEnregistrer(); _eaRendre(); });
   if(sec) B('↻','Relancer le minuteur', ()=>{ _ea.fin=Date.now()+sec*1000; _eaRendre(); });
-  B('☰ Afficher','Champs affichés (allumer / éteindre)', ()=>{ _ea.menu=!_ea.menu; _eaRendre(); }, _ea.menu);
+  B('💬 Mot','Écrire le mot du prof, ici même (Entrée : afficher · Échap : annuler)', ()=>_eaEditer('mot'), _ea.edition==='mot');
+  B('☰ Afficher','Champs affichés (allumer / éteindre)', ()=>{ _ea.menu=!_ea.menu; _ea.edition=null; _eaRendre(); }, _ea.menu);
   B('✎','Préparer cet écran (Échap : retour ici)', ()=>{ _ea.menu=false; _ea.prep=true; _ea.depuisEcran=true; _eaRendre(); });
   B('⛶','Plein écran', ()=>{ try{ const r=document.getElementById('ea-bg'); if(document.fullscreenElement) document.exitFullscreen(); else if(r && r.requestFullscreen) r.requestFullscreen(); }catch(e){} });
   B('✕','Fermer (Échap)', closeEcranAccueil);
@@ -36269,23 +36273,25 @@ function _eaRendreEcran(bg){
       r.appendChild(E('span','width:18px;text-align:center;font-weight:700;color:'+(on?'#3B6D11':'#B4B2A9'), on?'✓':'—'));
       r.appendChild(E('span','flex:1;'+(on?'':'color:#888780'), lab));
       r.onclick=()=>change(fn);
-      if(extra){ const x=E('button','font-size:11px;padding:2px 8px;border:1px solid #D3D1C7;border-radius:6px;background:#FAF7EE;cursor:pointer;font-family:inherit', extra[0]); x.type='button'; x.title=extra[2]||''; x.onclick=(e)=>{ e.stopPropagation(); change(extra[1]); }; r.appendChild(x); }
+      // V11.4.6 — plusieurs boutons possibles ; [libellé, fn, titre, 'direct'] : sans enregistrement préalable.
+      (extra ? (Array.isArray(extra[0]) ? extra : [extra]) : []).forEach(ex=>{ const x=E('button','font-size:11px;padding:2px 8px;border:1px solid #D3D1C7;border-radius:6px;background:#FAF7EE;cursor:pointer;font-family:inherit', ex[0]); x.type='button'; x.title=ex[2]||''; x.onclick=(e)=>{ e.stopPropagation(); if(ex[3]==='direct') ex[1](); else change(ex[1]); }; r.appendChild(x); });
       m.appendChild(r); };
     const ch=(id)=>{ if(!cfg.champs) cfg.champs={}; cfg.champs[id]=!_eaChampOn(cfg, id); };
     const vide=(id)=>String(((cfg.textes||{})[id])||'').trim() ? '' : ' (vide : ✎)';
     m.appendChild(E('div','font-size:10px;font-weight:800;letter-spacing:.06em;color:#888780;padding:2px 6px 4px','AFFICHER'));
     ligne('Chapitre · séance', _eaChampOn(cfg,'chap'), ()=>ch('chap'));
     if(cfg.mode!=='eval'){
-      ligne('🎯 Objectif'+vide('objectif'), _eaChampOn(cfg,'objectif'), ()=>ch('objectif'));
-      ligne('🎒 Matériel'+vide('materiel'), _eaChampOn(cfg,'materiel'), ()=>ch('materiel'));
-      ligne('🧩 Défi du jour'+vide('defi'), _eaChampOn(cfg,'defi'), ()=>ch('defi'));
+      const ecr=(id)=>['✎', ()=>_eaEditer(id), 'Écrire ici', 'direct'];
+      ligne('🎯 Objectif'+vide('objectif'), _eaChampOn(cfg,'objectif'), ()=>ch('objectif'), ecr('objectif'));
+      ligne('🎒 Matériel'+vide('materiel'), _eaChampOn(cfg,'materiel'), ()=>ch('materiel'), ecr('materiel'));
+      ligne('🧩 Défi du jour'+vide('defi'), _eaChampOn(cfg,'defi'), ()=>ch('defi'), ecr('defi'));
       ligne('📌 TAF du cours précédent', _eaChampOn(cfg,'taf'), ()=>ch('taf'));
       ligne('🔁 Absents la dernière fois', _eaChampOn(cfg,'absents'), ()=>ch('absents'),
         [cfg.absentsNoms===false?'message':'prénoms', ()=>{ cfg.absentsNoms=cfg.absentsNoms===false; }, 'Prénoms / message']);
     }
     ligne('🎖 Délégués', _eaChampOn(cfg,'delegues'), ()=>ch('delegues'));
-    ligne('✎ Mot du prof'+(String(cfg.mot||'').trim()?'':' (vide : ✎)'), _eaChampOn(cfg,'mot'), ()=>ch('mot'),
-      [cfg.motStyle==='bandeau'?'bandeau':'post-it', ()=>{ cfg.motStyle=cfg.motStyle==='bandeau'?'postit':'bandeau'; }, 'Post-it / bandeau']);
+    ligne('💬 Mot du prof'+(String(cfg.mot||'').trim()?'':' (vide : ✎)'), _eaChampOn(cfg,'mot'), ()=>ch('mot'),
+      [['✎', ()=>_eaEditer('mot'), 'Écrire ici', 'direct'], [cfg.motStyle==='bandeau'?'bandeau':'post-it', ()=>{ cfg.motStyle=cfg.motStyle==='bandeau'?'postit':'bandeau'; }, 'Post-it / bandeau']]);
     ligne('   … signé', cfg.motSigne!==false, ()=>{ cfg.motSigne=cfg.motSigne===false; });
     if(cfg.mode==='eval'){
       m.appendChild(E('div','font-size:10px;font-weight:800;letter-spacing:.06em;color:#A32D2D;padding:8px 6px 4px','CONSIGNES D’ÉVALUATION'));
@@ -36293,6 +36299,46 @@ function _eaRendreEcran(bg){
     }
     bg.appendChild(m);
   }
+  if(_ea.edition) _eaPanneauSaisie(bg);
+}
+
+/* V11.4.6 — Saisie directe sur l'écran projeté : mot du prof, objectif, matériel, défi.
+   Entrée : afficher · Maj+Entrée : nouvelle ligne · Échap : annuler. Le champ est allumé
+   s'il était éteint ; vider le texte l'efface de l'écran. */
+const EA_EDITION={mot:'💬 Mot du prof', objectif:'🎯 Objectif', materiel:'🎒 Sur la table', defi:'🧩 Défi du jour'};
+function _eaEditer(id){
+  if(!_ea || !EA_EDITION[id]) return;
+  _ea.edition=id; _ea.menu=false; _eaRendre();
+}
+/** Écrit le texte saisi dans la configuration. Pure (modifie cfg). */
+function _eaAppliquerSaisie(cfg, id, texte){
+  const t=String(texte==null?'':texte).replace(/\s+$/,'');
+  if(id==='mot') cfg.mot=t;
+  else { if(!cfg.textes) cfg.textes={}; cfg.textes[id]=t; }
+  if(t.trim()){ if(!cfg.champs) cfg.champs={}; cfg.champs[id]=true; }
+  return cfg;
+}
+function _eaPanneauSaisie(bg){
+  const id=_ea.edition, cfg=_ea.cfg, E=_eaEl;
+  const fond=E('div','position:fixed;inset:0;z-index:4;background:rgba(44,44,42,.18);display:flex;align-items:flex-end;justify-content:center;padding:0 2vw 7vh');
+  fond.onclick=()=>{ _ea.edition=null; _eaRendre(); };
+  const pan=E('div','width:min(900px,96vw);background:#fff;border-radius:16px;box-shadow:0 12px 36px rgba(0,0,0,.22);padding:14px 16px;display:flex;flex-direction:column;gap:10px');
+  pan.onclick=(e)=>e.stopPropagation();
+  pan.appendChild(E('div','font-size:13px;font-weight:800;letter-spacing:.04em;color:#5F5E5A', EA_EDITION[id]));
+  const ta=E('textarea','width:100%;box-sizing:border-box;min-height:84px;padding:10px 12px;border:2px solid '+(id==='mot'?'#EF9F27':'#378ADD')+';border-radius:12px;font-size:clamp(16px,1.8vw,26px);font-family:inherit;color:#2C2C2A;resize:vertical');
+  ta.value=id==='mot' ? (cfg.mot||'') : (((cfg.textes||{})[id])||'');
+  ta.placeholder=id==='mot' ? 'Votre message aux élèves…' : '';
+  const valider=()=>{ _eaAppliquerSaisie(cfg, id, ta.value); _ea.edition=null; _eaEnregistrer(); _eaRendre(); };
+  ta.onkeydown=(e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); valider(); } };
+  pan.appendChild(ta);
+  const pied=E('div','display:flex;gap:8px;align-items:center;flex-wrap:wrap');
+  pied.appendChild(E('span','margin-right:auto;font-size:12px;color:#888780','Entrée : afficher · Maj+Entrée : nouvelle ligne · Échap : annuler'));
+  const bx=(t,css,fn)=>{ const b=E('button','font-size:13px;padding:6px 14px;border-radius:8px;cursor:pointer;font-family:inherit;'+css, t); b.type='button'; b.onclick=fn; pied.appendChild(b); };
+  bx('Effacer','border:1px solid #FCA5A5;background:#fff;color:#DC2626', ()=>{ ta.value=''; ta.focus(); });
+  bx('Annuler','border:1px solid #D3D1C7;background:#fff;color:#444441', ()=>{ _ea.edition=null; _eaRendre(); });
+  bx('✓ Afficher','border:none;background:#3B6D11;color:#fff;font-weight:700', valider);
+  pan.appendChild(pied); fond.appendChild(pan); bg.appendChild(fond);
+  setTimeout(()=>{ try{ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }catch(e){} }, 0);
 }
 
 /* ── Préparation ── */
