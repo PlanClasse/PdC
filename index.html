@@ -4312,7 +4312,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.10';
+const APP_VERSION = 'v11.4.11';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28712,7 +28712,10 @@ function _cdtEntete(seance, clsCode){
     const si=prog.findIndex(s=>s&&s.id===seance.seqId);
     if(si<0) return out;
     const seq=prog[si];
-    out.lignes.push('CH'+(si+1)+(seq.titre?' '+seq.titre:''));   // V11.4.9 — « CH » pour Pronote (demande du 04/10)
+    // V11.4.11 — numéro du chapitre (« SEQ1 » partout ailleurs), et non son rang dans la
+    // liste : un chapitre n° 1 rangé en 2ᵉ position partait en « CH2 ».
+    const _num=String((seq.num||'')).trim() || String(si+1);
+    out.lignes.push('CH'+_num+(seq.titre?' '+seq.titre:''));   // V11.4.9 — « CH » pour Pronote (demande du 04/10)
     if(seance.seanId && Array.isArray(seq.seances)){
       const ni=seq.seances.findIndex(s=>s&&s.id===seance.seanId);
       if(ni>=0){
@@ -28744,18 +28747,14 @@ function _cdtParts(seance, clsCode){
   // Tâches : on ne garde que ce qui a VRAIMENT été fait — « Faite » ou
   // « Commencée / partielle ». Reportées, annulées et non cochées sont
   // exclues, comme dans le modal. Les TAF et les évaluations aussi.
+  // V11.4.11 — les TÂCHES LIBRES aussi (tapées dans le cours, ajoutées dans le modal) :
+  // elles n'apparaissaient que par le contenu prérempli, retiré en v11.3.101.
   const faites=[];
-  (Array.isArray(seance.taskRows)?seance.taskRows:[]).forEach(tr=>{
-    if(!tr) return;
-    const src=String(tr.sourceLabel||'');
-    if(src!=='modeOp' && src!=='reporter') return;
-    const lbl=String(tr.label||'').trim();
-    if(!lbl) return;
-    if(tr.stateLabel==='Faite') faites.push('• '+lbl);
-    else if(tr.stateLabel==='Commencée / partielle') faites.push('• '+lbl+CDT_SUFFIXE_PARTIEL);
-  });
-  if(faites.length){ out.apres.push(''); faites.forEach(l=>out.apres.push(l)); }
-
+  // typeof : certains harnais chargent _cdtParts seule (repli = ancien filtre).
+  const taches=(typeof _cdtTachesFaites==='function') ? _cdtTachesFaites(seance.taskRows)
+    : (Array.isArray(seance.taskRows)?seance.taskRows:[]).filter(tr=>tr && (tr.sourceLabel==='modeOp'||tr.sourceLabel==='reporter') && String(tr.label||'').trim() && (tr.stateLabel==='Faite'||tr.stateLabel==='Commencée / partielle'))
+        .map(tr=>({label:String(tr.label).trim(), partiel:tr.stateLabel!=='Faite'}));
+  if(taches.length){ out.apres.push(''); }
   // Documents distribués : prévus par la séance de progression (du prévu, donc
   // jamais filtré par un état).
   let docs=(ent.sean && Array.isArray(ent.sean.docs))
@@ -28767,6 +28766,12 @@ function _cdtParts(seance, clsCode){
     if(ret) docs=docs.filter(d=>ret.has(d));
     _sdcDocsResPropres(ec).docs.forEach(d=>{ if(docs.indexOf(d)<0) docs.push(d); });
   }
+  // V11.4.11 — une tâche libre qui n'est qu'un document distribué n'est pas comptée deux fois.
+  const _nd=(x)=>String(x||'').replace(/\s+/g,' ').trim().toLowerCase();
+  taches.filter(t=>docs.map(_nd).indexOf(_nd(t.label))<0)
+    .forEach(t=>{ faites.push('• '+t.label+(t.partiel?CDT_SUFFIXE_PARTIEL:'')); });
+  if(faites.length) faites.forEach(l=>out.apres.push(l));
+  else if(taches.length) out.apres.pop();
   if(docs.length){
     out.apres.push('');
     out.apres.push('Documents distribués :');
@@ -28775,6 +28780,22 @@ function _cdtParts(seance, clsCode){
   return out;
 }
 
+/** V11.4.11 — Tâches réellement faites d'une séance enregistrée (« Faite » ou
+ *  « Commencée / partielle »), dans l'ordre : bibliothèque, reports, tâches libres
+ *  et ajoutées. TAF, documents, évaluations exclus ; « (15mn) » retiré du libellé. Pure.
+ *  Renvoie [{label, partiel}]. */
+function _cdtTachesFaites(taskRows){
+  const SRC={modeOp:1, reporter:1, free:1, extra:1};
+  const out=[];
+  (Array.isArray(taskRows)?taskRows:[]).forEach(tr=>{
+    if(!tr || !SRC[String(tr.sourceLabel||'')]) return;
+    const lbl=String(tr.label||'').replace(/\s*\(\d+\s*mn\)\s*$/i,'').trim();
+    if(!lbl) return;
+    if(tr.stateLabel==='Faite') out.push({label:lbl, partiel:false});
+    else if(tr.stateLabel==='Commencée / partielle') out.push({label:lbl, partiel:true});
+  });
+  return out;
+}
 /** Recolle les trois morceaux dans l'ordre du texte copié. Pure. */
 function _cdtAssemble(parts){
   if(!parts) return '';
@@ -46861,7 +46882,7 @@ function openSaveSeance(){
               const seqIdx=prog.findIndex(s=>s && s.id===seqId);
               if(seqIdx>=0){
                 curSeq=prog[seqIdx];
-                lines.push('CH'+(seqIdx+1)+(curSeq.titre?' '+curSeq.titre:''));   // V11.4.9 — « CH » pour Pronote
+                lines.push('CH'+(String((curSeq.num||'')).trim()||String(seqIdx+1))+(curSeq.titre?' '+curSeq.titre:''));   // V11.4.9 « CH » ; V11.4.11 numéro du chapitre
               }
             }
             if(curSeq && extra._seanSel && Array.isArray(curSeq.seances)){
