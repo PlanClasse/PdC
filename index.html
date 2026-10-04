@@ -4311,7 +4311,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.8';
+const APP_VERSION = 'v11.4.9';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28711,7 +28711,7 @@ function _cdtEntete(seance, clsCode){
     const si=prog.findIndex(s=>s&&s.id===seance.seqId);
     if(si<0) return out;
     const seq=prog[si];
-    out.lignes.push('SEQ'+(si+1)+(seq.titre?' '+seq.titre:''));
+    out.lignes.push('CH'+(si+1)+(seq.titre?' '+seq.titre:''));   // V11.4.9 — « CH » pour Pronote (demande du 04/10)
     if(seance.seanId && Array.isArray(seq.seances)){
       const ni=seq.seances.findIndex(s=>s&&s.id===seance.seanId);
       if(ni>=0){
@@ -36165,12 +36165,22 @@ function _eaRendreEcran(bg){
   const pastille=(p)=>{ const [bgc,fg]=PCOL[p.id]||['#F1EFE8','#444441'];
     const k=E('div',fs(11,1.2,19)+';background:'+bgc+';color:'+fg+';border-radius:10px;padding:.35vw .9vw');
     k.appendChild(E('b','font-weight:700', p.lab.replace(/^(\S+)\s+/,'$1 ')+' : ')); k.appendChild(document.createTextNode(p.txt)); return k; };
+  // V11.4.9 — mot du prof : droit (plus d'italique), lignes respectées, **gras**, puces ;
+  // replié au départ si demandé (▸ / ▾ pour déplier / replier, sans ouvrir la saisie).
+  const plusieursLignes=_eaMotLignes(V.mot).filter(l=>!l.vide).length>1;
+  if(_ea.motOuvert==null) _ea.motOuvert=!cfg.motReplie;
+  const replie=plusieursLignes && !_ea.motOuvert;
+  const basculeMot=(k)=>{ if(!plusieursLignes) return;
+    const t=E('button','display:block;margin-top:.5vw;margin-left:auto;font-size:clamp(10px,1vw,15px);padding:2px 10px;border:1px solid #D3D1C7;border-radius:999px;background:rgba(255,255,255,.7);color:#5F5E5A;cursor:pointer;font-family:inherit', replie?'▸ Voir la suite':'▾ Replier');
+    t.type='button'; t.onclick=(e)=>{ e.stopPropagation(); _ea.motOuvert=!_ea.motOuvert; _eaRendre(); }; k.appendChild(t); };
   const motEl=(max)=>{ if(!V.mot) return null;
     const k=V.motStyle==='bandeau'
       ? E('div','background:#fff;border-left:5px solid '+P.acc+';border-radius:0 12px 12px 0;padding:1vw 1.6vw;max-width:'+(max||'100%'))
       : E('div','background:#FFF8E1;border-radius:4px 18px 18px 18px;border-left:6px solid #EF9F27;padding:1vw 1.6vw;transform:rotate(-.6deg);max-width:'+(max||'100%'));
-    k.appendChild(E('div',fs(14,1.9,30)+';font-style:italic;font-family:\'DM Serif Display\',Georgia,serif;color:#412402', V.mot));
-    if(V.signature) k.appendChild(E('div',fs(11,1.1,17)+';color:#854F0B;margin-top:.3vw','— '+V.signature));
+    const corps=_eaMotDom(V.mot, replie); corps.style.cssText=fs(14,1.9,30)+';color:#412402;line-height:1.35';
+    k.appendChild(corps);
+    if(V.signature && !replie) k.appendChild(E('div',fs(11,1.1,17)+';color:#854F0B;margin-top:.3vw','— '+V.signature));
+    basculeMot(k);
     return editable(k, 'mot'); };
   const entete=(grand)=>{
     const h=E('div','display:flex;align-items:center;gap:1.4vw;flex-wrap:wrap');
@@ -36216,7 +36226,10 @@ function _eaRendreEcran(bg){
     V.sites.forEach(s=>{ const k=E('div'); k.appendChild(E('div','height:clamp(70px,10vw,170px);display:flex;align-items:flex-end;justify-content:center;'+fs(56,8.5,150)+';line-height:1','🌐'));
       k.appendChild(E('div',fs(16,2.6,44)+';font-weight:700;margin-top:1vw', s.label+(s.code?' · '+s.code:''))); rang.appendChild(k); });
     scr.appendChild(rang);
-    if(V.mot) scr.appendChild(editable(E('div','text-align:center;margin-top:4vw;'+fs(15,2.1,34)+';font-style:italic;font-family:\'DM Serif Display\',Georgia,serif;color:#444441','« '+V.mot+' »'+(V.signature?' — '+V.signature:'')), 'mot'));
+    if(V.mot){ const k=E('div','margin:3.4vw auto 0;max-width:80%;'+fs(15,2.1,34)+';color:#444441;line-height:1.35;text-align:'+(plusieursLignes?'left':'center'));
+      k.appendChild(_eaMotDom(V.mot, replie));
+      if(V.signature && !replie) k.appendChild(E('div',fs(11,1.2,19)+';color:#888780;margin-top:.4vw;text-align:right','— '+V.signature));
+      basculeMot(k); scr.appendChild(editable(k, 'mot')); }
     const pied=E('div',fs(11,1.15,18)+';position:absolute;left:5vw;right:5vw;bottom:2.4vw;display:flex;gap:2vw;justify-content:center;flex-wrap:wrap;color:#888780;border-top:1px solid #D3D1C7;padding-top:.8vw');
     V.blocs.concat(V.pastilles).forEach(b=>pied.appendChild(E('span','', b.lab.split(' ')[0]+' '+b.txt)));
     if(pied.childNodes.length) scr.appendChild(pied);
@@ -36321,7 +36334,8 @@ function _eaRendreEcran(bg){
     }
     ligne('🎖 Délégués', _eaChampOn(cfg,'delegues'), ()=>ch('delegues'));
     ligne('💬 Mot du prof'+(String(cfg.mot||'').trim()?'':' (vide : ✎)'), _eaChampOn(cfg,'mot'), ()=>ch('mot'),
-      [['✎', ()=>_eaEditer('mot'), 'Écrire ici', 'direct'], [cfg.motStyle==='bandeau'?'bandeau':'post-it', ()=>{ cfg.motStyle=cfg.motStyle==='bandeau'?'postit':'bandeau'; }, 'Post-it / bandeau']]);
+      [['✎', ()=>_eaEditer('mot'), 'Écrire ici', 'direct'], [cfg.motStyle==='bandeau'?'bandeau':'post-it', ()=>{ cfg.motStyle=cfg.motStyle==='bandeau'?'postit':'bandeau'; }, 'Post-it / bandeau'],
+       [cfg.motReplie?'replié':'déplié', ()=>{ cfg.motReplie=!cfg.motReplie; _ea.motOuvert=null; }, 'Replié au départ / déplié']]);
     ligne('   … signé', cfg.motSigne!==false, ()=>{ cfg.motSigne=cfg.motSigne===false; });
     if(cfg.mode==='eval'){
       m.appendChild(E('div','font-size:10px;font-weight:800;letter-spacing:.06em;color:#A32D2D;padding:8px 6px 4px','CONSIGNES D’ÉVALUATION'));
@@ -36330,6 +36344,33 @@ function _eaRendreEcran(bg){
     bg.appendChild(m);
   }
   if(_ea.edition) _eaPanneauSaisie(bg);
+}
+
+/* V11.4.9 — Mot du prof : chaque ligne tapée reste une ligne ; **gras** ; « - » ou
+   « • » en début de ligne = puce. Pure : [{puce, vide, morceaux:[{t, gras}]}]. */
+function _eaMotLignes(texte){
+  return String(texte==null?'':texte).replace(/\r/g,'').split('\n').map(l=>{
+    const m=/^\s*[-•]\s+(.*)$/.exec(l); const corps=m ? m[1] : l;
+    const morceaux=[]; const re=/\*\*(.+?)\*\*/g; let i=0, x;
+    while((x=re.exec(corps))){ if(x.index>i) morceaux.push({t:corps.slice(i,x.index), gras:false}); morceaux.push({t:x[1], gras:true}); i=re.lastIndex; }
+    if(i<corps.length) morceaux.push({t:corps.slice(i), gras:false});
+    return {puce:!!m, vide:!corps.trim(), morceaux};
+  });
+}
+/** Le mot du prof en éléments (createElement). replie : seule la 1re ligne non vide. */
+function _eaMotDom(texte, replie){
+  const L=_eaMotLignes(texte);
+  const w=document.createElement('div');
+  let premiere=true;
+  L.forEach(l=>{
+    if(replie && !premiere) return;
+    if(l.vide){ if(!replie){ const sp=document.createElement('div'); sp.style.height='.55em'; w.appendChild(sp); } return; }
+    const d=document.createElement('div');
+    if(l.puce){ d.style.cssText='padding-left:1.1em;text-indent:-1.1em'; d.appendChild(document.createTextNode('•\u00a0\u00a0')); }
+    l.morceaux.forEach(m=>{ if(m.gras){ const b=document.createElement('b'); b.style.fontWeight='800'; b.textContent=m.t; d.appendChild(b); } else d.appendChild(document.createTextNode(m.t)); });
+    w.appendChild(d); premiere=false;
+  });
+  return w;
 }
 
 /* V11.4.6 — Saisie directe sur l'écran projeté : mot du prof, objectif, matériel, défi.
@@ -36357,12 +36398,16 @@ function _eaPanneauSaisie(bg){
   pan.appendChild(E('div','font-size:13px;font-weight:800;letter-spacing:.04em;color:#5F5E5A', EA_EDITION[id]));
   const ta=E('textarea','width:100%;box-sizing:border-box;min-height:84px;padding:10px 12px;border:2px solid '+(id==='mot'?'#EF9F27':'#378ADD')+';border-radius:12px;font-size:clamp(16px,1.8vw,26px);font-family:inherit;color:#2C2C2A;resize:vertical');
   ta.value=id==='mot' ? (cfg.mot||'') : (((cfg.textes||{})[id])||'');
-  ta.placeholder=id==='mot' ? 'Votre message aux élèves…' : '';
+  ta.placeholder=id==='mot' ? '**Ce que vous allez faire pendant la séance**\n- terminer la carte mentale\n- préparer l’oral' : '';
+  if(id==='mot') ta.style.minHeight='150px';
   const valider=()=>{ _eaAppliquerSaisie(cfg, id, ta.value); _ea.edition=null; _eaEnregistrer(); _eaRendre(); };
-  ta.onkeydown=(e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); valider(); } };
+  // V11.4.9 — le mot du prof est souvent une liste : Entrée = nouvelle ligne, Ctrl+Entrée = afficher.
+  ta.onkeydown=(e)=>{ if(e.key!=='Enter') return; if(id==='mot' ? (e.ctrlKey||e.metaKey) : !e.shiftKey){ e.preventDefault(); valider(); } };
   pan.appendChild(ta);
   const pied=E('div','display:flex;gap:8px;align-items:center;flex-wrap:wrap');
-  pied.appendChild(E('span','margin-right:auto;font-size:12px;color:#888780','Entrée : afficher · Maj+Entrée : nouvelle ligne · Échap : annuler'));
+  pied.appendChild(E('span','margin-right:auto;font-size:12px;color:#888780', id==='mot'
+    ? 'Ctrl+Entrée : afficher · Entrée : nouvelle ligne · **gras** · « - » en début de ligne : puce · Échap : annuler'
+    : 'Entrée : afficher · Maj+Entrée : nouvelle ligne · Échap : annuler'));
   const bx=(t,css,fn)=>{ const b=E('button','font-size:13px;padding:6px 14px;border-radius:8px;cursor:pointer;font-family:inherit;'+css, t); b.type='button'; b.onclick=fn; pied.appendChild(b); };
   bx('Effacer','border:1px solid #FCA5A5;background:#fff;color:#DC2626', ()=>{ ta.value=''; ta.focus(); });
   bx('Annuler','border:1px solid #D3D1C7;background:#fff;color:#444441', ()=>{ _ea.edition=null; _eaRendre(); });
@@ -36505,10 +36550,11 @@ function _eaRendrePreparation(bg){
     if(c.id==='absents') coche(s4, '   … afficher les prénoms (sinon : « '+_eaLib('absents.message', cfg, g)+' »)', cfg.absentsNoms!==false, v=>{ cfg.absentsNoms=v; });
   });
   const tm=E('textarea','width:100%;box-sizing:border-box;min-height:60px;padding:6px 8px;border:2px dashed #EF9F27;border-radius:10px;font-size:14px;font-family:inherit;color:#633806');
-  tm.placeholder='✎ Mot du prof (affiché tel quel ; repart vide au cours suivant)'; tm.value=cfg.mot||''; tm.oninput=()=>{ cfg.mot=tm.value; _eaEnregistrer(); };
+  tm.placeholder='✎ Mot du prof — chaque ligne reste une ligne ; **gras** ; « - » en début de ligne = puce (repart vide au cours suivant)'; tm.value=cfg.mot||''; tm.oninput=()=>{ cfg.mot=tm.value; _eaEnregistrer(); };
   s4.appendChild(tm);
   const ms=E('div','display:flex;gap:12px;align-items:center;flex-wrap:wrap');
   coche(ms, 'signé', cfg.motSigne!==false, v=>{ cfg.motSigne=v; });
+  coche(ms, 'replié au départ (▸ pour déplier)', !!cfg.motReplie, v=>{ cfg.motReplie=v; _ea.motOuvert=null; });   // V11.4.9
   ms.appendChild(champ(g.signature, 'signature (ex. M. Jeunehomme)', v=>{ g.signature=v; }, 'max-width:220px'));
   choix(ms, [['postit','post-it'],['bandeau','bandeau sobre']], cfg.motStyle==='bandeau'?'bandeau':'postit', v=>{ cfg.motStyle=v; });
   s4.appendChild(ms);
@@ -46766,7 +46812,7 @@ function openSaveSeance(){
               const seqIdx=prog.findIndex(s=>s && s.id===seqId);
               if(seqIdx>=0){
                 curSeq=prog[seqIdx];
-                lines.push('SEQ'+(seqIdx+1)+(curSeq.titre?' '+curSeq.titre:''));
+                lines.push('CH'+(seqIdx+1)+(curSeq.titre?' '+curSeq.titre:''));   // V11.4.9 — « CH » pour Pronote
               }
             }
             if(curSeq && extra._seanSel && Array.isArray(curSeq.seances)){
