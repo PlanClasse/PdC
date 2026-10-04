@@ -2880,6 +2880,7 @@ body:has(#sdc-bg) #font-ctrl{display:none}
 .sdc-jauge-ko{color:#712B13;background:#FAECE7;border-radius:6px;padding:4px 8px;font-weight:700}
 .sdc-resume{color:#2C2C2A}
 .sdc-effets{border-color:#B4B2A9;color:#444441}
+.sdc-verser{margin-top:8px;font-size:12px;padding:6px 14px}   /* V11.4.10 */
 /* V11.3.100 — Réalisé au cours précédent */
 .sdc-realise{margin-top:12px;padding-top:8px;border-top:1.5px solid #378ADD}
 .sdc-realise-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
@@ -4311,7 +4312,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.9';
+const APP_VERSION = 'v11.4.10';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29236,6 +29237,17 @@ function _sdcVersSeance(r){
   return {contenu:c.join('\n'), taf:(r&&r.tafs||[]).map(t=>t.label).filter(Boolean).join('\n')};
 }
 
+/** V11.4.10 — Contenu COMPLET d'une séance enregistrée : le prévu mis de côté par le
+ *  rattrapage v11.3.101 (`contenuPrevu`) suivi des lignes ajoutées (`contenu`), sans
+ *  doublon. Les reconstructions (texte du cours, tuile du planning, jumeau) le lisent :
+ *  elles lisaient `contenu` seul, vidé par le rattrapage (régression v11.3.101). Pure. */
+function _sdcContenuComplet(saved){
+  if(!saved) return '';
+  const a=String(saved.contenuPrevu||'').split('\n'), b=String(saved.contenu||'').split('\n');
+  const vus=new Set(), out=[];
+  a.concat(b).forEach(l=>{ const k=String(l).replace(/\s+/g,' ').trim().toLowerCase(); if(!k || vus.has(k)) return; vus.add(k); out.push(String(l).replace(/\s+$/,'')); });
+  return out.join('\n');
+}
 /** V11.3.101 — Retire d'un contenu les lignes PRÉVUES (texte, casse et espaces
  *  normalisés) ; garde le reste, dans l'ordre. Pure. */
 function _sdcNormLigne(x){ return String(x==null?'':x).replace(/\s+/g,' ').trim().toLowerCase(); }
@@ -29794,6 +29806,26 @@ function _sdcAppliquerEtoiles(plan, prog){
   });
   return res;
 }
+/** V11.4.10 — Cours enregistré : verse les lignes ☆ dans la bibliothèque SANS toucher
+ *  au cours (ni à son texte, ni au planning). Annulable. → {ok, message, verse}. */
+function _sdcVerserEtoilesSeules(cls, slotKey, text){
+  cls=_sdcClsCanon(cls);
+  const E=_sdcEtoiles(cls, slotKey);
+  if(!E.size) return {ok:false, message:'Aucune ligne ☆ à verser.'};
+  const prog=getProgression(_sdcNiveau(cls))||[];
+  const plan=_sdcPlanEtoiles(_sdcInterpreter(text, prog), E, prog);
+  if(!plan.versements.length) return {ok:false, message:'Rien à verser.'};
+  if(typeof pushUndo==='function') try{ pushUndo(); }catch(e){}
+  const verse=_sdcAppliquerEtoiles(plan, prog);
+  const d=S.seanceContentDraft && S.seanceContentDraft[cls+'|'+slotKey];
+  if(d) delete d.etoiles;
+  saveS();
+  let msg='☆ '+verse.versees+' ligne'+(verse.versees>1?'s':'')+' versée'+(verse.versees>1?'s':'')+' dans la bibliothèque';
+  const cr=[]; if(verse.seqCreees) cr.push(verse.seqCreees+' chapitre'+(verse.seqCreees>1?'s':''));
+  if(verse.seanCreees) cr.push(verse.seanCreees+' séance'+(verse.seanCreees>1?'s':''));
+  if(cr.length) msg+=' ('+cr.join(' et ')+' créé'+((verse.seqCreees+verse.seanCreees)>1?'s':'')+')';
+  return {ok:true, message:msg, verse};
+}
 /** Remplace des lignes entières du texte ({indice: nouvelle ligne}). Pure. */
 function _sdcReecrireEntetes(text, entetes){
   const L=String(text||'').split('\n');
@@ -30268,7 +30300,7 @@ function _sdcTexteInitial(cls, slotKey){
  *  Avant : le contenu seul, sans en-têtes (demande du 29/09). Pure (prog fourni). */
 function _sdcTexteCoursEnregistre(saved, draft, prog){
   prog=Array.isArray(prog)?prog:[];
-  const cont=String((saved&&saved.contenu)||'').replace(/\s+$/,'');
+  const cont=(typeof _sdcContenuComplet==='function' ? _sdcContenuComplet(saved) : String((saved&&saved.contenu)||'')).replace(/\s+$/,'');   // V11.4.10 — prévu conservé + ajouts ; typeof : harnais isolés
   const enr=(draft && typeof draft.saisieEnreg==='string') ? draft.saisieEnreg : '';
   const net=(t)=>String(t||'').split('\n').map(x=>x.trim()).filter(Boolean).join('\n');
   if(enr.trim()){
@@ -30704,7 +30736,7 @@ function _sdcRendre(){
   // si CE cours est encore vide (on n'écrase jamais une saisie).
   if(!lectureSeule && cur.demi){
     const jum=_sdcJumeau(cours, slotKey);
-    const texteJum = jum ? (_sdcTexteInitial(cls, jum.slotKey) || (jum.saved && String(jum.saved.contenu||'')) || '') : '';
+    const texteJum = jum ? (_sdcTexteInitial(cls, jum.slotKey) || (jum.saved && (typeof _sdcContenuComplet==='function' ? _sdcContenuComplet(jum.saved) : String((jum.saved&&jum.saved.contenu)||''))) || '') : '';   // V11.4.10
     if(jum && texteJum.trim()){
       const bJ=_sdcEl('button','sdc-chip sdc-jumeau','⇆ Même contenu que '+(_sdcLibelleGroupe(cls, jum.grpIds)||'l’autre demi-groupe')
         +' ('+(()=>{ try{ return new Date(jum.dateStr+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return jum.dateStr; } })()+')');
@@ -30733,13 +30765,15 @@ function _sdcRendre(){
   const etat=_sdcEl('div','sdc-etat'); pied.appendChild(etat);
   bEnr.disabled=lectureSeule;
   if(_sdc.msg){ etat.className='sdc-etat sdc-ok'; etat.textContent='✓ '+_sdc.msg; _sdc.msg=null; }
-  if(enregistre) etat.textContent='Ce cours est déjà enregistré : son contenu se modifie depuis la séance ou le cahier de texte.';
+  if(enregistre && !etat.classList.contains('sdc-ok')) etat.textContent='Ce cours est déjà enregistré : son contenu se modifie depuis la séance ou le cahier de texte. Ses lignes ☆ peuvent encore aller dans la bibliothèque.';   // V11.4.10 — le message « ☆ … versées » reste visible
   else if(avant) etat.textContent='Cours antérieur à la bascule du '+_sdcDateLongue(S.planningBascule)+' : il relève de l’ancien planning.';
 
   const BADGE={seq:'SEQ', sean:'SÉANCE', tache:'TÂCHE', doc:'DOC', res:'RES', taf:'TAF', eval:'ÉVAL'};
   const maj=(persister)=>{
     const r=_sdcInterpreter(ta.value, prog);
-    const E=lectureSeule ? new Set() : _sdcEtoiles(cls, slotKey);
+    // V11.4.10 — étoiles aussi sur un cours enregistré : « Verser » ajoute à la
+    // bibliothèque sans toucher au cours (demande du 04/10).
+    const E=_sdcEtoiles(cls, slotKey);
     const planE=_sdcPlanEtoiles(r, E, prog);
     const tot=r.total;
     jauge.textContent='';
@@ -30759,7 +30793,7 @@ function _sdcRendre(){
       // V11.3.81 — numéro de SEQ / séance détaché du titre, dans sa propre pastille.
       if((it.type==='seq'||it.type==='sean') && it.num) row.appendChild(_sdcEl('span','sdc-numseq',String(it.num)));
       row.appendChild(_sdcEl('span','sdc-lbl',titre||'—'));
-      const etoilee = !lectureSeule && _sdcEtoilable(it).ok && E.has(_sdcCleEtoile(it));
+      const etoilee = _sdcEtoilable(it).ok && E.has(_sdcCleEtoile(it));
       if(it.type==='seq'||it.type==='sean'){
         if(it.etat!=='existe' && planE.aCreer[it.ligne]) row.appendChild(_sdcEl('span','sdc-etat-creer','à créer (☆)'));
         else row.appendChild(_sdcEl('span','sdc-etat-'+it.etat, it.etat==='existe'?'bibliothèque':'inconnu — repère seulement'));
@@ -30767,12 +30801,13 @@ function _sdcRendre(){
       else if(etoilee) row.appendChild(_sdcEl('span','sdc-prov sdc-prov-etoile','☆ ira dans la bibliothèque'));
       else if(it.src) row.appendChild(_sdcEl('span','sdc-prov sdc-prov-'+it.src, _sdcProvenance(it)));
       if(it.duree) row.appendChild(_sdcEl('span','sdc-dur',it.duree+' min'));
-      if(!lectureSeule && ['tache','doc','res','taf'].indexOf(it.type)>=0 && it.src!=='biblio'){
+      if(['tache','doc','res','taf'].indexOf(it.type)>=0 && it.src!=='biblio'){
         const el=_sdcEtoilable(it);
         const bE=_sdcEl('button','sdc-star'+(etoilee?' sdc-star-on':''), etoilee?'★':'☆'); bE.type='button';
         if(el.ok){
-          bE.title=etoilee?'Sera versée dans la bibliothèque à l’enregistrement — cliquer pour ne pas la verser'
-                          :'Verser cette ligne dans la bibliothèque (à l’enregistrement)';
+          bE.title=lectureSeule
+            ? (etoilee?'Sera versée dans la bibliothèque (bouton « Verser » sous la liste) — cliquer pour ne pas la verser':'Verser cette ligne dans la bibliothèque (bouton « Verser » sous la liste)')
+            : (etoilee?'Sera versée dans la bibliothèque à l’enregistrement — cliquer pour ne pas la verser':'Verser cette ligne dans la bibliothèque (à l’enregistrement)');
           bE.onclick=()=>{ _sdcBasculerEtoile(cls, slotKey, _sdcCleEtoile(it)); maj(false); };
         } else {
           bE.disabled=true;
@@ -30788,6 +30823,19 @@ function _sdcRendre(){
       liste.appendChild(row);
     });
     effets.textContent='';
+    if(lectureSeule && planE.versements.length){
+      effets.appendChild(_sdcEl('div','sdc-h2','Ce que « Verser » va faire'));
+      const nv=planE.versements.length;
+      const EV=['☆ '+nv+' ligne'+(nv>1?'s':'')+' ajoutée'+(nv>1?'s':'')+' à la bibliothèque.'];
+      planE.nouvSeq.forEach(x=>EV.push('Créer le chapitre SEQ'+x.num+' « '+x.titre+' ».'));
+      planE.nouvSean.forEach(x=>EV.push('Créer la séance '+x.rang+(x.titre?' « '+x.titre+' »':'')+' dans '+(x.seqNouv?'SEQ'+x.seqNouv.num:'SEQ'+_sdcSeqNum(prog[x.seqIdx], x.seqIdx))+'.'));
+      planE.avis.forEach(x=>EV.push('⚠ '+x));
+      EV.push('Le cours enregistré n’est pas modifié.');
+      EV.forEach(t=>effets.appendChild(_sdcEl('div',/^⚠/.test(t)?'sdc-err':null,t)));
+      const bV=_sdcEl('button','bp sdc-verser','☆ Verser dans la bibliothèque'); bV.type='button';
+      bV.onclick=()=>{ const res=_sdcVerserEtoilesSeules(cls, slotKey, ta.value); _sdc.msg=res.message; _sdcRendre(); _sdcRafraichirVues(); };
+      effets.appendChild(bV);
+    }
     if(!lectureSeule){
       effets.appendChild(_sdcEl('div','sdc-h2','Ce que « Enregistrer » va faire'));
       const nb=r.items.filter(x=>x.src==='biblio').length, nc=r.items.filter(x=>x.src==='cours').length;
@@ -30810,6 +30858,7 @@ function _sdcRendre(){
       if(!etat.classList.contains('sdc-ok')) etat.textContent = enreg===null ? (ta.value.trim()?'Pas encore enregistré.':'')
         : (enreg===ta.value ? 'Enregistré.' : 'Modifications non enregistrées (le texte est gardé).');
     }
+    effets.style.display=effets.childNodes.length?'':'none';   // V11.4.10 — pas de cadre vide (cours enregistré sans ☆)
     if(persister && !lectureSeule){ etat.classList.remove('sdc-ok','sdc-ko'); _sdcPersisterSaisie(cls, slotKey, ta.value); }
   };
   ta.addEventListener('input', ()=>maj(true));
@@ -30842,7 +30891,7 @@ function _sdcCarteLignes(inner, card, slot, cc){
   // V11.3.95 — cours VALIDÉ sans lignes au planning (texte perdu, non réparable) :
   // la tuile montre ce qui a été enregistré plutôt que « Vide ».
   if(!liste.childNodes.length && slot.saved){
-    String(slot.saved.contenu||'').split('\n').map(x=>x.trim()).filter(Boolean).forEach(l=>{
+    (typeof _sdcContenuComplet==='function' ? _sdcContenuComplet(slot.saved) : String((slot.saved&&slot.saved.contenu)||'')).split('\n').map(x=>x.trim()).filter(Boolean).forEach(l=>{   // V11.4.10
       const row=_sdcEl('div','sdc-carte-i sdc-carte-b'); row.appendChild(_sdcEl('span',null,l)); liste.appendChild(row);
     });
   }
