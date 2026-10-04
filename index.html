@@ -4311,7 +4311,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.6';
+const APP_VERSION = 'v11.4.7';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -35901,6 +35901,7 @@ function _eaEtat(store, key, slotKey){
 function _eaConfigPour(prev, slotKey, defauts){
   const base=Object.assign({mode:'seance', style:'v1', dispo:'ilots', appareil:'ordi', sites:[], codes:{},
     minuteur:{sec:120, auto:true}, champs:{}, consignes:{}, libelles:{}, textes:{}, mot:'', motSigne:true, motStyle:'postit',
+    musique:{source:'', dossier:'', fichier:'', volume:0.5, arret:'minuteur', joues:[], joueDossier:''},   // V11.4.7
     absentsNoms:true}, defauts||{});
   const c=JSON.parse(JSON.stringify(Object.assign({}, base, prev||{})));
   if(!prev || prev.slotKey!==slotKey){
@@ -36076,6 +36077,7 @@ function _eaSiteSuivant(sites, glob){
 }
 const EA_MINUTEURS=[0, 60, 120, 180, 300, 600];
 function closeEcranAccueil(){
+  try{ _eaMusiqueArreter(true); }catch(e){}   // V11.4.7 — la musique s'éteint en fondu
   if(_ea && _ea.t) clearInterval(_ea.t);
   const bg=document.getElementById('ea-bg'); if(bg) bg.remove();
   document.removeEventListener('keydown', _eaClavier);
@@ -36103,6 +36105,11 @@ function _eaRendreEcran(bg){
   const E=_eaEl, scr=E('div','position:relative;min-height:100vh;box-sizing:border-box;padding:2.6vw 3.4vw 4vw;color:#2C2C2A;font-family:inherit');
   bg.appendChild(scr);
   if(_ea.menu) scr.onclick=()=>{ _ea.menu=false; _eaRendre(); };   // V11.4.5 — clic à côté : menu fermé
+  // V11.4.7 — musique : lancée une fois par ouverture ; titre discret en bas à gauche.
+  const mus=cfg.musique||{};
+  if(mus.source && !_ea.musLancee){ _ea.musLancee=true; _eaMusiqueDemarrer(false); }
+  const tMus=E('div','position:fixed;left:14px;bottom:12px;z-index:2;font-size:clamp(10px,.9vw,14px);color:#888780;font-style:italic;pointer-events:none');
+  tMus.id='ea-mus-titre'; bg.appendChild(tMus); _eaMusiqueMajTitre();
   const fs=(a,b,c)=>'font-size:clamp('+a+'px,'+b+'vw,'+c+'px)';
   // Minuteur (anneau + chiffres), mis à jour par l'intervalle
   const minut=()=>{
@@ -36119,6 +36126,7 @@ function _eaRendreEcran(bg){
     if(!_ea.fin && cfg.minuteur && cfg.minuteur.auto!==false) _ea.fin=Date.now()+total*1000;
     const maj=()=>{
       const reste=_ea.fin ? Math.max(0, Math.round((_ea.fin-Date.now())/1000)) : total;
+      if(_ea.fin && reste===0 && !_ea.musFin && (cfg.musique||{}).arret!=='fermeture' && _eaMus.audio){ _ea.musFin=true; _eaMusiqueArreter(true); }   // V11.4.7
       if(_ea.fin && reste===0){ ch.textContent=V.minuteurFin; lb.textContent=''; c1.setAttribute('stroke-dashoffset',100.5); return; }
       ch.textContent=Math.floor(reste/60)+':'+String(reste%60).padStart(2,'0');
       c1.setAttribute('stroke-dashoffset', String(100.5*(1-reste/total)));
@@ -36258,6 +36266,28 @@ function _eaRendreEcran(bg){
     const n=_eaSuivant(EA_MINUTEURS, EA_MINUTEURS.indexOf(sec)>=0 ? sec : 120);
     cfg.minuteur=Object.assign({}, cfg.minuteur, {sec:n}); _ea.fin=n ? Date.now()+n*1000 : null; _eaEnregistrer(); _eaRendre(); });
   if(sec) B('↻','Relancer le minuteur', ()=>{ _ea.fin=Date.now()+sec*1000; _eaRendre(); });
+  // V11.4.7 — 🎵 : sans musique → chaque ambiance (sous-dossier) → sans musique.
+  {
+    const amb=_eaMus.liste ? _eaMusiqueAmbiances(_eaMus.liste) : [];
+    const lab=!mus.source ? 'Sans musique' : mus.source==='fichier' ? _eaMusiqueTitre(mus.fichier) : (mus.dossier||'racine');
+    B('🎵 '+lab, 'Musique : sans → chaque ambiance (sous-dossier) → sans ; un morceau précis : ✎', async ()=>{
+      if(!_eaMus.liste){ const l=await _eaMusiqueLister(true); if(!l){ if(_eaMus.perm==='aucun'||_eaMus.perm==='indisponible'){ _ea.prep=true; _ea.depuisEcran=true; } _eaRendre(); return; } }
+      const L=['__aucune'].concat(_eaMusiqueAmbiances(_eaMus.liste));
+      const cur=!mus.source ? '__aucune' : mus.source==='dossier' ? (mus.dossier||'') : '__aucune';
+      const n=_eaSuivant(L, cur);
+      cfg.musique=Object.assign({}, mus, n==='__aucune' ? {source:''} : {source:'dossier', dossier:n});
+      _eaEnregistrer(); _eaMusiqueArreter(false);
+      if(cfg.musique.source) _eaMusiqueDemarrer(false); else _eaRendre();
+    }, !!mus.source);
+    if(mus.source){
+      const joue=!!(_eaMus.audio && !_eaMus.audio.paused);
+      B(joue?'⏸':'▶','Musique : pause / lecture', ()=>{ if(joue) _eaMusiqueArreter(true); else _eaMusiqueDemarrer(false); setTimeout(_eaRendre, joue?1700:0); });
+      if(mus.source==='dossier') B('⏭','Morceau suivant de l’ambiance', ()=>_eaMusiqueDemarrer(true));
+      const vol=Math.round((+mus.volume||0.5)*100);
+      B('🔉 '+vol+'%','Volume : 25 → 50 → 75 → 100 %', ()=>{ const n=_eaSuivant([0.25,0.5,0.75,1], Math.round((+mus.volume||0.5)*4)/4);
+        cfg.musique=Object.assign({}, mus, {volume:n}); if(_eaMus.audio) _eaMus.audio.volume=n; _eaEnregistrer(); _eaRendre(); });
+    }
+  }
   B('💬 Mot','Écrire le mot du prof, ici même (Entrée : afficher · Échap : annuler)', ()=>_eaEditer('mot'), _ea.edition==='mot');
   B('☰ Afficher','Champs affichés (allumer / éteindre)', ()=>{ _ea.menu=!_ea.menu; _ea.edition=null; _eaRendre(); }, _ea.menu);
   B('✎','Préparer cet écran (Échap : retour ici)', ()=>{ _ea.menu=false; _ea.prep=true; _ea.depuisEcran=true; _eaRendre(); });
@@ -36412,6 +36442,57 @@ function _eaRendrePreparation(bg){
   ab.onclick=()=>{ const l=ai.value.trim(); if(!l) return; const id='sp_'+Date.now().toString(36); g.sites.push({id, label:l, url:au.value.trim()}); cfg.sites=(cfg.sites||[]).concat([id]); _eaEnregistrer(); _eaRendre(); };
   ad.appendChild(ai); ad.appendChild(au); ad.appendChild(ab); s3.appendChild(ad);
   s3.appendChild(E('div','font-size:11px;color:#888780','Les codes et liens courts restent attachés à '+_ea.portee.label+' (classe entière et demi-groupes sont distincts) et reviennent au cours suivant.'));
+  // 3 bis. Musique d'accueil (V11.4.7)
+  {
+    const sm=sec('🎵 MUSIQUE D’ACCUEIL — '+_ea.portee.label);
+    const mus=cfg.musique||{};
+    // Changer de source / ambiance / morceau : la musique en cours s'arrête et la
+    // nouvelle partira au retour sur l'écran.
+    const setM=(o)=>{ cfg.musique=Object.assign({}, cfg.musique||{}, o);
+      if(['source','dossier','fichier'].some(k=>k in o)){ _eaMusiqueArreter(false); _ea.musLancee=false; } };
+    const lr=E('div','display:flex;gap:8px;align-items:center;flex-wrap:wrap');
+    lr.appendChild(E('span','color:#5F5E5A','Dossier de musique :'));
+    lr.appendChild(E('b','', g.musiqueRacine || (_eaMus.racine && _eaMus.racine.name) || 'non choisi'));
+    const bc=E('button','font-size:12px;padding:4px 10px;border:1px solid #D3D1C7;border-radius:8px;background:#fff;cursor:pointer;font-family:inherit', (g.musiqueRacine?'Changer…':'Choisir…')); bc.type='button'; bc.onclick=eaMusiqueChoisirDossier;
+    lr.appendChild(bc);
+    if(!window.showDirectoryPicker) lr.appendChild(E('span','color:#A32D2D','indisponible dans ce navigateur (Chrome ou Edge sur ordinateur)'));
+    sm.appendChild(lr);
+    sm.appendChild(E('div','font-size:11px;color:#888780','Un dossier, ses sous-dossiers = vos ambiances (jazz, zen, dynamisant…). Choisi une fois pour toutes les classes ; les morceaux restent sur l’ordinateur.'));
+    if((g.musiqueRacine || _eaMus.racine) && !_eaMus.liste){
+      const ba=E('button','font-size:12px;padding:4px 10px;border:1px solid #185FA5;border-radius:8px;background:#E6F1FB;color:#0C447C;cursor:pointer;font-family:inherit;align-self:flex-start','🔓 Autoriser l’accès au dossier'); ba.type='button';
+      ba.onclick=async()=>{ await _eaMusiqueLister(true); _eaRendre(); };
+      sm.appendChild(ba);
+    }
+    if(_eaMus.liste){
+      choix(sm, [['','Aucune musique'],['dossier','🔀 Une ambiance (au hasard)'],['fichier','🎵 Un morceau précis']], mus.source||'', v=>{ setM({source:v}); });
+      const amb=_eaMusiqueAmbiances(_eaMus.liste);
+      if(mus.source==='dossier'){
+        const se=E('select','height:30px;border:1.5px solid #D3D1C7;border-radius:8px;font-family:inherit;font-size:13px');
+        amb.forEach(a=>{ const o=E('option',null,(a||'(racine)')+' · '+_eaMus.liste[a].length+' morceau'+(_eaMus.liste[a].length>1?'x':'')); o.value=a; if(a===(mus.dossier||'')) o.selected=true; se.appendChild(o); });
+        if(!amb.length) se.appendChild(E('option',null,'aucun morceau trouvé'));
+        se.onchange=()=>{ setM({dossier:se.value}); _eaEnregistrer(); _eaRendre(); };
+        if(amb.length && amb.indexOf(mus.dossier||'')<0){ setM({dossier:amb[0]}); _eaEnregistrer(); }
+        ligne(sm, 'Ambiance', se);
+        const d=cfg.musique.dossier||'', tot=(_eaMus.liste[d]||[]).length, deja=(cfg.musique.joueDossier===d ? (cfg.musique.joues||[]) : []).filter(n=>(_eaMus.liste[d]||[]).indexOf(n)>=0).length;
+        sm.appendChild(E('div','font-size:11px;color:#888780', deja+' joué'+(deja>1?'s':'')+' sur '+tot+' — un morceau différent à chaque cours ; tout joué → on recommence.'));
+      } else if(mus.source==='fichier'){
+        const se=E('select','height:30px;border:1.5px solid #D3D1C7;border-radius:8px;font-family:inherit;font-size:13px;max-width:100%');
+        amb.forEach(a=>{ const og=E('optgroup'); og.label=a||'(racine)'; _eaMus.liste[a].forEach(n=>{ const ch=(a?a+'/':'')+n; const o=E('option',null,_eaMusiqueTitre(n)); o.value=ch; if(ch===mus.fichier) o.selected=true; og.appendChild(o); }); se.appendChild(og); });
+        se.onchange=()=>{ setM({fichier:se.value}); _eaEnregistrer(); };
+        if(!mus.fichier && se.options.length){ setM({fichier:se.options[0].value}); _eaEnregistrer(); }
+        ligne(sm, 'Morceau', se);
+      }
+      if(mus.source){
+        choix(sm, [['minuteur','⏹ Arrêt en fondu à la fin du minuteur'],['fermeture','⏹ Arrêt à la fermeture de l’écran']], mus.arret==='fermeture'?'fermeture':'minuteur', v=>{ setM({arret:v}); });
+        choix(sm, [[0.25,'🔈 25 %'],[0.5,'🔉 50 %'],[0.75,'🔊 75 %'],[1,'🔊 100 %']], Math.round((+mus.volume||0.5)*4)/4, v=>{ setM({volume:v}); if(_eaMus.audio) _eaMus.audio.volume=v; });
+        const be=E('button','font-size:12px;padding:4px 10px;border:1px solid #D3D1C7;border-radius:8px;background:#fff;cursor:pointer;font-family:inherit;align-self:flex-start', _eaMus.audio?'⏹ Arrêter l’écoute':'▶ Écouter'); be.type='button';
+        be.onclick=async()=>{ if(_eaMus.audio){ _eaMusiqueArreter(false); _ea.musLancee=false; _eaRendre(); } else { await _eaMusiqueDemarrer(false); _ea.musLancee=true; _eaRendre(); } };
+        sm.appendChild(be);
+      }
+    } else if(!(g.musiqueRacine || _eaMus.racine) && window.showDirectoryPicker){
+      sm.appendChild(E('div','font-size:12px;color:#5F5E5A','Choisissez d’abord le dossier de musique.'));
+    }
+  }
   // 4. Champs affichés
   const s4=sec('CHAMPS AFFICHÉS (mémorisés pour '+_ea.portee.label+')');
   EA_CHAMPS.forEach(c=>{
@@ -36469,6 +36550,131 @@ function _eaBoutonCours(cls, slotKey){
   b.title='Écran d’accueil élèves — '+p.label+' : '+(etat==='pret'?'prêt':etat==='repris'?'repris du cours précédent, à vérifier':'à préparer');
   b.onclick=e=>{ e.stopPropagation(); openEcranAccueil(cls, slotKey); };
   return b;
+}
+
+/* ══ V11.4.7 — MUSIQUE D'ACCUEIL (demande du 04/10) ════════════════════════
+   Un dossier racine choisi UNE fois (File System Access, Chrome / Edge sur
+   ordinateur) ; ses sous-dossiers sont des ambiances (jazz, zen…). Pour chaque
+   portée (classe entière / Gr1 / Gr2) : aucune musique, une ambiance jouée au
+   HASARD sans répétition (tout joué → on recommence), ou un morceau précis.
+   Démarre à l'ouverture de l'écran (le ▶ est un geste : lecture autorisée),
+   s'arrête en fondu à la fin du minuteur ou à la fermeture. Le titre s'affiche
+   discrètement (attribution des morceaux CC BY, Kevin MacLeod…).
+   cfg.musique = {source:''|'dossier'|'fichier', dossier, fichier, volume, arret:'minuteur'|'fermeture', joues:[…], joueDossier} */
+const EA_AUDIO_EXT=/\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i;
+const EA_MUS_CLE='ea-musique';
+let _eaMus={racine:null, perm:'', liste:null, chargement:null, audio:null, url:'', piste:'', fondu:null};
+
+/** Prochain morceau d'une ambiance : au hasard parmi ceux pas encore joués ; tout
+ *  joué → on recommence (sans rejouer tout de suite le dernier). Pure.
+ *  Renvoie {nom, joues}. */
+function _eaMusiqueTirer(fichiers, joues, alea){
+  const L=(fichiers||[]).filter(Boolean).slice().sort();
+  if(!L.length) return {nom:'', joues:[]};
+  let J=(joues||[]).filter(n=>L.indexOf(n)>=0);
+  let reste=L.filter(n=>J.indexOf(n)<0);
+  if(!reste.length){ const dernier=J[J.length-1]; J=[]; reste=L.length>1 ? L.filter(n=>n!==dernier) : L; }
+  const r=(typeof alea==='function') ? alea() : Math.random();
+  const nom=reste[Math.min(reste.length-1, Math.max(0, Math.floor(r*reste.length)))];
+  return {nom, joues:J.concat([nom])};
+}
+/** Titre lisible d'un fichier (« jazz/Fluffing_a_Duck.mp3 » → « Fluffing a Duck »). Pure. */
+function _eaMusiqueTitre(chemin){
+  const b=String(chemin||'').split('/').pop().replace(EA_AUDIO_EXT,'');
+  return b.replace(/[_]+/g,' ').replace(/\s+/g,' ').trim();
+}
+/** Ambiances disponibles : {nomDossier: [fichiers]} ; '' = fichiers posés à la racine. Pure. */
+function _eaMusiqueAmbiances(liste){
+  return Object.keys(liste||{}).filter(k=>(liste[k]||[]).length).sort((a,b)=>a===''?1:b===''?-1:a.localeCompare(b,'fr'));
+}
+
+async function _eaMusiqueRacine(demander){
+  if(!window.showDirectoryPicker) { _eaMus.perm='indisponible'; return null; }
+  try{
+    if(!_eaMus.racine && typeof readPersistedHandle==='function') _eaMus.racine=await readPersistedHandle(EA_MUS_CLE);
+    const h=_eaMus.racine; if(!h){ _eaMus.perm='aucun'; return null; }
+    let p=await h.queryPermission({mode:'read'});
+    if(p!=='granted' && demander) p=await h.requestPermission({mode:'read'});
+    _eaMus.perm=p;
+    return p==='granted' ? h : null;
+  }catch(e){ console.warn('[musique] dossier', e); _eaMus.perm='erreur'; return null; }
+}
+async function _eaMusiqueLister(demander){
+  const h=await _eaMusiqueRacine(demander); if(!h) return null;
+  const liste={'':[]};
+  for await (const [nom, e] of h.entries()){
+    if(e.kind==='file' && EA_AUDIO_EXT.test(nom)) liste[''].push(nom);
+    else if(e.kind==='directory'){
+      const L=[]; for await (const [n2, e2] of e.entries()){ if(e2.kind==='file' && EA_AUDIO_EXT.test(n2)) L.push(n2); }
+      liste[nom]=L.sort((a,b)=>a.localeCompare(b,'fr'));
+    }
+  }
+  liste[''].sort((a,b)=>a.localeCompare(b,'fr'));
+  _eaMus.liste=liste;
+  return liste;
+}
+async function _eaMusiqueFichier(dossier, nom){
+  const h=await _eaMusiqueRacine(true); if(!h) return null;
+  const d=dossier ? await h.getDirectoryHandle(dossier) : h;
+  const f=await d.getFileHandle(nom);
+  return f.getFile();
+}
+async function eaMusiqueChoisirDossier(){
+  if(!window.showDirectoryPicker){ showDropToast('🎵 Ce navigateur ne donne pas accès aux dossiers (Chrome ou Edge sur ordinateur)'); return; }
+  try{
+    const h=await window.showDirectoryPicker({id:'planclasse-musique', mode:'read'});
+    _eaMus.racine=h; _eaMus.liste=null; _eaMus.perm='granted';
+    try{ await persistHandle(EA_MUS_CLE, h); }catch(e){ console.warn('[musique] mémorisation', e); }
+    const g=_eaStore().global; g.musiqueRacine=h.name||''; saveS();
+    await _eaMusiqueLister(false);
+    if(_ea) _eaRendre();
+  }catch(e){ if(!(e && e.name==='AbortError')) showDropToast('🎵 Dossier inaccessible : '+((e&&e.message)||e)); }
+}
+function _eaMusiqueArreter(fondu){
+  const a=_eaMus.audio; if(!a) return;
+  if(_eaMus.fondu){ clearInterval(_eaMus.fondu); _eaMus.fondu=null; }
+  const fin=()=>{ try{ a.pause(); }catch(e){} try{ if(_eaMus.url) URL.revokeObjectURL(_eaMus.url); }catch(e){}
+    if(_eaMus.audio===a){ _eaMus.audio=null; _eaMus.url=''; _eaMus.piste=''; } _eaMusiqueMajTitre(); };
+  if(!fondu){ fin(); return; }
+  const v0=a.volume, pas=v0/15;
+  _eaMus.fondu=setInterval(()=>{ try{ a.volume=Math.max(0, a.volume-pas); }catch(e){} if(a.volume<=0.001){ clearInterval(_eaMus.fondu); _eaMus.fondu=null; fin(); } }, 100);
+}
+function _eaMusiqueMajTitre(){
+  const t=document.getElementById('ea-mus-titre'); if(!t) return;
+  t.textContent=_eaMus.piste ? '♪ '+_eaMusiqueTitre(_eaMus.piste) : '';
+}
+/** Lance la musique de la portée ouverte (morceau suivant de l'ambiance si `suivant`). */
+async function _eaMusiqueDemarrer(suivant){
+  if(!_ea) return;
+  const m=(_ea.cfg && _ea.cfg.musique) || {};
+  if(!m.source) return;
+  _eaMusiqueArreter(false);
+  try{
+    let dossier='', nom='';
+    if(m.source==='fichier'){
+      const i=String(m.fichier||'').lastIndexOf('/');
+      dossier=i>=0 ? m.fichier.slice(0,i) : ''; nom=i>=0 ? m.fichier.slice(i+1) : String(m.fichier||'');
+    } else {
+      const liste=_eaMus.liste || await _eaMusiqueLister(true); if(!liste) { if(_ea) _eaRendre(); return; }
+      dossier=m.dossier||'';
+      const r=_eaMusiqueTirer(liste[dossier]||[], m.joueDossier===dossier ? m.joues : [], null);
+      nom=r.nom; if(!nom) return;
+      m.joues=r.joues; m.joueDossier=dossier; _eaEnregistrer();
+    }
+    if(!nom) return;
+    const f=await _eaMusiqueFichier(dossier, nom); if(!f){ if(_ea) _eaRendre(); return; }
+    const a=new Audio(); const url=URL.createObjectURL(f);
+    a.src=url; a.volume=Math.max(0, Math.min(1, +m.volume||0.5)); a.loop=m.source==='fichier';
+    if(m.source==='dossier') a.onended=()=>{ if(_eaMus.audio===a && _ea) _eaMusiqueDemarrer(true); };
+    _eaMus.audio=a; _eaMus.url=url; _eaMus.piste=(dossier?dossier+'/':'')+nom;
+    await a.play();
+    _eaMusiqueMajTitre();
+    if(_ea && !_ea.prep) _eaRendre();
+  }catch(e){
+    console.warn('[musique] lecture', e);
+    if(e && e.name==='NotAllowedError') showDropToast('🎵 Lecture bloquée par le navigateur : cliquez sur 🎵');
+    else showDropToast('🎵 Morceau introuvable : vérifiez le dossier de musique');
+  }
 }
 
 /* ══ V11.4.0 — Délégués et responsabilités (demande du 30/09) ═════════════════
