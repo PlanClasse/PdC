@@ -4312,7 +4312,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.11';
+const APP_VERSION = 'v11.4.12';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -39497,6 +39497,121 @@ function deleteTaskExecForSlot(clsCode, grpId, seqId, seanId, slotKey){
   });
 }
 
+/* ══ V11.4.12 — Exécution des tâches : avance, demi-groupes, identité par texte ══
+   (demande du 04/10 : la Synthèse partait du prescrit et n'accrochait le réel
+   qu'en partie). Une entrée de S.taskExecution porte désormais son LIBELLÉ : la
+   lecture vérifie le texte (une tâche insérée ou déplacée dans la bibliothèque ne
+   fait plus paraître faite la mauvaise). Les tâches des séances SECONDAIRES d'un
+   cours (clés mo_<seanId>_<idx>) sont enregistrées avec LEUR séance. */
+/** Libellé d'une tâche, nettoyé (badge [SEQ1-S3], « (suite) », « (15mn) »). Pure. */
+function _execLibelle(l){
+  return String(l||'').replace(/^\s*\[[^\]]*\]\s*/,'').replace(/\s*\(\d+\s*mn\)\s*$/i,'').replace(/\s*\(suite\)\s*$/i,'').replace(/^\s*\(suite\)\s*/i,'').trim();
+}
+function _execNorm(l){ return _execLibelle(l).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim(); }
+/** État à enregistrer pour une ligne du modal (mêmes règles que la séance principale).
+ *  Pure. → {status, remainingMn} ou null. */
+function _execStatut(tr, partiels){
+  if(!tr) return null;
+  let status;
+  if(tr.stateLabel==='Faite') status='done';
+  else if(tr.stateLabel==='Reportée') status='reported';
+  else if(tr.stateLabel==='Commencée / partielle') status='partial';
+  else if(tr.stateLabel==='Annulée') status='skipped';
+  else return null;
+  const r=(tr.remainingMn!==undefined && tr.remainingMn!==null && tr.remainingMn!=='') ? tr.remainingMn : ((partiels||{})[tr.key]??0);
+  const remainingMn=status==='partial' ? Number(r) : 0;
+  if(status==='partial' && !(remainingMn>0)) status='done';
+  return {status, remainingMn};
+}
+/** Lit l'exécution d'une tâche : clé de la portée (demi-groupe), puis classe entière ;
+ *  à la position attendue si le texte concorde (ou n'est pas connu), sinon l'entrée
+ *  de même texte ailleurs dans la séance. Jamais une entrée d'un AUTRE texte. Pure. */
+function _execLire(E, cls, grp, seqId, seanId, idx, label){
+  E=E||{}; const nl=_execNorm(label);
+  const pres=[]; if(grp) pres.push(cls+'|'+grp+'|'+seqId+'|'+seanId+'|'); pres.push(cls+'|'+seqId+'|'+seanId+'|');
+  for(const pre of pres){
+    // Référence = texte de la tâche DANS LA BIBLIOTHÈQUE au moment de l'enregistrement
+    // (une ligne tapée « reliée » garde son propre libellé, différent) ; repli : libellé.
+    const ref=(e)=>e ? (e.texteBiblio || e.label || '') : '';
+    // Ordre : même position ET même texte → même texte ailleurs → même position sans texte connu.
+    const d=E[pre+idx];
+    if(d && (!nl || (ref(d) && _execNorm(ref(d))===nl))) return d;
+    if(nl){
+      const k=Object.keys(E).find(k=>k.indexOf(pre)===0 && /^\d+$/.test(k.slice(pre.length)) && E[k] && ref(E[k]) && _execNorm(ref(E[k]))===nl);
+      if(k) return E[k];
+    }
+    if(d && !ref(d)) return d;
+  }
+  return null;
+}
+/** Texte d'une tâche de la bibliothèque (position brute). Pure (prog fourni). */
+function _execTexteBiblio(prog, seqId, seanId, idx){
+  const q=(prog||[]).find(x=>x && x.id===seqId); const s=q && (q.seances||[]).find(x=>x && x.id===seanId);
+  const t=s && Array.isArray(s.modeOp) ? s.modeOp[idx] : '';
+  return String(t||'').trim();
+}
+/** État d'une tâche pour une classe, tous groupes réunis. Pure.
+ *  etats = [entrée|null] par groupe → 'done' (tous) | 'skipped' (tous) | 'partiel' (certains) | ''. */
+function _synthEtatTache(etats){
+  const st=(etats||[]).map(e=>e ? (e.status==='done'?'done':e.status==='skipped'?'skipped':'autre') : 'aucun');
+  if(!st.length) return '';
+  if(st.every(x=>x==='done')) return 'done';
+  if(st.every(x=>x==='skipped')) return 'skipped';
+  if(st.some(x=>x==='done')) return 'partiel';
+  return '';
+}
+/** Écrit l'exécution des tâches des séances SECONDAIRES d'un cours. Renvoie le nombre écrit. */
+function _execEcrireSecondaires(cls, grp, slotKey, taskRows, prog, partiels){
+  const par={};
+  (taskRows||[]).forEach(tr=>{ const m=/^mo_(.+)_(\d+)$/.exec(String((tr&&tr.key)||'')); if(m) (par[m[1]]=par[m[1]]||[]).push({tr, idx:+m[2]}); });
+  let n=0;
+  Object.keys(par).forEach(seanId=>{
+    const seq=(prog||[]).find(q=>q && (q.seances||[]).some(x=>x && x.id===seanId)); if(!seq) return;
+    deleteTaskExecForSlot(cls, grp, seq.id, seanId, slotKey);
+    par[seanId].forEach(({tr, idx})=>{ const st=_execStatut(tr, partiels); if(!st) return;
+      writeTaskExec(cls, grp, seq.id, seanId, idx, Object.assign(st, {handledInSlot:slotKey, label:_execLibelle(tr.label), texteBiblio:_execTexteBiblio(prog, seq.id, seanId, idx)})); n++; });
+  });
+  return n;
+}
+/** Rattrapage (une fois) : libellés posés sur les entrées existantes ; avance sur une
+ *  séance secondaire reprise des séances déjà enregistrées. Idempotent. */
+function _migrerExecSynthese(){
+  const res={libelles:0, secondaires:0};
+  if(!S || S._execSynthV==='v11.4.12') return res;
+  if(!S.taskExecution) S.taskExecution={};
+  const E=S.taskExecution;
+  Object.keys(S.seances||{}).forEach(bucket=>{
+    const parts=String(bucket).split('|'); const cls=parts[0], grp=parts[1]||'';
+    let prog=[]; try{ prog=getProgression(_sdcNiveau(cls))||[]; }catch(e){}
+    const base=grp ? cls+'|'+grp : cls;
+    (S.seances[bucket]||[]).forEach(se=>{
+      if(!se || !se.slotKey || !Array.isArray(se.taskRows)) return;
+      se.taskRows.forEach(tr=>{
+        const k=String((tr&&tr.key)||''); let seqId='', seanId='', idx=-1;
+        let m=/^mo_(\d+)$/.exec(k);
+        if(m){ seqId=se.seqId; seanId=se.seanId; idx=+m[1]; }
+        else if((m=/^mo_(.+)_(\d+)$/.exec(k))){ seanId=m[1]; idx=+m[2]; const q=prog.find(q=>q && (q.seances||[]).some(x=>x && x.id===seanId)); seqId=q?q.id:''; }
+        if(!seqId || !seanId || idx<0) return;
+        const key=base+'|'+seqId+'|'+seanId+'|'+idx; const e=E[key];
+        if(e){ if(!e.label && e.handledInSlot===se.slotKey){ e.label=_execLibelle(tr.label); res.libelles++; } return; }
+        if(/^mo_\d+$/.test(k)) return;   // principale absente : ré-enregistrée depuis, on ne ressuscite rien
+        const st=_execStatut(tr, {}); if(!st) return;
+        E[key]=Object.assign(st, {handledInSlot:se.slotKey, label:_execLibelle(tr.label)}); res.secondaires++;
+      });
+    });
+  });
+  // Toutes les entrées : texte de la bibliothèque actuelle (meilleure référence disponible).
+  res.textes=0;
+  Object.keys(E).forEach(k=>{ const e=E[k]; if(!e || e.texteBiblio) return;
+    const parts=k.split('|'); if(parts.length<4) return;
+    const idx=+parts[parts.length-1], seanId=parts[parts.length-2], seqId=parts[parts.length-3];
+    let prog=[]; try{ prog=getProgression(_sdcNiveau(parts[0]))||[]; }catch(err){}
+    const t=_execTexteBiblio(prog, seqId, seanId, idx); if(t){ e.texteBiblio=t; res.textes++; } });
+  S._execSynthV='v11.4.12';
+  saveS();
+  return res;
+}
+
 /**
  * Phase 2b session 11 — Écriture rétrocompatible dans S.statutsCours.
  *   grpId='' → clé legacy 'slotKey|clsCode'
@@ -48876,12 +48991,16 @@ function openSaveSeance(){
           const _remaining=status==='partial'?Number(tr.remainingMn!==undefined&&tr.remainingMn!==null&&tr.remainingMn!==''?tr.remainingMn:tachePartiels[tr.key]??0):0;
           if(status==='partial'&&_remaining<=0) status='done'; // 0mn restantes = terminée
           if(typeof writeTaskExec==='function'){
-            writeTaskExec(curCls, _pc2Grp, seqId, seanId, _mi, { status, handledInSlot:slotKey, remainingMn:_remaining });
+            writeTaskExec(curCls, _pc2Grp, seqId, seanId, _mi, { status, handledInSlot:slotKey, remainingMn:_remaining, label:(typeof _execLibelle==='function'?_execLibelle(tr.label):String(tr.label||'')),
+              texteBiblio:(typeof _execTexteBiblio==='function'?_execTexteBiblio(getProgression(_sdcNiveau(curCls))||[], seqId, seanId, _mi):'') });   // V11.4.12 : identité par texte
           } else {
             if(!S.taskExecution) S.taskExecution={};
             S.taskExecution[curCls+'|'+seqId+'|'+seanId+'|'+_mi]={ status, handledInSlot:slotKey, remainingMn:_remaining };
           }
         });
+        // V11.4.12 — l'avance sur une AUTRE séance (clés mo_<seanId>_<idx>) est enregistrée avec SA séance.
+        try{ if(typeof _execEcrireSecondaires==='function') _execEcrireSecondaires(curCls, _pc2Grp, slotKey, taskRows, getProgression(_sdcNiveau(curCls))||[], tachePartiels); }
+        catch(e){ console.warn('[synthèse] séances secondaires', e); }
       }
       invalidateLayoutCache(curCls); // purge cache cls + toutes variantes cls|grp
     }
@@ -61619,15 +61738,36 @@ function renderSynthese(){
     }
     return null;
   };
-  const moDone=(clsCode, seqId, seanId, taskIdx)=>{
-    const grpId=(typeof getCurrentGrpId==='function')?getCurrentGrpId(clsCode, null):'';
-    const exec=readTaskExec(clsCode, grpId, seqId, seanId, taskIdx);
-    return exec && exec.status==='done';
+  // V11.4.12 — chaque demi-groupe est lu (avant : le groupe ouvert dans l'appli),
+  // par le texte de la tâche (avant : sa position). Faite = faite par TOUS les groupes.
+  const groupesDe={};
+  const gIds=(cc)=>{ if(!groupesDe[cc]){ let g=[]; try{ g=listGroupesDef(cc).map(x=>x.id); }catch(e){} groupesDe[cc]=g.length?g:['']; } return groupesDe[cc]; };
+  const moEtat=(clsCode, seqId, seanId, taskIdx, label)=>{
+    const gs=gIds(clsCode);
+    const etats=gs.map(g=>_execLire(S.taskExecution, clsCode, g, seqId, seanId, taskIdx, label));
+    const etat=_synthEtatTache(etats);
+    const detail=gs.length>1 ? gs.map((g,i)=>'Gr'+(i+1)+' '+(etats[i]?(etats[i].status==='done'?'✓':etats[i].status==='skipped'?'✕':'◐'):'○')).join(' · ') : '';
+    return {etat, detail};
   };
-  const moCancelled=(clsCode, seqId, seanId, taskIdx)=>{
-    const grpId=(typeof getCurrentGrpId==='function')?getCurrentGrpId(clsCode, null):'';
-    const exec=readTaskExec(clsCode, grpId, seqId, seanId, taskIdx);
-    return exec && exec.status==='skipped';
+  const moDone=(clsCode, seqId, seanId, taskIdx, label)=>moEtat(clsCode, seqId, seanId, taskIdx, label).etat==='done';
+  const moCancelled=(clsCode, seqId, seanId, taskIdx, label)=>moEtat(clsCode, seqId, seanId, taskIdx, label).etat==='skipped';
+  // V11.4.12 — dates RÉALISÉES (cours enregistrés de la séance, avance comprise).
+  const datesRealisees=(clsCode, seqId, seanId)=>{
+    const set=new Set();
+    readAllSeancesForClass(clsCode).forEach(s=>{ if(s && s.seqId===seqId && s.seanId===seanId && s.slotKey) set.add(s.slotKey); });
+    const pre=[clsCode+'|']; gIds(clsCode).forEach(g=>{ if(g) pre.push(clsCode+'|'+g+'|'); });
+    Object.keys(S.taskExecution||{}).forEach(k=>{ const e=S.taskExecution[k]; if(!e || !e.handledInSlot) return;
+      if(pre.some(p=>k.indexOf(p+seqId+'|'+seanId+'|')===0)) set.add(e.handledInSlot); });
+    return Array.from(set).sort();
+  };
+  // V11.4.12 — tâches faites HORS bibliothèque (tapées, ajoutées) dans les cours de la séance.
+  const horsBiblio=(clsCode, seqId, sean)=>{
+    const docs=new Set((sean.docs||[]).map(_execNorm)); const vus=new Set(), out=[];
+    readAllSeancesForClass(clsCode).forEach(s=>{ if(!s || s.seqId!==seqId || s.seanId!==sean.id) return;
+      (s.taskRows||[]).forEach(tr=>{ if(!tr || (tr.sourceLabel!=='free' && tr.sourceLabel!=='extra')) return;
+        if(tr.stateLabel!=='Faite' && tr.stateLabel!=='Commencée / partielle') return;
+        const l=_execLibelle(tr.label), n=_execNorm(l); if(!n || docs.has(n) || vus.has(n)) return; vus.add(n); out.push(l); }); });
+    return out;
   };
 
   const fiStateCache={};
@@ -61756,10 +61896,11 @@ function renderSynthese(){
   const computeSeanceProg=(clsCode, seq, sean)=>{
     let num=0, denom=0;
     const modeOp=(sean.modeOp||[]).filter(x=>x&&x.trim());
-    modeOp.forEach((_,i)=>{
-      if(moCancelled(clsCode, seq.id, sean.id, i)) return;
+    modeOp.forEach((t,i)=>{
+      const e=moEtat(clsCode, seq.id, sean.id, i, t).etat;   // V11.4.12 — par texte, tous groupes
+      if(e==='skipped') return;
       denom++;
-      if(moDone(clsCode, seq.id, sean.id, i)) num++;
+      if(e==='done') num++;
     });
     const interm=getIntermEvalForSeance(seq, sean.id);
     if(interm){
@@ -61894,9 +62035,14 @@ function renderSynthese(){
       classes.forEach(cc=>{
         const sv=getSuivi(lv,seq.id,cc);
         const seqDone = !!sv.done;
-        const dateInfo=getSlotDateInfo(cc,seq.id,sean.id);
+        // V11.4.12 — date RÉALISÉE (dernier cours où la séance a été travaillée, avance
+        // comprise) ; à défaut, date prévue, marquée « prév. ».
+        const _real=datesRealisees(cc, seq.id, sean.id);
+        const _prev=getSlotDateInfo(cc,seq.id,sean.id);
+        const dateInfo=_real.length ? {dateStr:_real[_real.length-1].slice(0,10), slotKey:_real[_real.length-1], saved:true} : _prev;
         const dateStr=dateInfo?dateInfo.dateStr:'';
         const slotKey=dateInfo?dateInfo.slotKey:null;
+        const _prevu=!!(dateInfo && !_real.length);
         const done=!!sv.seances[sean.id];
         const td=document.createElement('td');
         // Cascade SEQ→séance : SEQ cochée → fond SEQ-cochée + opacity réduite
@@ -61906,6 +62052,11 @@ function renderSynthese(){
         const {inner, cb}=mkCellContent(dateStr, done, p, col, (val)=>{
           sv.seances[sean.id]=val; saveS(); renderSynthese();
         });
+        // V11.4.12 — date prévue (aucun cours enregistré) : grisée, « prév. » ; réalisée sur plusieurs cours : toutes en infobulle.
+        { const ds=inner.querySelector('span');
+          if(ds && dateStr){ if(_prevu){ ds.style.fontStyle='italic'; ds.style.color='var(--tx3)'; ds.textContent='prév. '+ds.textContent; ds.title='Date prévue (aucun cours enregistré)'; }
+            else if(_real.length>1){ ds.textContent+=' (+'+(_real.length-1)+')'; ds.title='Travaillée les '+_real.map(k=>k.slice(8,10)+'/'+k.slice(5,7)).join(', '); }
+            else ds.title='Date réalisée'; } }
         if(slotKey){
           td.style.cursor='pointer';
           td.onclick=(e)=>{
@@ -61931,8 +62082,10 @@ function renderSynthese(){
         classes.forEach(cc=>{
           const svP=getSuivi(lv, seq.id, cc);
           const parentDone = !!svP.done || !!svP.seances[sean.id];
-          const isDone=moDone(cc, seq.id, sean.id, moIdx);
-          const isCancelled=moCancelled(cc, seq.id, sean.id, moIdx);
+          const _me=moEtat(cc, seq.id, sean.id, moIdx, action);   // V11.4.12
+          const isDone=_me.etat==='done';
+          const isCancelled=_me.etat==='skipped';
+          const isPartiel=_me.etat==='partiel';
           const td=document.createElement('td');
           // Cascade : si parent (séance ou séquence) coché pour cette classe → fond séance + opacity réduite
           const bgCol = parentDone ? col+'30' : (isDone?col+'1a':'var(--sur)');
@@ -61942,7 +62095,9 @@ function renderSynthese(){
           ico.style.cssText='font-size:11px';
           if(isCancelled){ ico.textContent='✕'; ico.style.color='#9CA3AF'; ico.title='Annulée'; }
           else if(isDone){ ico.textContent='✓'; ico.style.color=col; ico.title='Faite'; }
+          else if(isPartiel){ ico.textContent='◐'; ico.style.color=col; ico.title='Faite par une partie des groupes'; }
           else { ico.textContent='○'; ico.style.color='var(--tx3)'; ico.title='Non faite'; }
+          if(_me.detail){ ico.title+=' — '+_me.detail; td.title=_me.detail; }
           inner.appendChild(ico);
           if(isCancelled){
             const badge=document.createElement('span');
@@ -61956,6 +62111,23 @@ function renderSynthese(){
         subRows.push(trMo);
         tbody.appendChild(trMo);
       });
+
+      // V11.4.12 — « Hors bibliothèque » : tâches faites dans les cours de cette séance
+      // sans être dans la bibliothèque (tapées, ajoutées). Nombre par classe, liste au survol.
+      { const hb=classes.map(cc=>horsBiblio(cc, seq.id, sean));
+        if(hb.some(l=>l.length)){
+          const trH=document.createElement('tr');
+          const tdH=document.createElement('td');
+          tdH.style.cssText='padding:3px 8px 3px 40px;border:1px solid var(--brd);border-top:none;background:var(--sur);color:var(--tx3);font-size:10px;font-style:italic;position:sticky;left:0;z-index:1';
+          tdH.textContent='＋ hors bibliothèque'; tdH.title='Faites pendant les cours de cette séance, sans être dans la bibliothèque (☆ dans « Saisir mes cours » pour les y verser)';
+          trH.appendChild(tdH);
+          hb.forEach(l=>{ const td=document.createElement('td');
+            td.style.cssText='padding:2px 6px;border:1px solid var(--brd);border-top:none;background:var(--sur);text-align:center;font-size:10px;color:'+(l.length?col:'var(--tx3)');
+            td.textContent=l.length ? '＋'+l.length : '';
+            if(l.length) td.title=l.map(x=>'• '+x).join('\n');
+            trH.appendChild(td); });
+          subRows.push(trH); tbody.appendChild(trH);
+        } }
 
       // ── Éval intermédiaire — Ligne 1 : intitulé seul (état auto) | Ligne 2 : Rendue/Corrigée ──
       const interm=getIntermEvalForSeance(seq, sean.id);
@@ -63293,6 +63465,7 @@ _migrationProtegee('migrateSeatKeys', migrateSeatKeys); // Migration seats displ
 _migrationProtegee('migrateModeOpDurees', migrateModeOpDurees); // Migration durées décalées par tâches vides
 _migrationProtegee('migrateCocheDates', migrateCocheDates); // V11.3.35 (Q4) — coches réunies sous la date DU COURS (one-time, idempotente)
 _migrationProtegee('_migrerContenuPrevu', _migrerContenuPrevu); // V11.3.101 — contenu = redite du prévu → vidé (copie gardée)
+_migrationProtegee('_migrerExecSynthese', _migrerExecSynthese); // V11.4.12 — libellés + avance sur séances secondaires
 if(window._migrationsEchouees && window._migrationsEchouees.length){
   const _noms=window._migrationsEchouees.map(m=>m.nom).join(', ');
   setTimeout(()=>{ try{ showDropToast('⚠️ Mise à jour des données interrompue ('+_noms+') : rien n’a été modifié. Faites une sauvegarde et signalez-le.'); }catch(e){} }, 2500);
