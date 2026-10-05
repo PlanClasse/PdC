@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.17';
+const APP_VERSION = 'v11.4.18';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -36584,8 +36584,9 @@ function _eaRendreEcran(bg){
     return editable(k, 'mot'); };
   // V11.4.17 — post-it « fichiers » (bleu, penché dans l'autre sens que le mot du prof).
   const fichEl=(max)=>{ if(!V.fichiers) return null;
-    const k=E('div','background:#E6F1FB;border-radius:18px 4px 18px 18px;border-right:6px solid #378ADD;padding:1vw 1.6vw;transform:rotate(.6deg);max-width:'+(max||'100%'));
-    const corps=_eaMotDom(V.fichiers, false); corps.style.cssText=fs(12,1.5,24)+';color:#0C447C;line-height:1.4';
+    const k=E('div','background:#E6F1FB;border-radius:18px 4px 18px 18px;border-right:6px solid #378ADD;padding:1.4vw 2vw;transform:rotate(.6deg);max-width:'+(max||'100%'));
+    // un chemin long se coupe après un « / », jamais au milieu d'un nom (affichage seulement)
+    const corps=_eaMotDom(String(V.fichiers).replace(/\//g,'/\u200B'), false); corps.style.cssText=fs(17,2.3,40)+';color:#0C447C;line-height:1.35;overflow-wrap:break-word';   // V11.4.18 — plus grand (demande du 05/10)
     k.appendChild(corps); return editable(k, 'fichiers'); };
   const entete=(grand)=>{
     const h=E('div','display:flex;align-items:center;gap:1.4vw;flex-wrap:wrap');
@@ -36662,7 +36663,7 @@ function _eaRendreEcran(bg){
     if(V.blocs.length){ const gb=grille(V.blocs.length); if(lud) gb.style.position='relative'; V.blocs.forEach(b=>gb.appendChild(bloc(b))); scr.appendChild(gb); }
     const bas=E('div','position:relative;display:flex;gap:1.6vw;margin-top:1.8vw;align-items:flex-start;flex-wrap:wrap');
     const mo=motEl('60%'); if(mo) bas.appendChild(mo);
-    const fi=fichEl('48%'); if(fi) bas.appendChild(fi);
+    const fi=fichEl('100%'); if(fi){ fi.style.flex='1 1 38%'; bas.appendChild(fi); }   // V11.4.18 — toute la place libre
     if(V.pastilles.length){ const col=E('div','display:flex;flex-direction:column;gap:.5vw'); V.pastilles.forEach(p=>col.appendChild(pastille(p))); bas.appendChild(col); }
     if(bas.childNodes.length) scr.appendChild(bas);
   }
@@ -36842,7 +36843,7 @@ function _eaRendreEtape(scr, V, P, h){
     hd.appendChild(tt);
     const m=minut(); if(m){ m.style.marginLeft='auto'; if(grand){ m.style.border='none'; m.style.background='transparent'; } hd.appendChild(m); }
     scr.appendChild(hd);
-    const corps=E('div','position:relative;display:grid;grid-template-columns:'+(cote.length && !grand ? 'minmax(0,1.7fr) minmax(0,1fr)' : 'minmax(0,1fr)')+';gap:2vw;margin-top:2vw;align-items:start');
+    const corps=E('div','position:relative;display:grid;grid-template-columns:'+(cote.length && !grand ? (V.fichiers ? 'minmax(0,1.2fr) minmax(0,1fr)' : 'minmax(0,1.7fr) minmax(0,1fr)') : 'minmax(0,1fr)')+';gap:2vw;margin-top:2vw;align-items:start');
     const gch=E('div','display:flex;flex-direction:column;gap:1.4vw');
     gch.appendChild(liste());
     const mo=motEl('100%'); if(mo) gch.appendChild(mo);
