@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.15';
+const APP_VERSION = 'v11.4.16';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -26007,6 +26007,33 @@ function _statutLabel(k){
    Appelé uniquement par buildCourseSummaryHtml quand opts.compactForHistory est vrai.
    Ordre : Rattachement → Tâches → Contenu/TAF → Statuts → Compétences → Observations.
    Tailles : titres 12px, corps 14px, line-height 1.5. */
+/** V11.4.16 — Sc.Préc. montre ce qui a été FAIT ou COMMENCÉ, rien d'autre (les
+ *  conventions barré / reporté / annulé sont celles du modal d'enregistrement). Pure.
+ *  Renvoie 'faite' | 'commencee' | null (reportée, annulée, non cochée, prévue…). */
+function _scprecEtatVu(etat, resteMn){
+  const s=String(etat||'').toLowerCase();
+  if(/^fait/.test(s)) return 'faite';
+  if(/^commenc/.test(s)) return (resteMn===0 || resteMn==='0') ? 'faite' : 'commencee';
+  return null;
+}
+/** Lignes de tâches de Sc.Préc. : faites (sans être barrées), commencées (avec le
+ *  temps restant). Les autres ne sont pas montrées. Construites en createElement ;
+ *  renvoie leur HTML (le résumé dense est assemblé en texte). */
+function _scprecLignesTaches(vues){
+  return (vues||[]).filter(v=>v && v.etat).map(v=>{
+    const r=document.createElement('div');
+    r.style.cssText='display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:1px 0;font-size:14px';
+    const l=document.createElement('span'); l.style.cssText='flex:1;min-width:0';
+    l.textContent=(v.icon||'⚙')+' '+(v.label||'');
+    if(v.duree){ const d=document.createElement('span'); d.style.cssText='font-size:11px;color:var(--tx3)'; d.textContent=' ('+v.duree+'mn)'; l.appendChild(d); }
+    r.appendChild(l);
+    if(v.etat==='commencee'){   // sous le libellé : à côté, elle l'écrasait
+      const t=document.createElement('div'); t.style.cssText='font-size:11px;font-weight:700;color:#1D4ED8';
+      t.textContent='commencée'+(v.reste?' ('+v.reste+' mn restantes)':''); l.appendChild(t);
+    }
+    return r.outerHTML;
+  }).join('');
+}
 function buildCourseSummaryDense(slotKey, clsCode){
   const seance=_getSavedSeanceEntriesForClsCode(clsCode).map(x=>x.se).find(s=>s.slotKey===slotKey)||null;
   const statusLabel=(k)=>_statutLabel(k);   // V11.3.52 — cf. _statutLabel
@@ -26021,15 +26048,6 @@ function buildCourseSummaryDense(slotKey, clsCode){
 
   const rowsHtml=[];
 
-  // Helper rendu task row
-  const stColor=(sl)=>{
-    if(sl==='Faite') return '#166534';
-    if(sl==='Reportée') return '#92400E';
-    if(sl==='Annulée') return '#9F1239';
-    if(sl==='Commencée / partielle') return '#1D4ED8';
-    return 'var(--tx3)';
-  };
-
   // ── Branche 1 : séance enregistrée ──
   if(seance){
     const lv=(typeof _scopeLevelOf==='function')?_scopeLevelOf(clsCode):((clsCode||'').replace(/\d+$/,'')||'5e'); // v5d-2b scope-aware
@@ -26041,30 +26059,20 @@ function buildCourseSummaryDense(slotKey, clsCode){
     const ratV=`<b>${escapeHtml(seq?seq.titre:'—')}</b>${sean?` <span style="color:var(--tx3)">· ${escapeHtml(sean.titre)}</span>`:''}`;
     rowsHtml.push(`<div style="${keyStyle}">Séquence</div><div style="${valStyle}">${ratV}</div>`);
 
-    // Tâches
-    let modeOpsHtml='';
-    if(seance.taskRows&&seance.taskRows.length){
-      modeOpsHtml=seance.taskRows.map(tr=>{
-        const sl=tr.stateLabel||'Non cochée';
-        const col=stColor(sl);
-        const strike=sl==='Faite'?'text-decoration:line-through;color:var(--tx3);':'';
-        const remain=sl==='Commencée / partielle'&&tr.remainingMn?` <span style="font-size:11px;color:#1D4ED8">(${tr.remainingMn}mn restantes)</span>`:'';
-        return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:1px 0;font-size:14px"><span style="${strike}flex:1;min-width:0">⚙ ${escapeHtml(tr.label||'')}${remain}</span><span style="font-size:11px;font-weight:700;color:${col};white-space:nowrap;flex-shrink:0">${escapeHtml(sl)}</span></div>`;
-      }).join('');
-    } else {
-      modeOpsHtml=((sean&&sean.modeOp)||[]).map((t,i)=>{
-        const done=(seance.modeOpDone||[])[i];
-        const decision=(seance.tacheDecisions||{})['modeOp_'+i]||(seance.tacheDecisions||{})['mo_'+i]||'';
-        const sl=done?'Faite':(decision==='reporter'?'Reportée':decision==='partiel'?'Commencée / partielle':decision==='annuler'?'Annulée':'Prévue');
-        const col=stColor(sl);
-        const strike=sl==='Faite'?'text-decoration:line-through;color:var(--tx3);':'';
-        return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:1px 0;font-size:14px"><span style="${strike}flex:1;min-width:0">⚙ ${escapeHtml(t)}</span><span style="font-size:11px;font-weight:700;color:${col};white-space:nowrap;flex-shrink:0">${escapeHtml(sl)}</span></div>`;
-      }).join('');
-    }
+    // Tâches — V11.4.16 : seulement ce qui a été fait ou commencé ; rien de barré
+    // (barré / reporté / annulé : conventions du modal d'enregistrement, pas de Sc.Préc.).
+    const _vues=(seance.taskRows&&seance.taskRows.length)
+      ? seance.taskRows.map(tr=>({label:tr.label||'', etat:_scprecEtatVu(tr.stateLabel, tr.remainingMn), reste:tr.remainingMn}))
+      : ((sean&&sean.modeOp)||[]).map((t,i)=>{
+          const done=(seance.modeOpDone||[])[i];
+          const decision=(seance.tacheDecisions||{})['modeOp_'+i]||(seance.tacheDecisions||{})['mo_'+i]||'';
+          return {label:t, etat:done?'faite':(decision==='partiel'?'commencee':null)};
+        });
+    const modeOpsHtml=_scprecLignesTaches(_vues);
     if(modeOpsHtml){
       rowsHtml.push(`<div style="${keyStyle}">Tâches</div><div style="${valStyle}"><div style="${tasksStyle}">${modeOpsHtml}</div></div>`);
     } else {
-      rowsHtml.push(`<div style="${keyStyle}">Tâches</div><div style="${valStyle}"><span style="${dimStyle}">Aucune tâche.</span></div>`);
+      rowsHtml.push(`<div style="${keyStyle}">Tâches</div><div style="${valStyle}"><span style="${dimStyle}">Aucune tâche faite.</span></div>`);
     }
 
     // Contenu / TAF (déplacé ici dans l'ordre)
@@ -26181,13 +26189,10 @@ function buildCourseSummaryDense(slotKey, clsCode){
     <div style="font-size:12px;color:var(--tx2);margin-top:2px">Saisies en cours — informations partielles.</div>
   </div>`;
 
-  // Tâches partielles
-  if(taskRows.length){
-    const rows=taskRows.map(tr=>`<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:1px 0;font-size:14px">
-      <span style="${tr.st==='faite'?'text-decoration:line-through;color:var(--tx3);':''}flex:1;min-width:0">${tr.icon} ${escapeHtml(tr.label)}${tr.duree?` <span style="font-size:11px;color:var(--tx3)">(${tr.duree}mn)</span>`:''}</span>
-      <span style="font-size:11px;font-weight:700;color:${tr.col};white-space:nowrap;flex-shrink:0">${escapeHtml(tr.st)}</span>
-    </div>`).join('');
-    rowsHtml.push(`<div style="${keyStyle}">Tâches</div><div style="${valStyle}"><div style="${tasksStyle}">${rows}</div></div>`);
+  // Tâches partielles — V11.4.16 : seulement ce qui a été fait ou commencé.
+  const _lignes2=_scprecLignesTaches(taskRows.map(tr=>({label:tr.label, etat:_scprecEtatVu(tr.st), duree:tr.duree, icon:tr.icon})));
+  if(_lignes2){
+    rowsHtml.push(`<div style="${keyStyle}">Tâches</div><div style="${valStyle}"><div style="${tasksStyle}">${_lignes2}</div></div>`);
   }
 
   // Statuts partiels
