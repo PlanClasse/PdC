@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.18';
+const APP_VERSION = 'v11.4.20';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -36462,9 +36462,9 @@ function _eaAppliquerLibelle(glob, cfg, key, texte){
 }
 /** V11.4.14 — La croix « quitter », en haut à droite de chaque page de l'écran. */
 function _eaCroix(){
-  const x=_eaEl('button','position:fixed;top:8px;right:8px;z-index:5;width:36px;height:36px;border-radius:50%;border:1px solid #B4B2A9;background:rgba(255,255,255,.92);color:#444441;font-size:18px;line-height:1;cursor:pointer;font-family:inherit;opacity:.6;box-shadow:0 2px 8px rgba(0,0,0,.12)','✕');
+  const x=_eaEl('button','position:fixed;top:8px;right:8px;z-index:5;width:36px;height:36px;border-radius:50%;border:1px solid #B91C1C;background:#DC2626;color:#fff;font-size:18px;font-weight:700;line-height:1;cursor:pointer;font-family:inherit;opacity:.85;box-shadow:0 2px 8px rgba(0,0,0,.12)','✕');
   x.type='button'; x.id='ea-croix'; x.title='Quitter l’écran (Échap)'; x.setAttribute('aria-label','Quitter l’écran');
-  x.onmouseenter=()=>{ x.style.opacity='1'; }; x.onmouseleave=()=>{ x.style.opacity='.6'; };
+  x.onmouseenter=()=>{ x.style.opacity='1'; }; x.onmouseleave=()=>{ x.style.opacity='.85'; };   // V11.4.20 — fond rouge
   x.onclick=(e)=>{ e.stopPropagation(); closeEcranAccueil(); };
   return x;
 }
@@ -36528,6 +36528,9 @@ function _eaRendreEcran(bg){
       c1.setAttribute('stroke-dashoffset', String(100.5*(1-reste/total)));
     };
     maj(); _ea.t=setInterval(maj, 500);   // recalculé depuis l'heure de fin (leçon n°6)
+    // V11.4.20 — un clic sur le minuteur le relance (même s'il ne démarre pas seul).
+    w.style.cursor='pointer'; w.title='Clic : relancer le minuteur';
+    w.onclick=(e)=>{ e.stopPropagation(); _ea.fin=Date.now()+total*1000; _ea.musFin=false; _eaRendre(); };
     return w;
   };
   // V11.4.14 — tuiles disposition et appareil actives : chaque clic passe au mode suivant.
@@ -70206,8 +70209,9 @@ function analyseCopy(){
 
   var _registry = { dropbox: dropboxProvider };
 
+  // V11.4.19 — l'état est `let S` (lexical global, partagé entre scripts) :
+  // `window.S` n'existe pas. Lire S directement (cf. §5.110).
   function _activeId(){
-    var S = window.S;
     var id = (S && S.reglages && S.reglages.syncProvider) || 'dropbox';
     return _registry[id] ? id : 'dropbox';
   }
@@ -70219,8 +70223,8 @@ function analyseCopy(){
     activeId: _activeId,
     select: function(id){
       if(!_registry[id]) return false;
-      if(!window.S.reglages) window.S.reglages = {};
-      window.S.reglages.syncProvider = id;
+      if(!S.reglages) S.reglages = {};
+      S.reglages.syncProvider = id;
       if(typeof saveS === 'function') saveS();
       return true;
     },
@@ -70315,15 +70319,14 @@ function analyseCopy(){
     return _requestToken('').catch(function(){ return _requestToken(); });
   }
 
-  function _persistFlag(v){
-    var S = window.S; if(!S) return;
+  function _persistFlag(v){   // V11.4.19 — S lexical (window.S n'existe pas)
+    if(!S) return;
     if(!S.reglages) S.reglages = {};
     S.reglages.gdriveConnected = !!v;
     if(typeof saveS === 'function') saveS();
   }
   function isConnected(){
     if(_token && _now() < _tokenExp) return true;
-    var S = window.S;
     return !!(S && S.reglages && S.reglages.gdriveConnected);
   }
   function connect(){ return _requestToken().then(function(){ return true; }); }
@@ -70475,13 +70478,22 @@ function analyseCopy(){
 
   function _applyRemote(remoteData){
     if(!remoteData || typeof remoteData !== 'object') throw new Error('Données distantes invalides');
-    var S = window.S;
+    // V11.4.19 — S lexical (window.S n'existe pas) ; fusion des données vivantes
+    // comme applyRemoteState (Dropbox) : le plus récent de cet appareil est gardé.
+    var _vivRepris = (typeof _vivAvantImport === 'function') ? _vivAvantImport(remoteData) : false;
     Object.keys(S).forEach(function(k){ delete S[k]; });
     Object.assign(S, remoteData);
     if(typeof saveS === 'function') saveS({ skipSyncStamp: true });
     // V11.3.93 — cache du moteur vidé + lignes des cours composés réparées.
     if(typeof _apresRemplacementDonnees === 'function') _apresRemplacementDonnees();
     if(typeof renderApp === 'function') renderApp();
+    if(typeof _vivApresImport === 'function') _vivApresImport(_vivRepris);
+  }
+
+  // V11.4.19 — avant d'écraser un data.json distant : le plus récent du cloud
+  // (participations, statuts…) est d'abord repris, comme syncNowDbx.
+  function _envoiLocal(remoteData, localRaw){
+    return (remoteData && typeof _vivAvantEnvoi === 'function') ? _vivAvantEnvoi(remoteData) : localRaw;
   }
 
   async function _genericSyncNow(opts){
@@ -70498,8 +70510,8 @@ function analyseCopy(){
     var remoteText = null;
     try { remoteText = await prov.download('data.json'); } catch(e){ /* traité comme absent */ }
 
-    var localStamp = (window.S && window.S.syncMeta && window.S.syncMeta.updatedAt) || 0;
-    var localRaw = JSON.stringify(window.S);
+    var localStamp = (S && S.syncMeta && S.syncMeta.updatedAt) || 0;
+    var localRaw = JSON.stringify(S);
     var lastSeen = _getLastSeen(pid);
     var hasRemote = !!remoteText;
     var remoteData = null, remoteStamp = 0;
@@ -70512,19 +70524,19 @@ function analyseCopy(){
 
     var plan = opts.skipBackup ? null : _pcSyncBackupPlan(d.action, hasRemote);
     if(plan){
-      var contenu = plan.cote === 'distant' ? remoteText : JSON.stringify(window.S, null, 2);
+      var contenu = plan.cote === 'distant' ? remoteText : JSON.stringify(S, null, 2);
       try { await prov.upload('backups/' + _monthFolder() + '/' + _nowStamp() + '-' + plan.suffixe + '.json', contenu); }
       catch(e){ throw new Error(_pcSyncBackupErreur(plan, e)); }
     }
 
     if(d.action === 'pushed-first'){ await prov.upload('data.json', localRaw); _setLastSeen(pid, localStamp); return { action: 'pushed-first', message: 'Données locales copiées vers le cloud.' }; }
-    if(d.action === 'pushed-force'){ await prov.upload('data.json', localRaw); _setLastSeen(pid, localStamp); return { action: 'pushed-force', message: 'Vos modifications locales ont écrasé le distant.' }; }
+    if(d.action === 'pushed-force'){ await prov.upload('data.json', _envoiLocal(remoteData, localRaw)); _setLastSeen(pid, localStamp); return { action: 'pushed-force', message: 'Vos modifications locales ont écrasé le distant.' }; }
     if(d.action === 'pulled-force'){ _applyRemote(remoteData); _setLastSeen(pid, remoteStamp); return { action: 'pulled-force', message: 'Les modifications distantes ont écrasé le local.' }; }
     if(d.action === 'no-remote'){ throw new Error('Aucune donnée sur le cloud : il n\'y a rien à récupérer.'); }
     if(d.action === 'first-sync'){ return { action: 'first-sync', localStamp: localStamp, remoteStamp: remoteStamp, lastSeen: 0, remoteData: remoteData, provider: pid, message: 'Première synchronisation de cet appareil.' }; }
     if(d.action === 'conflict'){ return { action: 'conflict', localStamp: localStamp, remoteStamp: remoteStamp, lastSeen: lastSeen, remoteData: remoteData, provider: pid, message: 'Conflit : votre appareil et le cloud ont divergé depuis la dernière synchronisation.' }; }
     if(d.action === 'in-sync'){ _setLastSeen(pid, remoteStamp); return { action: 'in-sync', message: 'Tout est à jour.' }; }
-    if(d.action === 'pushed'){ await prov.upload('data.json', localRaw); _setLastSeen(pid, localStamp); return { action: 'pushed', message: 'Vos modifications locales ont été envoyées vers le cloud.' }; }
+    if(d.action === 'pushed'){ await prov.upload('data.json', _envoiLocal(remoteData, localRaw)); _setLastSeen(pid, localStamp); return { action: 'pushed', message: 'Vos modifications locales ont été envoyées vers le cloud.' }; }
     if(d.action === 'remote-newer'){ return { action: 'remote-newer', message: 'Le fichier distant est plus récent. Import nécessaire.', remoteData: remoteData }; }
     _applyRemote(remoteData); _setLastSeen(pid, remoteStamp); return { action: 'pulled', message: 'Les modifications distantes ont été importées.' };
   }
