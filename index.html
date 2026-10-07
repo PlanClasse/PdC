@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.21';
+const APP_VERSION = 'v11.4.22';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -37436,7 +37436,9 @@ function _eaBoutonPdc(){
   b.textContent='';
   const ic=document.createElement('span'); ic.className='tb-r2-pill-ic'; ic.textContent='▶'; b.appendChild(ic);
   const t=document.createElement('span'); t.textContent='Écran'; b.appendChild(t);
-  zone.insertBefore(b, zone.firstChild);
+  // V11.4.22 — après 💾 Séance (demande du 07/10 : avant, en tête)
+  const sea=document.getElementById('btn-seance');
+  if(sea && sea.parentNode===zone) zone.insertBefore(b, sea.nextSibling); else zone.insertBefore(b, zone.firstChild);
 }
 
 /* ══ V11.4.7 — MUSIQUE D'ACCUEIL (demande du 04/10) ════════════════════════
