@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.22';
+const APP_VERSION = 'v11.4.23';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29140,6 +29140,23 @@ function _cdtShiftDate(dateStr, n){
  *  enregistrée, plus la séance de progression correspondante (pour ses docs).
  *  Reproduit la numérotation du bouton Copier du modal : rang dans la
  *  progression, pas identifiant. */
+/** V11.4.23 — Titre de séance PERSONNALISÉ dans « Saisir mes cours » (« /Séance 2 Mon
+ *  titre », séance reconnue par son numéro) : c'est lui que doit reprendre le cahier de
+ *  texte, pas celui de la bibliothèque. Pure : texte du cours + progression → titre tapé
+ *  sur l'en-tête de CETTE séance, ou '' (aucun titre tapé : celui de la bibliothèque). */
+function _cdtTitrePerso(texte, prog, seqId, seanId){
+  if(!texte || !seqId || !seanId) return '';
+  let r=null; try{ r=_sdcInterpreter(texte, prog||[]); }catch(e){ return ''; }
+  const it=((r && r.items)||[]).find(x=>x && x.type==='sean' && x.seqId===seqId && x.seanId===seanId && String(x.label||'').trim());
+  return it ? String(it.label).trim() : '';
+}
+/** Le texte du cours (tel qu'enregistré, sinon le brouillon) et son titre tapé. */
+function _cdtTitrePersoDe(seance, clsCode, prog){
+  if(!seance || !seance.slotKey) return '';
+  const d=(typeof _sdcDraft==='function') ? (_sdcDraft(clsCode, seance.slotKey) || _sdcDraft(String(clsCode).toLowerCase(), seance.slotKey)) : null;
+  const t=d ? ((typeof d.saisieEnreg==='string' && d.saisieEnreg.trim()) ? d.saisieEnreg : (d.saisie||'')) : '';
+  return _cdtTitrePerso(t, prog, seance.seqId, seance.seanId);
+}
 function _cdtEntete(seance, clsCode){
   const out={lignes:[], sean:null};
   if(!seance || !seance.seqId) return out;
@@ -29157,7 +29174,10 @@ function _cdtEntete(seance, clsCode){
       const ni=seq.seances.findIndex(s=>s&&s.id===seance.seanId);
       if(ni>=0){
         out.sean=seq.seances[ni];
-        out.lignes.push('Séance '+(ni+1)+(out.sean.titre?' : '+out.sean.titre:''));
+        // V11.4.23 — le titre tapé dans « Saisir mes cours » l'emporte sur celui de la bibliothèque.
+        const _perso=(typeof _cdtTitrePersoDe==='function') ? _cdtTitrePersoDe(seance, clsCode, prog) : '';
+        const _titre=_perso || out.sean.titre;
+        out.lignes.push('Séance '+(ni+1)+(_titre?' : '+_titre:''));
       }
     }
   }catch(e){ /* progression illisible : on se contente du contenu */ }
@@ -36613,6 +36633,8 @@ function _eaContexte(cls, slotKey, portee){
       const seq=prog[k], j=(seq.seances||[]).findIndex(x=>x && x.id===seanId);
       ctx.chap='Chapitre '+_sdcSeqNum(seq,k)+(j>=0?' · Séance '+(j+1):'');
       ctx.titre=(j>=0 && _sdcTitreSeance(seq.seances[j])) || seq.titre || '';
+      // V11.4.23 — le titre tapé dans « Saisir mes cours » l'emporte (comme au cahier de texte).
+      if(j>=0 && typeof _cdtTitrePersoDe==='function'){ const _p=_cdtTitrePersoDe({slotKey, seqId, seanId}, cls, prog); if(_p) ctx.titre=_p; }
     }
   }catch(e){}
   // Cours précédent (même demi-groupe, ou classe entière) : TAF donné, absents.
@@ -47782,7 +47804,10 @@ function openSaveSeance(){
                 const seanIdx=curSeq.seances.findIndex(s=>s && s.id===seanId);
                 if(seanIdx>=0){
                   curSean=curSeq.seances[seanIdx];
-                  lines.push('Séance '+(seanIdx+1)+(curSean.titre?' : '+curSean.titre:''));
+                  // V11.4.23 — titre tapé dans « Saisir mes cours », sinon celui de la bibliothèque.
+                  const _perso=(typeof _cdtTitrePersoDe==='function' && typeof curSlotKey!=='undefined') ? _cdtTitrePersoDe({slotKey:curSlotKey, seqId:curSeq.id, seanId:curSean.id}, curCls, prog) : '';
+                  const _titre=_perso || curSean.titre;
+                  lines.push('Séance '+(seanIdx+1)+(_titre?' : '+_titre:''));
                 }
               }
             }
