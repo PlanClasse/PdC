@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.23';
+const APP_VERSION = 'v11.4.24';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -26325,7 +26325,7 @@ function buildCourseSummaryDense(slotKey, clsCode){
     const sean=seq&&(seq.seances||[]).find(sn=>sn.id===seance.seanId)||null;
 
     // Rattachement
-    const ratV=`<b>${escapeHtml(seq?seq.titre:'—')}</b>${sean?` <span style="color:var(--tx3)">· ${escapeHtml(sean.titre)}</span>`:''}`;
+    const ratV=`<b>${escapeHtml(seq?seq.titre:'—')}</b>${sean?` <span style="color:var(--tx3)">· ${escapeHtml(_titreSeanceDuCours(clsCode, slotKey, seq.id, sean))}</span>`:''}`;
     rowsHtml.push(`<div style="${keyStyle}">Séquence</div><div style="${valStyle}">${ratV}</div>`);
 
     // Tâches — V11.4.16 : seulement ce qui a été fait ou commencé ; rien de barré
@@ -26642,7 +26642,7 @@ function buildCourseSummaryHtml(slotKey, clsCode, ev, opts){
   const bodyBase='font-size:17px;line-height:1.55;color:var(--tx)';
   const sections=[];
   if(topMeta) sections.push(topMeta);
-  sections.push(`<div style="${cardBase};${summarySectionStyle('rattachement')}"><div style="${titleBase}">Rattachement</div><div style="${bodyBase}"><b>Séquence :</b> ${escapeHtml(seq?seq.titre:'—')}<br><b>Séance :</b> ${escapeHtml(sean?sean.titre:'—')}</div></div>`);
+  sections.push(`<div style="${cardBase};${summarySectionStyle('rattachement')}"><div style="${titleBase}">Rattachement</div><div style="${bodyBase}"><b>Séquence :</b> ${escapeHtml(seq?seq.titre:'—')}<br><b>Séance :</b> ${escapeHtml(sean?_titreSeanceDuCours(clsCode, slotKey, seq.id, sean):'—')}</div></div>`);
   if(modeOps) sections.push(`<div style="${cardBase};${summarySectionStyle('modeop')}"><div style="${titleBase}">Tâches / mode opératoire</div><ul style="${bodyBase};margin:6px 0 0 22px">${modeOps}</ul></div>`);
   sections.push(`<div style="${cardBase};${summarySectionStyle('statuts')}"><div style="${titleBase}">Absences / statuts</div>${statusBlocks||'<div style="font-size:15px;color:var(--tx3)">Aucun statut saisi.</div>'}</div>`);
   sections.push(`<div style="${cardBase};${summarySectionStyle('competences')}"><div style="${titleBase}">Compétences</div>${plannedRows?`<div style="${bodyBase};margin-bottom:10px"><b>Prévu / statut :</b><ul style="margin:6px 0 0 22px">${plannedRows}</ul></div>`:''}${realCompRows?`<div style="${bodyBase}"><b>Évalué par élève :</b><ul style="margin:6px 0 0 22px">${realCompRows}</ul></div>`:'<div style="font-size:15px;color:var(--tx3)">Aucune compétence évaluée saisie.</div>'}</div>`);
@@ -28522,7 +28522,7 @@ function _fdjRenderCard(event, todayStr){
     const paveTxt = p.propre ? 'Ce cours' : (pavePartSeq + ' · ' + pavePartSean);
     // Titre combiné (sans les numéros, déjà dans le pavé)
     const titreSeq  = (seq.titre || '').trim();
-    const titreSean = sean ? (sean.titre || '').trim() : '';
+    const titreSean = sean ? _titreSeanceDuCours(cls, slotKey, seq.id, sean).trim() : '';   // V11.4.24
     let titreCombine = titreSeq;
     if(titreSean) titreCombine += (titreSeq ? ' — ' : '') + titreSean;
     if(p.propre) titreCombine = 'Saisi dans « Saisir mes cours »';
@@ -29156,6 +29156,25 @@ function _cdtTitrePersoDe(seance, clsCode, prog){
   const d=(typeof _sdcDraft==='function') ? (_sdcDraft(clsCode, seance.slotKey) || _sdcDraft(String(clsCode).toLowerCase(), seance.slotKey)) : null;
   const t=d ? ((typeof d.saisieEnreg==='string' && d.saisieEnreg.trim()) ? d.saisieEnreg : (d.saisie||'')) : '';
   return _cdtTitrePerso(t, prog, seance.seqId, seance.seanId);
+}
+/** V11.4.24 — Titre d'une séance POUR UN COURS donné : celui tapé dans « Saisir mes
+ *  cours » s'il y en a un, sinon celui de la bibliothèque. Un seul point d'entrée pour
+ *  tous les écrans qui montrent la séance d'un cours (accueil, plan de classe, Fiche du
+ *  jour, Sc.Préc., résumé). */
+/** V11.4.24 — L'en-tête /Séance porte-t-il un titre DIFFÉRENT de celui de la bibliothèque ? Pure. */
+function _sdcTitrePropre(it){
+  const n=(s)=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+  return !!(it && n(it.label) && n(it.titreBiblio) && n(it.label)!==n(it.titreBiblio));
+}
+function _titreSeanceDuCours(cls, slotKey, seqId, sean){
+  const lib=String((sean && sean.titre) || '');
+  if(!sean || !slotKey || !seqId || !cls) return lib;
+  let p='';
+  try{
+    const lv=(typeof _scopeLevelOf==='function') ? _scopeLevelOf(cls) : String(cls).replace(/\d+$/,'');
+    p=_cdtTitrePersoDe({slotKey, seqId, seanId:sean.id}, cls, (typeof getProgression==='function' ? getProgression(lv) : null) || []);
+  }catch(e){ p=''; }
+  return p || lib;
 }
 function _cdtEntete(seance, clsCode){
   const out={lignes:[], sean:null};
@@ -31274,6 +31293,13 @@ function _sdcRendre(){
       const etoilee = _sdcEtoilable(it).ok && E.has(_sdcCleEtoile(it));
       if(it.type==='seq'||it.type==='sean'){
         if(it.etat!=='existe' && planE.aCreer[it.ligne]) row.appendChild(_sdcEl('span','sdc-etat-creer','à créer (☆)'));
+        else if(it.etat==='existe' && it.type==='sean' && _sdcTitrePropre(it)){
+          // V11.4.24 — séance reconnue, mais avec SON titre : c'est lui que reprennent le cahier
+          // de texte, Sc.Préc., l'écran classe… Le badge le dit (avant : « bibliothèque » seul).
+          const b=_sdcEl('span','sdc-etat-existe','bibliothèque · votre titre');
+          b.title='Séance '+(it.seanNum||it.num||'')+' de la bibliothèque (« '+it.titreBiblio+' ») ; ce cours garde votre titre partout.';
+          row.appendChild(b);
+        }
         else row.appendChild(_sdcEl('span','sdc-etat-'+it.etat, it.etat==='existe'?'bibliothèque':'inconnu — repère seulement'));
       }
       else if(etoilee) row.appendChild(_sdcEl('span','sdc-prov sdc-prov-etoile','☆ ira dans la bibliothèque'));
@@ -32609,7 +32635,7 @@ function renderEdtList(){
           const seanRef=sean?('-S'+(seq.seances.indexOf(sean)+1)):'';
           const progRow=document.createElement('div'); progRow.className='i-prog';
           const ref=document.createElement('div'); ref.className='i-prog-ref';
-          ref.textContent=seqRef+seanRef+(sean?' · '+sean.titre.slice(0,20):'');
+          ref.textContent=seqRef+seanRef+(sean?' · '+_titreSeanceDuCours(clsCode||(mapping&&mapping.id), (typeof slotKey!=='undefined'?slotKey:''), seq.id, sean).slice(0,20):'');   // V11.4.24
           progRow.appendChild(ref);
           if(allItems.length){
             const grid=document.createElement('div'); grid.className='i-prog-items';
@@ -32980,7 +33006,7 @@ function renderTbRow2Context(){
       const seq = prog2.find(s=>(s.seances||[]).some(sn=>sn.id===sid));
       const sean = seq ? (seq.seances||[]).find(s=>s.id===sid) : null;
       if(!seq) return null;
-      return {seqT: seq.titre||'', seanT: (sean && sean.titre)||''};
+      return {seqT: seq.titre||'', seanT: sean ? _titreSeanceDuCours(curCls, curSlotKey, seq.id, sean) : ''};   // V11.4.24
     }).filter(Boolean);
     if(_parts.length === 1){
       seqTitle = _parts[0].seqT;
