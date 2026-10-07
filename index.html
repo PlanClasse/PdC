@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.20';
+const APP_VERSION = 'v11.4.21';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -22725,6 +22725,26 @@ function closeEdtConfig(){
 /* ---- PERIODES ---- */
 function renderEdtPeriodes(){
   const list=document.getElementById('edt-periodes-list'); list.innerHTML='';
+  // V11.4.21 — changer d'emploi du temps en cours d'année, à une date d'effet ; annuler le dernier changement.
+  {
+    const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:.7rem';
+    const nv=document.createElement('button'); nv.type='button'; nv.className='add-btn-small';
+    nv.style.cssText='font-weight:700;border:1.5px solid var(--acc);color:var(--acc);background:var(--sur)';
+    nv.textContent='📅 Nouvel emploi du temps à partir du…'; nv.title='Le passé garde l’ancien emploi du temps ; ce qui est préparé ensuite est recalé';
+    nv.onclick=openEdtChangement; bar.appendChild(nv);
+    const ch=(S.edtChangements||[]); const der=ch[ch.length-1];
+    if(der){
+      const an=document.createElement('button'); an.type='button'; an.className='add-btn-small';
+      an.style.cssText='border:1px solid #FCA5A5;color:#DC2626;background:var(--sur)';
+      an.textContent='↶ Annuler le changement du '+String(der.effet).split('-').reverse().join('/');
+      an.onclick=()=>{ showModal('Annuler le changement d’emploi du temps',
+        'Les périodes redeviennent celles d’avant le changement du '+String(der.effet).split('-').reverse().join('/')+', et les '+((der.moves||[]).length)+' cours recalés retrouvent leur ancien créneau.',
+        ()=>{ _edtChgAnnuler(); renderEdtPeriodes(); }, false);
+        if(typeof _modalEnjeu==='function') _modalEnjeu(); };
+      bar.appendChild(an);
+    }
+    list.appendChild(bar);
+  }
   // V034-v181.14.8 : refonte en 4 lignes verticales aérées par période :
   //   ligne 1 : Début / Fin   (+ ✕ supprimer si >0)
   //   ligne 2 : 1ère semaine type A / B
@@ -22936,16 +22956,265 @@ function importPeriodeIcs(e,periodeIdx,semType){
 }
 
 function addEdtPeriode(){
+  // V11.4.21 — deux pièges retirés : la nouvelle période commence le LENDEMAIN de la
+  // précédente (avant : le même jour, en double) et son alternance A/B part du LUNDI
+  // de sa semaine (avant : de la date de fin précédente, souvent un vendredi → la
+  // bascule A/B tombait en milieu de semaine).
   const last=S.edt.periodes[S.edt.periodes.length-1];
+  const debut=last ? _edtLendemain(last.fin) : '2026-01-01';
   S.edt.periodes.push({
     id:'p'+Date.now(), label:'Nouvelle période',
-    debut: last?last.fin:'2026-01-01', fin:'2026-07-04',
-    startLundi: last?last.fin:'2026-01-05', startSem:'A',
+    debut, fin:(last && last.fin>debut) ? last.fin : '2026-07-04',
+    startLundi:_lundiOnOrBefore(debut), startSem:'A',
     eventsA:[], eventsB:[]
   });
   saveS(); renderEdtPeriodes();
 }
 
+/* ══ V11.4.21 — NOUVEL EMPLOI DU TEMPS À UNE DATE D'EFFET (demande du 07/10) ═════
+   Une collègue change d'emploi du temps en cours d'année. Réimporter Sem A / Sem B
+   dans la période de l'année réécrivait AUSSI le passé : les séances enregistrées, les
+   statuts, le planning restaient rangés sous des créneaux (date_heure) qui n'existaient
+   plus. Désormais : une date d'effet ; l'ancienne période se clôt la veille, une
+   nouvelle commence ce jour-là avec les fichiers Sem A / Sem B. Le passé ne bouge pas.
+   Ce qui était préparé après la date d'effet (planning, cours composés, écran classe…)
+   est recalé PAR RANG, portée par portée : le 1er cours prévu passe au 1er nouveau
+   cours de la classe (ou du demi-groupe), etc. Une séance déjà enregistrée après la
+   date d'effet reste où elle est (avertissement). Le changement s'annule (le dernier). */
+const EDT_CHG_MAGASINS=['edtProgMapping','seanceContentDraft','seanceTaskStateCache','seancesDecisions','slotEvalCompPlans',
+  'planningAdjustmentsReviewedKeys','statutsCours','participations','obsCours','avtNiveaux','evalComps','seanceCoches','freetasks','tafVerifs'];
+function _edtJour(x){ return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); }
+function _edtLendemain(d){ const x=new Date(d+'T12:00:00'); x.setDate(x.getDate()+1); return _edtJour(x); }
+function _edtVeille(d){ const x=new Date(d+'T12:00:00'); x.setDate(x.getDate()-1); return _edtJour(x); }
+/** Les périodes après le changement. Pure. L'ancienne période se clôt la veille de la
+ *  date d'effet ; la nouvelle va jusqu'à sa fin. Effet = début de la période : elle est
+ *  simplement remplacée (rien de passé). Renvoie {periodes, idx} ou {erreur}. */
+function _edtChgPeriodes(periodes, effet, startSem, evA, evB, id){
+  const P=(periodes||[]).map(p=>Object.assign({}, p));
+  const i=P.findIndex(p=>p && effet>=p.debut && effet<=p.fin);
+  if(!effet || i<0) return {erreur:'La date d’effet n’est dans aucune période du calendrier.'};
+  const nv={id:id||('p'+Date.now()), label:'À partir du '+effet.split('-').reverse().join('/'), debut:effet, fin:P[i].fin,
+    startLundi:_lundiOnOrBefore(effet), startSem:startSem==='B'?'B':'A', eventsA:evA||[], eventsB:evB||[]};
+  if(effet===P[i].debut){ nv.id=P[i].id; nv.label=P[i].label; P[i]=nv; return {periodes:P, idx:i}; }
+  P[i].fin=_edtVeille(effet);
+  P.splice(i+1, 0, nv);
+  return {periodes:P, idx:i+1};
+}
+/** Portée fine d'un créneau : classe entière, ou le demi-groupe. Pure. */
+function _edtChgPorteeFine(s){ return (s && s.demi && s.grpIds && s.grpIds.length) ? s.grpIds.slice().sort().join('+') : ''; }
+/** Appariement PAR RANG, portée par portée. Pure.
+ *  avant / apres = {portée:[créneaux futurs dans l'ordre : {slotKey, demi, grpIds, saved}]}.
+ *  Un créneau qui porte une séance enregistrée reste où il est ; un nouveau créneau
+ *  identique ne sert pas de cible. Renvoie {moves:[{scope, from, to}], gardes, sansPlace, bilan}. */
+function _edtChgAppariement(avant, apres){
+  const out={moves:[], gardes:[], sansPlace:[], bilan:[]};
+  const scopes=[]; Object.keys(avant||{}).concat(Object.keys(apres||{})).forEach(s=>{ if(scopes.indexOf(s)<0) scopes.push(s); });
+  scopes.forEach(scope=>{
+    const A=(avant||{})[scope]||[], B=(apres||{})[scope]||[];
+    const gardes=A.filter(s=>s.saved); gardes.forEach(s=>out.gardes.push({scope, slotKey:s.slotKey}));
+    const gk=new Set(gardes.map(s=>s.slotKey));
+    const par=(L)=>{ const m={}; L.forEach(s=>{ const f=_edtChgPorteeFine(s); (m[f]=m[f]||[]).push(s); }); return m; };
+    const gA=par(A.filter(s=>!s.saved)), gB=par(B.filter(s=>!gk.has(s.slotKey)));
+    Object.keys(gA).forEach(f=>{ const b=gB[f]||[];
+      gA[f].forEach((s,i)=>{ if(!b[i]) out.sansPlace.push({scope, from:s.slotKey}); else if(b[i].slotKey!==s.slotKey) out.moves.push({scope, from:s.slotKey, to:b[i].slotKey}); }); });
+    out.bilan.push({scope, avant:A.length, apres:B.length, gardes:gardes.length});
+  });
+  return out;
+}
+/** La clé appartient-elle à ce créneau de cette portée ? Pure. */
+function _edtChgCleDe(k, from, scope){
+  const segs=String(k).split('|'), sc=String(scope).toLowerCase();
+  return segs.indexOf(from)>=0 && segs.some(x=>{ const v=String(x).toLowerCase(); return v===sc || v==='grp:'+sc; });
+}
+/** Y a-t-il quelque chose de préparé sur ce créneau ? Pure. */
+function _edtChgPrepare(etat, scope, from, magasins){
+  if((magasins||EDT_CHG_MAGASINS).some(m=>{ const M=etat && etat[m]; return M && typeof M==='object' && !Array.isArray(M) && Object.keys(M).some(k=>_edtChgCleDe(k, from, scope)); })) return true;
+  const sc=(etat && etat.ecranAccueil && etat.ecranAccueil.scopes) || {};
+  return Object.keys(sc).some(k=>k.split('|')[0]===scope && sc[k] && sc[k].slotKey===from);
+}
+/** Déplace toutes les clés d'un créneau quitté vers son nouveau créneau (même portée),
+ *  dans tous les magasins datés, et l'écran classe. Deux temps (tout retirer, puis tout
+ *  écrire) : un créneau à la fois source et cible ne se marche pas dessus. Ce qu'une
+ *  écriture recouvrirait est gardé dans `ecrases`. Pure (modifie etat). */
+function _edtChgDeplacer(etat, moves, magasins){
+  const res={deplaces:0, ecrases:[]};
+  if(!moves || !moves.length) return res;
+  const aEcrire=[];
+  (magasins||EDT_CHG_MAGASINS).forEach(m=>{
+    const M=etat[m]; if(!M || typeof M!=='object' || Array.isArray(M)) return;
+    Object.keys(M).forEach(k=>{
+      const mv=moves.find(x=>_edtChgCleDe(k, x.from, x.scope)); if(!mv) return;
+      const fd=mv.from.slice(0,10), td=mv.to.slice(0,10);
+      const nk=k.split('|').map(x=>x===mv.from ? mv.to : (x===fd ? td : x)).join('|');
+      aEcrire.push({m, nk, v:M[k]}); delete M[k];
+    });
+  });
+  aEcrire.forEach(({m, nk, v})=>{ const M=etat[m]; if(nk in M) res.ecrases.push({m, k:nk, v:M[nk]}); M[nk]=v; res.deplaces++; });
+  const sc=(etat.ecranAccueil && etat.ecranAccueil.scopes) || {};
+  Object.keys(sc).forEach(k=>{ const c=sc[k]; if(!c) return; const mv=moves.find(x=>x.scope===k.split('|')[0] && x.from===c.slotKey); if(mv){ c.slotKey=mv.to; res.deplaces++; } });
+  return res;
+}
+/** Créneaux à venir (≥ date d'effet), par portée, avec l'emploi du temps EN COURS. */
+function _edtChgCreneaux(effet){
+  const r={};
+  const garde=(L, c)=>(L||[]).filter(s=>s && s.dateStr>=effet && !(typeof isSlotCancelled==='function' && isSlotCancelled(s.dateStr, s.debut, c)))
+    .map(s=>({slotKey:s.slotKey, demi:!!s.isDemi, grpIds:(s.grpIds||[]).slice(), saved:!!s.saved}));
+  Object.keys(S.cl||{}).forEach(c=>{ try{ r[c]=garde(buildYearSlots(c), c); }catch(e){ r[c]=[]; } });
+  Object.keys(S.groupes||{}).forEach(g=>{
+    if(!(typeof _isGrpScopeId==='function' && _isGrpScopeId(g)) || S.groupes[g].parentCls) return;
+    try{ const L=garde(buildYearSlotsForGroupe(g), g); if(L.length) r[g]=L; }catch(e){}
+  });
+  return r;
+}
+/** Calcule le changement SANS rien écrire : périodes, appariement, préparés, avertissements. */
+function _edtChgPreparer(effet, startSem, evA, evB){
+  const P=_edtChgPeriodes(S.edt.periodes, effet, startSem, evA, evB);
+  if(P.erreur) return P;
+  const avant=_edtChgCreneaux(effet);
+  const ancien=S.edt.periodes;
+  let apres={};
+  try{ S.edt.periodes=P.periodes; invalidateYearSlotsCache(); apres=_edtChgCreneaux(effet); }
+  finally{ S.edt.periodes=ancien; invalidateYearSlotsCache(); }
+  const A=_edtChgAppariement(avant, apres);
+  const prepares=A.moves.filter(mv=>_edtChgPrepare(S, mv.scope, mv.from));
+  const perdus=A.sansPlace.filter(x=>_edtChgPrepare(S, x.scope, x.from));
+  const ponctuels=(S.edt.overrides||[]).filter(o=>o && o.date>=effet);
+  return {periodes:P.periodes, appariement:A, prepares, perdus, ponctuels};
+}
+/** Applique (impur) : sauvegarde de quoi annuler, périodes, recalage, enregistrement. */
+function _edtChgAppliquer(effet, startSem, evA, evB){
+  const R=_edtChgPreparer(effet, startSem, evA, evB);
+  if(R.erreur) return R;
+  const moves=R.appariement.moves.filter(mv=>_edtChgPrepare(S, mv.scope, mv.from));   // seuls les créneaux qui portent quelque chose
+  const archive={at:Date.now(), effet, periodesAvant:JSON.parse(JSON.stringify(S.edt.periodes)), moves};
+  S.edt.periodes=R.periodes;
+  const d=_edtChgDeplacer(S, moves);
+  archive.ecrases=d.ecrases;
+  if(!Array.isArray(S.edtChangements)) S.edtChangements=[];
+  S.edtChangements.push(archive);
+  invalidateYearSlotsCache(); saveS();
+  try{ if(typeof _apresRemplacementDonnees==='function') _apresRemplacementDonnees(); }catch(e){}
+  return Object.assign(R, {deplaces:d.deplaces, recales:moves.length});
+}
+/** Annule le DERNIER changement (impur) : créneaux rendus, recouvrements rétablis, périodes d'avant. */
+function _edtChgAnnuler(){
+  const L=S.edtChangements||[]; const a=L[L.length-1]; if(!a) return false;
+  _edtChgDeplacer(S, (a.moves||[]).map(m=>({scope:m.scope, from:m.to, to:m.from})));
+  (a.ecrases||[]).forEach(e=>{ if(!S[e.m]) S[e.m]={}; S[e.m][e.k]=e.v; });
+  S.edt.periodes=a.periodesAvant;
+  L.pop(); invalidateYearSlotsCache(); saveS();
+  try{ if(typeof _apresRemplacementDonnees==='function') _apresRemplacementDonnees(); }catch(e){}
+  return true;
+}
+
+/* ── Le panneau ── */
+let _edtChg=null;   // {effet, sem, semTouche, evA, evB, nomA, nomB, unique, resultat}
+function _edtChgLundiProchain(){ const d=(typeof _appNow==='function')?_appNow():new Date(); d.setDate(d.getDate()+1); while(d.getDay()!==1) d.setDate(d.getDate()+1); return _edtJour(d); }
+function openEdtChangement(){
+  const effet=_edtChgLundiProchain();
+  _edtChg={effet, sem:((typeof resolveDay==='function' && resolveDay(effet).semType) || 'A'), semTouche:false, evA:null, evB:null, nomA:'', nomB:'', unique:false, resultat:null};
+  let bg=document.getElementById('edtchg-bg');
+  if(!bg){ bg=document.createElement('div'); bg.id='edtchg-bg'; bg.style.cssText='position:fixed;inset:0;z-index:450;background:rgba(0,0,0,.42);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:4vh 12px'; document.body.appendChild(bg); }
+  bg.onclick=(e)=>{ if(e.target===bg && !_edtChg.evA && !_edtChg.evB) closeEdtChangement(); };   // clic à côté : seulement si rien n'est chargé
+  _edtChgRendre();
+}
+function closeEdtChangement(){ const bg=document.getElementById('edtchg-bg'); if(bg) bg.remove(); _edtChg=null; try{ renderEdtPeriodes(); }catch(e){} }
+function _edtChgRendre(){
+  const bg=document.getElementById('edtchg-bg'); if(!bg || !_edtChg) return;
+  const C=_edtChg, E=(t,css,txt)=>{ const e=document.createElement(t); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; };
+  bg.textContent='';
+  const pan=E('div','width:min(760px,100%);background:var(--sur);border-radius:14px;box-shadow:0 12px 36px rgba(0,0,0,.25);padding:18px 20px;display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--tx)');
+  bg.appendChild(pan);
+  const tete=E('div','display:flex;align-items:center;gap:10px');
+  tete.appendChild(E('div','font-size:17px;font-weight:800','📅 Nouvel emploi du temps'));
+  const x=E('button','margin-left:auto;border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--tx2)','✕'); x.type='button'; x.title='Fermer'; x.onclick=closeEdtChangement; tete.appendChild(x);
+  pan.appendChild(tete);
+  if(C.resultat && C.resultat.applique){ _edtChgBilan(pan, E); return; }
+  pan.appendChild(E('div','color:var(--tx2);line-height:1.5','Le passé ne bouge pas : il garde l’ancien emploi du temps. À partir de la date d’effet, le nouveau s’applique ; ce qui était déjà préparé (planning, cours composés, écran classe…) est recalé cours après cours.'));
+  // 1. Date d'effet
+  const l1=E('div','display:flex;align-items:center;gap:10px;flex-wrap:wrap');
+  l1.appendChild(E('b','','1. À partir du'));
+  const di=E('input','height:30px;padding:0 8px;border:1.5px solid var(--brd);border-radius:8px;font-family:inherit'); di.type='date'; di.value=C.effet;
+  di.onchange=()=>{ C.effet=di.value; if(!C.semTouche) C.sem=(resolveDay(C.effet).semType||'A'); C.resultat=null; _edtChgRendre(); };
+  l1.appendChild(di);
+  pan.appendChild(l1);
+  // 2. Semaine A / B
+  const l2=E('div','display:flex;align-items:center;gap:10px;flex-wrap:wrap');
+  l2.appendChild(E('b','','2. Cette semaine-là est une semaine'));
+  ['A','B'].forEach(ab=>{ const b=E('button','padding:4px 14px;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:700;border:'+(C.sem===ab?'2px solid var(--acc);background:var(--acc);color:#fff':'1px solid var(--brd);background:var(--sur2);color:var(--tx)'), ab);
+    b.type='button'; b.onclick=()=>{ C.sem=ab; C.semTouche=true; C.resultat=null; _edtChgRendre(); }; l2.appendChild(b); });
+  const ancienne=C.effet ? resolveDay(C.effet).semType : null;
+  if(ancienne) l2.appendChild(E('span','color:var(--tx3);font-size:12px','(l’ancien calendrier donnait : semaine '+ancienne+')'));
+  pan.appendChild(l2);
+  // 3. Fichiers
+  pan.appendChild(E('b','','3. Les fichiers ICS du nouvel emploi du temps'));
+  const uni=E('label','display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--tx2)'); const cu=E('input'); cu.type='checkbox'; cu.checked=C.unique;
+  cu.onchange=()=>{ C.unique=cu.checked; C.resultat=null; _edtChgRendre(); }; uni.appendChild(cu); uni.appendChild(document.createTextNode('Pas d’alternance A / B : un seul fichier pour toutes les semaines')); pan.appendChild(uni);
+  (C.unique ? ['A'] : ['A','B']).forEach(ab=>{
+    const r=E('div','display:flex;align-items:center;gap:10px;flex-wrap:wrap');
+    r.appendChild(E('span','min-width:90px;font-weight:700', C.unique ? 'Semaine type' : 'Semaine '+ab));
+    const lb=E('label','padding:5px 12px;border:1px solid var(--brd);border-radius:8px;cursor:pointer;background:var(--sur2)', (ab==='A'?C.evA:C.evB) ? '🔄 Changer' : '📥 Choisir le fichier');
+    const inp=E('input'); inp.type='file'; inp.accept='.ics'; inp.style.display='none';
+    inp.onchange=(e)=>_edtChgFichier(e, ab); lb.appendChild(inp); r.appendChild(lb);
+    const ev=ab==='A'?C.evA:C.evB;
+    r.appendChild(E('span', ev ? 'color:#15803D;font-weight:600' : 'color:var(--tx3);font-style:italic', ev ? ('✓ '+(ab==='A'?C.nomA:C.nomB)+' · '+ev.length+' cours') : 'aucun fichier'));
+    pan.appendChild(r);
+  });
+  // 4. Aperçu
+  const evA=C.evA, evB=C.unique ? C.evA : C.evB;
+  if(!evA || !evB || !C.effet){ pan.appendChild(_edtChgPied(E, null)); return; }
+  if(!C.resultat) C.resultat=_edtChgPreparer(C.effet, C.sem, evA, evB);
+  const R=C.resultat;
+  const ap=E('div','border:1px solid var(--brd);border-radius:10px;padding:10px 12px;background:var(--sur2);display:flex;flex-direction:column;gap:6px');
+  ap.appendChild(E('b','','4. Ce qui va se passer'));
+  if(R.erreur){ ap.appendChild(E('div','color:#DC2626',R.erreur)); pan.appendChild(ap); pan.appendChild(_edtChgPied(E, null)); return; }
+  const fin=R.periodes.find(p=>p.debut===C.effet);
+  ap.appendChild(E('div','','• Ancien emploi du temps jusqu’au '+_edtVeille(C.effet).split('-').reverse().join('/')+' ; nouveau du '+C.effet.split('-').reverse().join('/')+' au '+(fin?fin.fin:'').split('-').reverse().join('/')+' (1re semaine : '+C.sem+').'));
+  const lab=(sc)=>(S.groupes && S.groupes[sc] && !(S.cl||{})[sc]) ? ('👥 '+(S.groupes[sc].label||sc)) : String(sc).toUpperCase();
+  const lignes=R.appariement.bilan.filter(b=>b.avant || b.apres).map(b=>{
+    const n=R.prepares.filter(m=>m.scope===b.scope).length;
+    return lab(b.scope)+' : '+b.avant+' cours à venir → '+b.apres+(n ? ' · '+n+' préparé'+(n>1?'s':'')+' recalé'+(n>1?'s':'') : '');
+  });
+  const det=E('details',''); const sm=E('summary','cursor:pointer;color:var(--tx2)', '• Par classe ('+lignes.length+') — '+R.prepares.length+' cours préparés recalés'); det.appendChild(sm);
+  det.appendChild(E('div','white-space:pre-line;font-size:12px;color:var(--tx2);padding:4px 0 0 14px', lignes.join('\n')||'—')); ap.appendChild(det);
+  const fmt=(sk)=>sk.slice(8,10)+'/'+sk.slice(5,7)+' '+sk.slice(11);
+  if(R.appariement.gardes.length) ap.appendChild(E('div','color:#92400E','⚠ '+R.appariement.gardes.length+' séance'+(R.appariement.gardes.length>1?'s':'')+' déjà enregistrée'+(R.appariement.gardes.length>1?'s':'')+' après la date d’effet : elle'+(R.appariement.gardes.length>1?'s restent':' reste')+' à sa place ('+R.appariement.gardes.map(g=>lab(g.scope)+' '+fmt(g.slotKey)).join(', ')+').'));
+  if(R.perdus.length) ap.appendChild(E('div','color:#92400E','⚠ '+R.perdus.length+' cours préparé'+(R.perdus.length>1?'s':'')+' sans nouveau créneau (moins de cours qu’avant) : laissé'+(R.perdus.length>1?'s':'')+' sur l’ancien créneau ('+R.perdus.map(g=>lab(g.scope)+' '+fmt(g.from)).join(', ')+').'));
+  if(R.ponctuels.length) ap.appendChild(E('div','color:#92400E','⚠ '+R.ponctuels.length+' modification'+(R.ponctuels.length>1?'s':'')+' ponctuelle'+(R.ponctuels.length>1?'s':'')+' (cours annulé ou ajouté) après la date d’effet : à vérifier dans l’onglet Modifications.'));
+  pan.appendChild(ap);
+  pan.appendChild(_edtChgPied(E, R));
+}
+function _edtChgPied(E, R){
+  const p=E('div','display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap');
+  if(!R || R.erreur) p.appendChild(E('span','margin-right:auto;color:var(--tx3);font-size:12px','Choisissez la date et les fichiers : l’aperçu s’affiche ici, rien n’est encore modifié.'));
+  const an=E('button','padding:6px 14px;border:1px solid var(--brd);border-radius:8px;background:var(--sur);cursor:pointer;font-family:inherit','Annuler'); an.type='button'; an.onclick=closeEdtChangement; p.appendChild(an);
+  const ok=E('button','padding:6px 14px;border:none;border-radius:8px;background:#15803D;color:#fff;font-weight:700;cursor:pointer;font-family:inherit','✓ Appliquer le nouvel emploi du temps'); ok.type='button';
+  if(!R || R.erreur){ ok.disabled=true; ok.style.opacity='.45'; ok.style.cursor='default'; }
+  else ok.onclick=()=>{ const C=_edtChg; const r=_edtChgAppliquer(C.effet, C.sem, C.evA, C.unique ? C.evA : C.evB); C.resultat=Object.assign(r, {applique:!r.erreur}); _edtChgRendre(); };
+  p.appendChild(ok);
+  return p;
+}
+function _edtChgBilan(pan, E){
+  const R=_edtChg.resultat;
+  pan.appendChild(E('div','font-size:14px;font-weight:700;color:#15803D','✓ Nouvel emploi du temps appliqué à partir du '+_edtChg.effet.split('-').reverse().join('/')+'.'));
+  pan.appendChild(E('div','line-height:1.5', R.recales+' cours préparé'+(R.recales>1?'s':'')+' recalé'+(R.recales>1?'s':'')+'. Le passé n’a pas bougé. En cas d’erreur : « ↶ Annuler le changement » dans la liste des périodes.'));
+  const f=E('div','display:flex;justify-content:flex-end');
+  const b=E('button','padding:6px 14px;border:none;border-radius:8px;background:var(--acc);color:#fff;font-weight:700;cursor:pointer;font-family:inherit','Fermer'); b.type='button'; b.onclick=closeEdtChangement;
+  f.appendChild(b); pan.appendChild(f);
+}
+/** Un fichier ICS choisi : lu, recalé sur la sonnerie, classes à faire correspondre si besoin. */
+function _edtChgFichier(e, ab){
+  const file=e.target.files && e.target.files[0]; if(!file) return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    const {events}=parseIcs(ev.target.result);
+    const fin=()=>{ if(!_edtChg) return; if(ab==='A'){ _edtChg.evA=events; _edtChg.nomA=file.name; } else { _edtChg.evB=events; _edtChg.nomB=file.name; } _edtChg.resultat=null; _edtChgRendre(); };
+    const d=(typeof _clsIcsDoubts==='function') ? _clsIcsDoubts(events) : [];
+    if(d.length && typeof _clsImportMappingPopup==='function') _clsImportMappingPopup(d, fin, {closeAfter:true}); else fin();
+  };
+  rd.readAsText(file, 'UTF-8');
+  e.target.value='';
+}
 /* ════════════════════════════════════════════════════════════════════
    V033-v181.13.0 — GRILLE HEBDO de saisie EDT
    ──────────────────────────────────────────────────────────────────
