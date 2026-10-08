@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.27';
+const APP_VERSION = 'v11.4.28';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -29285,6 +29285,20 @@ function _cdtParts(seance, clsCode){
   if(ec){
     const ret=_sdcBiblioRetenus(ec, ent.sean, 'doc');
     if(ret) docs=docs.filter(d=>ret.has(d));
+    // V11.4.28 — cours mixtes : les docs des AUTRES séances du cours que son texte a reliés.
+    try{
+      const lv=(typeof _scopeLevelOf==='function')?_scopeLevelOf(clsCode):String(clsCode||'').replace(/\d+$/,'');
+      const prog=(typeof getProgression==='function')?(getProgression(lv)||[]):[];
+      (Array.isArray(ec.seances)?ec.seances:[]).forEach(s=>{
+        if(!s || !s.seanId || (ent.sean && s.seanId===ent.sean.id)) return;
+        const q=prog.find(p=>p && p.id===s.seqId);
+        const sn=q && Array.isArray(q.seances) ? q.seances.find(x=>x && x.id===s.seanId) : null;
+        if(!sn) return;
+        const r2=_sdcBiblioRetenus(ec, sn, 'doc');
+        (Array.isArray(sn.docs)?sn.docs:[]).map(d=>String(d||'').trim()).filter(Boolean)
+          .forEach(d=>{ if((!r2 || r2.has(d)) && docs.indexOf(d)<0) docs.push(d); });
+      });
+    }catch(e){}
     _sdcDocsResPropres(ec).docs.forEach(d=>{ if(docs.indexOf(d)<0) docs.push(d); });
   }
   // V11.4.11 — une tâche libre qui n'est qu'un document distribué n'est pas comptée deux fois.
@@ -47462,24 +47476,24 @@ function showAboutModal(){
   // que l'utilisateur voit ou fait, pas le récit des corrections — ce détail vit
   // dans le mémo de passation. Une rubrique = un thème, une ou deux phrases.
   root.appendChild(_aboutRubriques([
-    ['🗓️ Saisir mes cours', 'septembre 2026',
-     'Composer chaque cours en piochant dans la bibliothèque, la progression ou dans les cours déjà faits d’autres classes du niveau ; ce qui reste du cours précédent est proposé, la complétion suggère pendant la frappe, l’étoile ☆ enrichit la bibliothèque. Le réalisé du cours précédent reste visible. Le planning d’affectation devient une vue d’ensemble.'],
-    ['📋 Cahier de texte du jour', 'septembre 2026',
-     'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement et ne répète plus le prévu ; les tâches commencées portent « (à poursuivre au prochain cours) ».'],
+    ['🗓️ Saisir mes cours', 'octobre 2026',
+     'Composer chaque cours en piochant dans la bibliothèque, la progression ou dans les cours déjà faits d’autres classes du niveau ; ce qui reste du cours précédent est proposé, la complétion suggère pendant la frappe, l’étoile ☆ enrichit la bibliothèque. Le réalisé du cours précédent reste visible. Le planning d’affectation devient une vue d’ensemble. Un cours peut mêler plusieurs séances, ou un chapitre seul ; votre titre de séance est repris partout.'],
+    ['📋 Cahier de texte du jour', 'octobre 2026',
+     'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement et ne répète plus le prévu. Un en-tête par séance.'],
     ['🎲 Tirage et évaluations', 'septembre 2026',
      'Le tirage au sort accepte vos propres types ; « Choisir » désigne les élèves. Une fiche note chaque élève dans l’observation du cours, maintenant ou plus tard.'],
     ['📝 Suivi des élèves', 'septembre 2026',
      'Suivi › Observations : les observations de chaque élève, ou tout son suivi (statuts, participation, TAF non faits). Délégués et responsabilités s’affichent sur le plan.'],
-    ['👩‍🏫 En classe', 'septembre 2026',
-     'Statuts plus lisibles, avertissements à deux ou trois niveaux, statut rapide ⚡. Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes ; la Fiche du jour dès la première ouverture, un rappel de fin de cours plus fiable ; la vérification des TAF suit la date du cours.'],
+    ['👩‍🏫 En classe', 'octobre 2026',
+     'Des avertissements à deux ou trois niveaux, statut rapide ⚡. Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. Nouvel emploi du temps à une date d’effet : les cours préparés suivent.'],
     ['🖥️ Écran classe', 'octobre 2026',
      'Quatre écrans projetés (accueil, séance, fin, évaluation), réglables par classe.'],
     ['⏱️ Compte à rebours', 'septembre 2026',
      'Chaque alerte (5, 3, 2, 1 min, fin) se coupe, se règle en volume et peut jouer votre propre son.'],
     ['🔄 Synchronisation et sécurité des données', 'octobre 2026',
      'Dropbox ou Google Drive. Une barre de synchro sur le plan de classe, grande sur iPad, compacte sur ordinateur. Une copie de sécurité de ce qui va être remplacé, alerte si la mémoire du navigateur est pleine ; une donnée abîmée n’empêche plus le démarrage. Appuis fusionnés entre appareils.'],
-    ['🪑 Plan de classe', 'septembre 2026',
-     'Impression PDF, une classe par page. Dispositions réutilisables d’une classe à l’autre. Placement mixte en îlots. Le PAI n’apparaît plus dans les vues EBEP.'],
+    ['🪑 Plan de classe', 'octobre 2026',
+     'Impression PDF, une classe par page. Dispositions réutilisables d’une classe à l’autre. Placement mixte en îlots. Le PAI n’apparaît plus dans les vues EBEP. Le nombre de présents s’affiche en bas.'],
     ['📚 Référentiels et disciplines', 'juillet 2026',
      'Votre discipline et son référentiel importé deviennent le socle de la progression. L’import des classes est plus tolérant.'],
     ['⌨️ Prise en main', 'début 2026',
