@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.26';
+const APP_VERSION = 'v11.4.27';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7641,6 +7641,41 @@ function _migrerContenuPrevu(){
   });
   if(modif) saveS();
   return res;
+}
+
+/* V11.4.27 — Rattrapage : jusqu'à v11.4.26, enregistrer depuis le modal Séance un cours
+   SANS séance choisie (texte « /SEQ 2 » seul) appelait setSlotProgMapping(…, null) qui
+   SUPPRIMAIT l'entrée du planning du cours composé. On la reconstruit depuis le texte
+   enregistré (`saisieEnreg`) : identifiants déterministes (sdc_<slotKey+cls>_n), donc les
+   coches de la séance enregistrée restent valables — vérifié : tout fi_sdc_ des taskRows
+   doit être reconstruit, sinon on ne touche à rien. Classes seulement, après la bascule.
+   Idempotente. Renvoie le nombre d'entrées rétablies. */
+function _sdcRestaurerEntreesPerdues(){
+  let n=0;
+  const bascule=S && S.planningBascule;
+  if(!bascule) return n;
+  if(!S.edtProgMapping) S.edtProgMapping={};
+  const M=S.edtProgMapping, Dr=S.seanceContentDraft||{};
+  Object.keys(S.seances||{}).forEach(bucket=>{
+    const cls=String(bucket).split('|')[0];
+    if(/^grp:/.test(cls)) return;
+    (S.seances[bucket]||[]).forEach(se=>{
+      if(!se || !se.slotKey || String(se.slotKey).slice(0,10)<bascule) return;
+      if(M[se.slotKey+'|'+cls] || M[se.slotKey+'|'+cls.toLowerCase()]) return;
+      const ids=(Array.isArray(se.taskRows)?se.taskRows:[]).map(tr=>tr && String(tr.key||'')).filter(k=>/^fi_sdc_/.test(k)).map(k=>k.slice(3));
+      if(!ids.length) return;
+      const d=Dr[cls+'|'+se.slotKey] || Dr[cls.toLowerCase()+'|'+se.slotKey];
+      const txt=d && typeof d.saisieEnreg==='string' ? d.saisieEnreg : '';
+      if(!txt.trim()) return;
+      const e=_sdcConstruireEntree(_sdcInterpreter(txt, getProgression(_sdcNiveau(cls))||[]), {}, se.slotKey+cls);
+      const faits=new Set((e.freeItems||[]).map(f=>f.id));
+      if(!ids.every(id=>faits.has(id))) return;
+      if(!e.lignes.length && !e.freeItems.length) return;
+      M[se.slotKey+'|'+cls]=e; n++;
+    });
+  });
+  if(n){ if(typeof invalidateLayoutCache==='function') try{ invalidateLayoutCache(); }catch(e){} saveS(); }
+  return n;
 }
 
 function migrateModeOpDurees(){
@@ -12255,7 +12290,13 @@ function setSlotProgMapping(a, b, c, d, e){
     seanId=c||null;
   }
   if(!mapKey) return;
-  if(!seqId){ delete S.edtProgMapping[mapKey]; saveS(); return; }
+  // V11.4.27 — un cours composé dans « Saisir mes cours » (entry.lignes) n'est JAMAIS
+  // effacé ici : le modal Séance enregistré sans séance choisie (« /SEQ 2 » seul :
+  // synthèse, évaluation…) supprimait toutes ses lignes. Son texte fait foi.
+  if(!seqId){
+    if(typeof _sdcEntreeComposee==='function' && _sdcEntreeComposee(S.edtProgMapping[mapKey])) return;
+    delete S.edtProgMapping[mapKey]; saveS(); return;
+  }
   const entry=getMapEntry(mapKey);
   if(!entry.seances.some(s=>s.seqId===seqId&&s.seanId===(seanId||null)))
     entry.seances.push({seqId, seanId:seanId||null});
@@ -29178,11 +29219,15 @@ function _titreSeanceDuCours(cls, slotKey, seqId, sean){
 }
 function _cdtEntete(seance, clsCode){
   const out={lignes:[], sean:null};
-  if(!seance || !seance.seqId) return out;
+  if(!seance) return out;
+  // V11.4.27 — cours sans séance mais avec un chapitre (« /SEQ 2 » seul : synthèse,
+  // évaluation…) : en-tête « CH2 titre », sans ligne Séance.
+  const _seqId=seance.seqId || ((typeof _sdcSeqSeuleDuCours==='function') ? _sdcSeqSeuleDuCours(seance.slotKey, clsCode) : '');
+  if(!_seqId) return out;
   try{
     const lv=(typeof _scopeLevelOf==='function')?_scopeLevelOf(clsCode):String(clsCode||'').replace(/\d+$/,'');
     const prog=(typeof getProgression==='function')?(getProgression(lv)||[]):[];
-    const si=prog.findIndex(s=>s&&s.id===seance.seqId);
+    const si=prog.findIndex(s=>s&&s.id===_seqId);
     if(si<0) return out;
     const seq=prog[si];
     // V11.4.11 — numéro du chapitre (« SEQ1 » partout ailleurs), et non son rang dans la
@@ -29633,7 +29678,16 @@ function _sdcInterpreter(text, prog){
     }
     items.push(it);
   });
-  const r={items, avert, seances, taches:[], docs:[], res:[], tafs:[], evals:[], total:0};
+  // V11.4.27 — chapitres CONNUS écrits sans aucun « /Séance » dessous (synthèse,
+  // évaluation…) : le cours est rattaché au chapitre, sans séance.
+  const seqSeules=[];
+  items.forEach((it,k)=>{
+    if(it.type!=='seq' || !it.seqId) return;
+    let j=k+1, aSean=false;
+    for(; j<items.length && items[j].type!=='seq'; j++) if(items[j].type==='sean'){ aSean=true; break; }
+    if(!aSean && seqSeules.indexOf(it.seqId)<0) seqSeules.push(it.seqId);
+  });
+  const r={items, avert, seances, seqSeules, taches:[], docs:[], res:[], tafs:[], evals:[], total:0};
   items.forEach(it=>{
     if(it.type==='tache'){ r.taches.push(it); r.total+=it.duree||0; }
     else if(it.type==='doc') r.docs.push(it);
@@ -29761,8 +29815,10 @@ function _sdcConstruireEntree(r, base, idBase){
     free.push(fi);
     lignes.push({src:'cours', kind:it.type, fiId:id});
   });
-  return {seances:(r&&r.seances||[]).map(s=>({seqId:s.seqId, seanId:s.seanId})),
+  const out={seances:(r&&r.seances||[]).map(s=>({seqId:s.seqId, seanId:s.seanId})),
           lignes, freeItems:garde.concat(free), isolatedOps:[], skippedOps:[]};
+  if(r && Array.isArray(r.seqSeules) && r.seqSeules.length) out.seqSeules=r.seqSeules.slice();   // V11.4.27
+  return out;
 }
 
 /** Contenu prévu vers le modal Séance : une ligne par tâche (SANS durées — le
@@ -30006,6 +30062,23 @@ function _sdcBlocsFi(entry, texte, prog){
     if(!out[f.id] && it.seanBloc && (n(it.label)===n(f.label) || (it.type==='eval' && !it.label))) out[f.id]=it.seanBloc;
   });
   return out;
+}
+/** V11.4.27 — Chapitre d'un cours composé écrit SANS séance (« /SEQ 2 » seul) : celui
+ *  rangé à l'enregistrement (entry.seqSeules), sinon retrouvé dans son texte. Le cours
+ *  a une séance reliée → '' (c'est elle qui donne le chapitre). */
+function _sdcSeqSeuleDuCours(slotKey, cls){
+  const ec=_sdcEntreeDuCours(slotKey, cls);
+  if(!ec) return '';
+  if(Array.isArray(ec.seances) && ec.seances.length) return '';
+  if(Array.isArray(ec.seqSeules) && ec.seqSeules.length) return ec.seqSeules[0];
+  try{
+    const d=(typeof _sdcDraft==='function') ? (_sdcDraft(cls, slotKey) || _sdcDraft(String(cls).toLowerCase(), slotKey)) : null;
+    const t=d ? ((typeof d.saisieEnreg==='string' && d.saisieEnreg.trim()) ? d.saisieEnreg : (d.saisie||'')) : '';
+    if(!t) return '';
+    const lv=(typeof _scopeLevelOf==='function') ? _scopeLevelOf(cls) : String(cls).replace(/\d+$/,'');
+    const r=_sdcInterpreter(t, (typeof getProgression==='function' ? getProgression(lv) : null) || []);
+    return (r && Array.isArray(r.seqSeules) && r.seqSeules[0]) || '';
+  }catch(e){ return ''; }
 }
 /** Idem pour un cours (slotKey, classe) : texte enregistré, sinon brouillon. */
 function _sdcBlocsDuCours(slotKey, cls){
@@ -48449,7 +48522,10 @@ function openSaveSeance(){
     const _multiBadge = _otherSeancesV162.length
       ? ' <span style="color:#A16207;font-weight:600;text-transform:none;letter-spacing:0;font-size:9px">+ '+_otherSeancesV162.length+' autre'+(_otherSeancesV162.length>1?'s séances':' séance')+' sur ce slot</span>'
       : '';
-    shdr.innerHTML=`<span>📋 ${seq2?('SEQ'+(seq2.num||(prog2b.indexOf(seq2)+1))+(sean2?'-S'+(seq2.seances.indexOf(sean2)+1):''))+' · '+sean2?.titre?.slice(0,24):'Tâches de la séance'}${_multiBadge}</span>`;
+    // V11.4.27 — cours rattaché à un chapitre sans séance (« /SEQ 2 » seul) : « SEQ2 · titre ».
+    const _seqSeule=(!seq2 && typeof _sdcSeqSeuleDuCours==='function') ? prog2b.find(p=>p.id===_sdcSeqSeuleDuCours(slotKey, curCls)) : null;
+    const _titreSeqSeule=_seqSeule ? 'SEQ'+(_seqSeule.num||(prog2b.indexOf(_seqSeule)+1))+' · '+String(_seqSeule.titre||'').slice(0,40) : '';
+    shdr.innerHTML=`<span>📋 ${seq2?('SEQ'+(seq2.num||(prog2b.indexOf(seq2)+1))+(sean2?'-S'+(seq2.seances.indexOf(sean2)+1):''))+' · '+sean2?.titre?.slice(0,24):(_titreSeqSeule ? escapeHtml(_titreSeqSeule) : 'Tâches de la séance')}${_multiBadge}</span>`;
     tachesWrap.appendChild(shdr);
 
     const hint=document.createElement('div'); hint.style.cssText='font-size:10px;color:var(--tx3);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between';
@@ -64397,6 +64473,7 @@ _migrationProtegee('migrateSeatKeys', migrateSeatKeys); // Migration seats displ
 _migrationProtegee('migrateModeOpDurees', migrateModeOpDurees); // Migration durées décalées par tâches vides
 _migrationProtegee('migrateCocheDates', migrateCocheDates); // V11.3.35 (Q4) — coches réunies sous la date DU COURS (one-time, idempotente)
 _migrationProtegee('_migrerContenuPrevu', _migrerContenuPrevu); // V11.3.101 — contenu = redite du prévu → vidé (copie gardée)
+_migrationProtegee('_sdcRestaurerEntreesPerdues', _sdcRestaurerEntreesPerdues); // V11.4.27 — entrées effacées par le modal sans séance → rétablies
 _migrationProtegee('_migrerExecSynthese', _migrerExecSynthese); // V11.4.12 — libellés + avance sur séances secondaires
 try{ _vivCache=_vivEmpreinte(S); }catch(e){}   // V11.4.13 — référence des données vivantes (rien n'est daté au chargement)
 if(window._migrationsEchouees && window._migrationsEchouees.length){
