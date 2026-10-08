@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.24';
+const APP_VERSION = 'v11.4.26';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -28480,7 +28480,7 @@ function _fdjRenderCard(event, todayStr){
   // séance reconnue) n'est pas vide, il a son bloc « Ce cours ».
   const _sdcEnt = (cls && typeof _sdcEntreeComposee === 'function')
     ? _sdcEntreeComposee((S.edtProgMapping||{})[slotKey+'|'+cls] || (S.edtProgMapping||{})[slotKey+'|'+String(cls).toLowerCase()]) : null;
-  const _sdcT = _sdcEnt ? _sdcTachesParSeance(_sdcEnt) : null;
+  const _sdcT = _sdcEnt ? _sdcTachesParSeance(_sdcEnt, (typeof _sdcBlocsDuCours==='function') ? _sdcBlocsDuCours(slotKey, cls) : null) : null;   // V11.4.26
   const _sdcPr = _sdcEnt ? _sdcDocsResPropres(_sdcEnt) : null;
   const _sdcBlocPropre = !planned.length && !!_sdcEnt
     && (_sdcT.avant.length + _sdcPr.docs.length + _sdcPr.ress.length) > 0;
@@ -29244,8 +29244,24 @@ function _cdtParts(seance, clsCode){
   }
   // V11.4.11 — une tâche libre qui n'est qu'un document distribué n'est pas comptée deux fois.
   const _nd=(x)=>String(x||'').replace(/\s+/g,' ').trim().toLowerCase();
-  taches.filter(t=>docs.map(_nd).indexOf(_nd(t.label))<0)
-    .forEach(t=>{ faites.push('• '+t.label+(t.partiel?CDT_SUFFIXE_PARTIEL:'')); });
+  const _puce=(t)=>'• '+t.label+(t.partiel?CDT_SUFFIXE_PARTIEL:'');
+  const _tachesNettes=taches.filter(t=>docs.map(_nd).indexOf(_nd(t.label))<0);
+  // V11.4.26 — cours mixtes : les tâches d'une AUTRE séance du cours vont sous son
+  // propre en-tête (« Séance 2 : … », précédé de « CH… » si autre chapitre).
+  const _groupes=(typeof _cdtTachesParSeance==='function' && seance.seanId)
+    ? _cdtTachesParSeance(_tachesNettes, seance.seanId, (ec && typeof _sdcBlocsDuCours==='function') ? _sdcBlocsDuCours(seance.slotKey, clsCode) : null)
+    : [{seanId:seance.seanId||'', taches:_tachesNettes}];
+  _groupes.forEach((g,gi)=>{
+    if(gi===0){ g.taches.forEach(t=>faites.push(_puce(t))); return; }
+    if(!g.taches.length) return;
+    const _seqDe=(sid)=>{ try{ const lv=(typeof _scopeLevelOf==='function')?_scopeLevelOf(clsCode):String(clsCode||'').replace(/\d+$/,'');
+      const q=((typeof getProgression==='function')?(getProgression(lv)||[]):[]).find(p=>p && (p.seances||[]).some(sn=>sn && sn.id===sid)); return q?q.id:''; }catch(e){ return ''; } };
+    const _sq=_seqDe(g.seanId);
+    const _ent=_sq ? _cdtEntete({slotKey:seance.slotKey, seqId:_sq, seanId:g.seanId}, clsCode) : {lignes:[]};
+    if(faites.length) faites.push('');
+    (_sq===seance.seqId ? _ent.lignes.slice(1) : _ent.lignes).forEach(l=>faites.push(l));
+    g.taches.forEach(t=>faites.push(_puce(t)));
+  });
   if(faites.length) faites.forEach(l=>out.apres.push(l));
   else if(taches.length) out.apres.pop();
   if(docs.length){
@@ -29265,12 +29281,36 @@ function _cdtTachesFaites(taskRows){
   const out=[];
   (Array.isArray(taskRows)?taskRows:[]).forEach(tr=>{
     if(!tr || !SRC[String(tr.sourceLabel||'')]) return;
-    const lbl=String(tr.label||'').replace(/\s*\(\d+\s*mn\)\s*$/i,'').trim();
+    // V11.4.26 — l'étiquette [SEQx-Sy] du modal ne part pas au cahier de texte.
+    const lbl=String(tr.label||'').replace(/^\[SEQ[^\]]*\]\s*/i,'').replace(/\s*\(\d+\s*mn\)\s*$/i,'').trim();
     if(!lbl) return;
-    if(tr.stateLabel==='Faite') out.push({label:lbl, partiel:false});
-    else if(tr.stateLabel==='Commencée / partielle') out.push({label:lbl, partiel:true});
+    if(tr.stateLabel==='Faite') out.push({label:lbl, partiel:false, key:tr.key});
+    else if(tr.stateLabel==='Commencée / partielle') out.push({label:lbl, partiel:true, key:tr.key});
   });
   return out;
+}
+/** V11.4.26 — Cours mixtes : séance d'une tâche du modal d'après sa clé. mo_<i> → la
+ *  séance principale ; mo_<seanId>_<i> → cette séance ; fi_<id> → la séance sous
+ *  laquelle la ligne a été tapée (`blocs`), sinon la principale. Pure. */
+function _cdtSeanDeCle(key, principale, blocs){
+  const k=String(key||'');
+  let m=k.match(/^(?:mo|doc|taf)_(.+)_(\d+)$/);
+  if(m) return m[1];
+  m=k.match(/^fi_(.+)$/);
+  if(m && blocs && blocs[m[1]]) return blocs[m[1]];
+  return principale||'';
+}
+/** Tâches faites rangées par séance : la principale d'abord, puis les autres dans
+ *  l'ordre où elles apparaissent. [{seanId, taches}] Pure. */
+function _cdtTachesParSeance(taches, principale, blocs){
+  const ordre=[principale||''], par={};
+  par[principale||'']=[];
+  (Array.isArray(taches)?taches:[]).forEach(t=>{
+    const s=_cdtSeanDeCle(t.key, principale, blocs);
+    if(!par[s]){ par[s]=[]; ordre.push(s); }
+    par[s].push(t);
+  });
+  return ordre.map(s=>({seanId:s, taches:par[s]}));
 }
 /** Recolle les trois morceaux dans l'ordre du texte copié. Pure. */
 function _cdtAssemble(parts){
@@ -29565,6 +29605,9 @@ function _sdcInterpreter(text, prog){
       // c'est là que l'étoile la versera.
       it.blocSeq=seqHdr?{num:seqHdr.num, label:seqHdr.label, ligne:seqHdr.ligne}:null;
       it.blocSean=seanHdr?{num:seanHdr.num, label:seanHdr.label, ligne:seanHdr.ligne}:null;
+      // V11.4.26 — séance CONNUE sous laquelle la ligne est écrite : une ligne propre
+      // au cours tapée sous « /Séance 2 » appartient à la séance 2 (cours mixtes).
+      if(sean){ it.seqBloc=prog[sean.seqIdx].id; it.seanBloc=sean.obj.id; }
       if(sean){
         const lier=(liste, pris)=>{
           let best=-1, score=0;
@@ -29714,6 +29757,7 @@ function _sdcConstruireEntree(r, base, idBase){
     const fi={id, label:it.type==='eval'?(it.label||'Évaluation'):it.label, type:TYPE[it.type]||'modeOp',
               icon:ICON[it.type]||'📝', duree:it.duree||0, sdc:true, suiviSynthese:it.type==='eval'};
     if(it.type==='eval' && it.seqId) fi.seqId=it.seqId;
+    if(it.seanBloc){ fi.seqBloc=it.seqBloc; fi.seanBloc=it.seanBloc; }   // V11.4.26
     free.push(fi);
     lignes.push({src:'cours', kind:it.type, fiId:id});
   });
@@ -29817,7 +29861,7 @@ function _sdcDocsARemettreListe(sean, slotKey, cls){
 /** V11.3.84 — Tâches d'un cours composé, DANS L'ORDRE DU TEXTE, rangées par
  *  séance : une tâche propre au cours suit la séance de la ligne reliée qui la
  *  précède ; avant toute ligne reliée → `avant`. Libellé « texte (N min) ». Pure. */
-function _sdcTachesParSeance(entry){
+function _sdcTachesParSeance(entry, blocs){
   const out={parSean:{}, avant:[]};
   if(!_sdcEntreeComposee(entry)) return out;
   const fi=Array.isArray(entry.freeItems)?entry.freeItems:[];
@@ -29828,7 +29872,9 @@ function _sdcTachesParSeance(entry){
     let lbl='';
     if(l.src==='biblio' && l.kind==='tache'){ cur=l.seanId||null; lbl=fmt(l.label, l.duree); }
     else if(l.src==='biblio' && l.seanId){ cur=l.seanId; return; }
-    else if(l.src==='cours' && l.kind==='tache'){ const f=fi.find(x=>x && x.id===l.fiId); if(f) lbl=fmt(f.label, f.duree); }
+    else if(l.src==='cours' && l.kind==='tache'){ const f=fi.find(x=>x && x.id===l.fiId); if(f) lbl=fmt(f.label, f.duree);
+      // V11.4.26 — écrite sous un en-tête /Séance connu : elle est de CETTE séance.
+      if(blocs && blocs[l.fiId]) cur=blocs[l.fiId]; }
     if(!lbl) return;
     if(cur){ (out.parSean[cur]=out.parSean[cur]||[]).push(lbl); } else out.avant.push(lbl);
   });
@@ -29940,6 +29986,37 @@ function _sdcEntreeDuCours(slotKey, cls){
   if(!slotKey || !cls) return null;
   const M=(typeof S!=='undefined' && S && S.edtProgMapping) || {};
   return _sdcEntreeComposee(M[slotKey+'|'+cls] || M[slotKey+'|'+String(cls).toLowerCase()]);
+}
+/** V11.4.26 — Cours mixtes : séance (seanId) de chaque ligne TAPÉE d'un cours composé,
+ *  { fiId: seanId }. Posée à l'enregistrement (fi.seanBloc) ; pour un cours enregistré
+ *  avant, retrouvée dans son texte : les lignes propres y sont dans le même ordre que
+ *  les éléments sdc, libellé vérifié ligne à ligne. Ligne hors séance connue : absente. Pure. */
+function _sdcBlocsFi(entry, texte, prog){
+  const out={};
+  if(!_sdcEntreeComposee(entry)) return out;
+  const fis=(Array.isArray(entry.freeItems)?entry.freeItems:[]).filter(f=>f && f.sdc);
+  fis.forEach(f=>{ if(f.seanBloc) out[f.id]=f.seanBloc; });
+  if(!texte || fis.every(f=>f.seanBloc)) return out;
+  let r=null; try{ r=_sdcInterpreter(texte, prog||[]); }catch(e){ return out; }
+  const propres=((r&&r.items)||[]).filter(it=>it && it.src==='cours' && it.type!=='taf');
+  const n=(s)=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+  if(propres.length!==fis.length) return out;
+  fis.forEach((f,i)=>{
+    const it=propres[i];
+    if(!out[f.id] && it.seanBloc && (n(it.label)===n(f.label) || (it.type==='eval' && !it.label))) out[f.id]=it.seanBloc;
+  });
+  return out;
+}
+/** Idem pour un cours (slotKey, classe) : texte enregistré, sinon brouillon. */
+function _sdcBlocsDuCours(slotKey, cls){
+  const ec=_sdcEntreeDuCours(slotKey, cls);
+  if(!ec) return {};
+  try{
+    const d=(typeof _sdcDraft==='function') ? (_sdcDraft(cls, slotKey) || _sdcDraft(String(cls).toLowerCase(), slotKey)) : null;
+    const t=d ? ((typeof d.saisieEnreg==='string' && d.saisieEnreg.trim()) ? d.saisieEnreg : (d.saisie||'')) : '';
+    const lv=(typeof _scopeLevelOf==='function') ? _scopeLevelOf(cls) : String(cls).replace(/\d+$/,'');
+    return _sdcBlocsFi(ec, t, (typeof getProgression==='function' ? getProgression(lv) : null) || []);
+  }catch(e){ return {}; }
 }
 /** Textes (de la bibliothèque) des docs ou ressources de `sean` que le cours
  *  a reliés. null = cours non composé : tout garder, comme avant. Pure. */
@@ -33518,6 +33595,11 @@ function getStatutKeys(name){
   return [v]; // legacy: was stored as a single string
 }
 function hasStatut(name,key){ return getStatutKeys(name).includes(key); }
+/** V11.4.25 — Nombre de présents du plan : élèves placés sans le statut « absent »
+    (retard, exclusion… restent présents). Pure : keysOf(id) → liste de statuts. */
+function _pdcNbPresents(seats, keysOf){
+  return (seats||[]).filter(id=>id && !(keysOf(id)||[]).includes('absent')).length;
+}
 
 // V035-V11.0.12 (audit pt.3, arbitrage utilisateur) — Exclusions mutuelles de statuts :
 // - poser 'absent' INVALIDE tous les autres statuts (la saisie du cours repart à ['absent']) ;
@@ -37932,6 +38014,20 @@ function renderApp(){
   document.getElementById('s-pl').textContent=placed+' placé'+(placed>1?'s':'');
   document.getElementById('s-fr').textContent=(_total-placed)+' libre'+(_total-placed>1?'s':'');
   document.getElementById('s-cl').textContent=_grpScope?('👥 '+S.groupes[curGrpInter].label):curCls;
+  // V11.4.25 — Présents (placés non absents), à gauche de la classe. Seulement dans
+  // un cours : hors cours, getStatutsMap() agrège tous les cours (absences d'autres jours).
+  const _sCl=document.getElementById('s-cl');
+  let _sPr=document.getElementById('s-pr');
+  if(!_sPr && _sCl){
+    _sPr=document.createElement('span'); _sPr.id='s-pr'; _sPr.style.marginLeft='auto';
+    _sCl.parentNode.insertBefore(_sPr, _sCl);
+  }
+  if(_sPr){
+    const _nPr=curSlotKey ? _pdcNbPresents(cls.seats, getStatutKeys) : -1;
+    _sPr.textContent=_nPr<0 ? '' : _nPr+' présent'+(_nPr>1?'s':'');
+    _sPr.style.display=_nPr<0 ? 'none' : '';
+    _sCl.style.marginLeft=_nPr<0 ? 'auto' : '0';
+  }
   // S28 patch 3 — Étiquette de classe (sélecteur replié) à synchroniser à chaque rendu :
   // sans ça, après une entrée par EDT (qui replie le sélecteur), tout changement
   // ultérieur de classe via les onglets dépliés ne mettait pas à jour ce libellé.
@@ -48304,9 +48400,18 @@ function openSaveSeance(){
     // section 0), d'où deux lignes identiques par TAF dans le modal Séance.
     // V11.3.85 — une ressource tapée dans « Saisir mes cours » n'est pas à cocher
     // (pas plus que celles de la bibliothèque) ; un doc propre au cours, si.
+    // V11.4.26 — cours mixtes : une ligne tapée sous une AUTRE séance porte son étiquette
+    // [SEQx-Sy], comme les tâches reliées de cette séance.
+    const _blocs4=(typeof _sdcBlocsDuCours==='function') ? _sdcBlocsDuCours(slotKey, curCls) : {};
+    const _badgeDe=(sid)=>{
+      if(!sid || sid===_primarySeanIdV163) return '';
+      const _q=prog2b.find(p=>(p.seances||[]).some(sn=>sn.id===sid));
+      if(!_q) return '';
+      return '[SEQ'+(_q.num||(prog2b.indexOf(_q)+1))+'-S'+(_q.seances.findIndex(sn=>sn.id===sid)+1)+'] ';
+    };
     (entry4.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif'&&!(fi.sdc&&fi.type==='ressource')).forEach(fi=>{
       // V11.3.87 — durée portée par l'item : c'est elle que reprennent ✂️ et ↩.
-      items.push({key:'fi_'+fi.id, icon:fi.icon||'📝', label:fi.label+(fi.duree?' ('+fi.duree+'mn)':''), checked:!!coches2['fi_'+fi.id], source:'free', fi, duree:fi.duree||0});
+      items.push({key:'fi_'+fi.id, icon:fi.icon||'📝', label:_badgeDe(_blocs4[fi.id])+fi.label+(fi.duree?' ('+fi.duree+'mn)':''), checked:!!coches2['fi_'+fi.id], source:'free', fi, duree:fi.duree||0});
     });
 
     // 5. Extra tâches ajoutées manuellement
