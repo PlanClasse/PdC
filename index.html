@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.28';
+const APP_VERSION = 'v11.4.29';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7675,6 +7675,38 @@ function _sdcRestaurerEntreesPerdues(){
     });
   });
   if(n){ if(typeof invalidateLayoutCache==='function') try{ invalidateLayoutCache(); }catch(e){} saveS(); }
+  return n;
+}
+
+/* V11.4.29 — Nettoyage demandé (08/10) : 7 participations ✋ du premier jour (07/09)
+   rattachées à des élèves qui ne sont pas (ou plus) dans la liste de la classe — le
+   Suivi des cours ne pouvait pas les montrer. Liste fermée ; un élève revenu dans la
+   classe garde la sienne. Chaque retrait est DATÉ (S.vivMaj) : les migrations passent
+   avant la référence _vivCache, et sans date la synchro les ferait revenir de l'autre
+   appareil. Idempotente. Renvoie le nombre de participations retirées. */
+const _PART_ORPHELINES_0709={
+  '2026-09-07_13:45|3e5':['e_857'],
+  '2026-09-07_14:45|5e1':['e_852','e_554','e_848','e_854','e_850','e_851']
+};
+function _partRetirerOrphelines(){
+  let n=0;
+  const P=S && S.participations; if(!P) return n;
+  const t=Date.now();
+  Object.keys(_PART_ORPHELINES_0709).forEach(k=>{
+    const m=P[k]; if(!m) return;
+    const cls=k.split('|')[1];
+    const liste=new Set((S.cl && S.cl[cls] && S.cl[cls].students) || []);
+    _PART_ORPHELINES_0709[k].forEach(uid=>{
+      if(!(uid in m) || liste.has(uid)) return;
+      delete m[uid]; n++;
+      if(!S.vivMaj) S.vivMaj={};
+      if(!S.vivMaj.participations) S.vivMaj.participations={};
+      if(!S.vivMaj.participations[k]) S.vivMaj.participations[k]={};
+      S.vivMaj.participations[k][uid]=t;
+    });
+    if(!Object.keys(m).length) delete P[k];
+  });
+  if(n) saveS();
   return n;
 }
 
@@ -64489,6 +64521,7 @@ _migrationProtegee('migrateCocheDates', migrateCocheDates); // V11.3.35 (Q4) —
 _migrationProtegee('_migrerContenuPrevu', _migrerContenuPrevu); // V11.3.101 — contenu = redite du prévu → vidé (copie gardée)
 _migrationProtegee('_sdcRestaurerEntreesPerdues', _sdcRestaurerEntreesPerdues); // V11.4.27 — entrées effacées par le modal sans séance → rétablies
 _migrationProtegee('_migrerExecSynthese', _migrerExecSynthese); // V11.4.12 — libellés + avance sur séances secondaires
+_migrationProtegee('_partRetirerOrphelines', _partRetirerOrphelines); // V11.4.29 — 7 ✋ du 07/09 d'élèves hors liste, retirées (datées)
 try{ _vivCache=_vivEmpreinte(S); }catch(e){}   // V11.4.13 — référence des données vivantes (rien n'est daté au chargement)
 if(window._migrationsEchouees && window._migrationsEchouees.length){
   const _noms=window._migrationsEchouees.map(m=>m.nom).join(', ');
