@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.30';
+const APP_VERSION = 'v11.4.32';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -42616,6 +42616,11 @@ function renderVoletDroit(){
   const prog2=getProgression(lv2)||[];
   const mapKey=slotKey+'|'+clsCode;
   const entry=getMapEntry(mapKey);
+  // V11.4.31 — cours composé (« Saisir mes cours ») : son texte fait foi, comme au modal
+  // Séance — pas de repli sur toutes les tâches de la bibliothèque, lignes tapées rangées
+  // sous leur séance (seanBloc), reports non repris écartés.
+  const _vdCompose=!!_sdcEntreeComposee(entry);
+  const _vdBlocs=_vdCompose ? _sdcBlocsDuCours(slotKey, clsCode) : {};
   const seanEntry=entry.seances[0]||null;
   let seq=null, sean=null;
   if(seanEntry&&seanEntry.seqId){
@@ -42678,7 +42683,10 @@ function renderVoletDroit(){
 
   // ── 0. Reportées / à terminer (haut, sans section) ──
   // ── Fix T : pré-calcul fusion reporters ↔ layout ──────────────────────────
-  const reporterFis=(entry.freeItems||[]).filter(fi=>fi.type==='reporter');
+  // V11.4.31 — même règle que le modal Séance (V11.3.65, lot B) : après la bascule, un
+  // report n'est que PROPOSÉ dans « Saisir mes cours » ; il n'entre ici que repris en ligne.
+  const _vdApresBascule=(typeof _sdcApresBascule==='function') && _sdcApresBascule(String(slotKey).slice(0,10), clsCode);
+  const reporterFis=(entry.freeItems||[]).filter(fi=>fi.type==='reporter' && !_vdApresBascule);
   // Un reporter avec adjustmentKey='mo_N' qui correspond à un item layout du
   // slot courant (même taskIdx) est une continuation — on l'affiche UNIQUEMENT
   // dans la section 4 (séances du slot) avec un badge enrichi, et on le retire
@@ -43089,8 +43097,13 @@ function renderVoletDroit(){
           }
           body.appendChild(_vdItem);
         });
-      } else if(sn){
+      } else if(sn && !_vdCompose){
         (sn.modeOp||[]).filter(t=>t&&t.trim()).forEach((t,i)=>{ body.appendChild(mkVdItem(pfx+'mo_'+i,'▪',t,null)); });
+      }
+      // V11.4.31 — cours composé : les lignes tapées sous cette séance (mêmes clés fi_ que le modal).
+      if(_vdCompose){
+        (entry.freeItems||[]).filter(fi=>_vdBlocs[fi.id]===seanId && fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif'&&!_sdcFiDocRes(fi))
+          .forEach(fi=>{ body.appendChild(mkVdItem('fi_'+fi.id, fi.icon||'📝', fi.label, fi.duree>0?fi.duree+'mn':null)); });
       }
 
       if(body.children.length) scroll.appendChild(wrap);
@@ -43114,7 +43127,9 @@ function renderVoletDroit(){
 
   // ── 5. Tâches libres placées dans le planning (non-reporter, non-eval) ──
   // V11.3.85 — sans les docs / ressources de « Saisir mes cours » (pas des tâches).
-  const freePlanned=(entry.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif'&&!_sdcFiDocRes(fi));
+  // V11.4.31 — sans les lignes déjà rangées sous leur séance (section 4).
+  const freePlanned=(entry.freeItems||[]).filter(fi=>fi.type!=='eval'&&fi.type!=='reporter'&&fi.type!=='taf-verif'
+    &&!(_vdCompose && _vdBlocs[fi.id] && seanceIds.includes(_vdBlocs[fi.id]))&&!_sdcFiDocRes(fi));
   if(freePlanned.length){
     const {wrap,body}=mkSection('vd-free','📝','Tâches libres');
     freePlanned.forEach(fi=>{
@@ -65008,6 +65023,15 @@ function _tirageListeChoix(eleves, absents, avecAbsents){
   const abs=avecAbsents ? L.filter(e=>A.has(e.uid)).sort(tri).map(e=>({uid:e.uid, name:e.name, absent:true})) : [];
   return pres.concat(abs);
 }
+/** V11.4.32 — Élèves qu'on peut TIRER pour ce type : un tirage « cahier » écarte ceux
+ *  qui ont le statut « Oubli cahier » dans ce cours (statuts = {uid: [clés]}). Les autres
+ *  types : tout le monde. Pure. */
+function _tirageEligibles(eleves, statuts, cat){
+  const L=eleves||[];
+  if(!cat || cat.saisie!=='cahier') return L;
+  const M=statuts||{};
+  return L.filter(e=>{ const k=M[e.uid]; return !(Array.isArray(k) ? k.includes('cahier') : k==='cahier'); });
+}
 /** V11.3.103 — Cahier : tableau retourné (un élève par ligne) au-delà de 5. Pure. */
 function _tirageCahierRetourne(n){ return (n|0)>TIRAGE_SAISIE_MAX; }
 /** V11.3.103 — Largeur de la fenêtre pour une fiche. Pure (nombre de critères fourni). */
@@ -65632,13 +65656,20 @@ function openTirageModal(){
   tirBtn.onclick=()=>{
     if(_anim) return;
     fermerChoix();   // V11.3.102
-    const nb=Math.max(1,Math.min(+nbIn.max||10,parseInt(nbIn.value)||1));
     const catTirage=curCatObj();
+    // V11.4.32 — tirage « cahier » : pas d'élève en « Oubli cahier » dans ce cours
+    // (statuts relus au moment du tirage).
+    let _stTirage={};
+    if(curSlotKey){ try{ _stTirage=(typeof getStatutsMap==='function')?(getStatutsMap()||{}):{}; }catch(e){ _stTirage={}; } }
+    const base=_tirageEligibles(all, _stTirage, catTirage);
+    if(!base.length){ showDropToast('⚠️ Tous les élèves présents ont oublié leur cahier'); return; }
+    const nb=Math.max(1,Math.min(+nbIn.max||10,parseInt(nbIn.value)||1,base.length));
     clearSaisie();
     const hist=getHist();
     const drawnUids=new Set(hist.flatMap(g=>Array.isArray(g)?g:[g]));
-    let pool=all.filter(s=>!drawnUids.has(s.uid));
-    if(pool.length<nb){ pool=all; rWrap.innerHTML='<div style="font-size:11px;color:var(--tx3);text-align:center">Relance sur la liste complète</div>'; }
+    let pool=base.filter(s=>!drawnUids.has(s.uid));
+    if(pool.length<nb){ pool=base; rWrap.innerHTML='<div style="font-size:11px;color:var(--tx3);text-align:center">Relance sur la liste complète</div>'; }
+    if(base.length<all.length){ rWrap.insertBefore(_tasEl('div','font-size:11px;color:var(--tx3);text-align:center', (all.length-base.length)+' élève'+(all.length-base.length>1?'s':'')+' en « Oubli cahier » hors tirage'), rWrap.firstChild); }
 
     tirBtn.disabled=true; nbIn.disabled=true;
 
