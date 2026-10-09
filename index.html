@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.32';
+const APP_VERSION = 'v11.4.33';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -31266,6 +31266,8 @@ function _sdcRendre(){
   const lectureSeule=enregistre||avant;
   // V11.3.94 — cours enregistré : avec ses en-têtes /SEQ /Séance (et son TAF).
   let texte0=enregistre ? _sdcTexteCoursEnregistre(cur.saved, _sdcDraft(cls, slotKey), getProgression(_sdcNiveau(cls))||[]) : _sdcTexteInitial(cls, slotKey);
+  // V11.4.33 — cours vierge : il démarre avec la note « Prochain cours » du cours précédent.
+  if(!lectureSeule){ try{ texte0=_sdcTexteAvecNote(texte0, _sdcDraft(cls, slotKey), _sdcNoteDuPrecedent(cours, cur, (p)=>_sdcNoteProchainDe(cls, p))); }catch(e){ console.warn('[sdc] note prochain cours', e); } }
   const dureeCours=_sdcDureeCours(cur.debut, cur.fin);
   const lv=_sdcNiveau(cls);
   const prog=getProgression(lv)||[];
@@ -31718,6 +31720,27 @@ function _sdcCoursPrecedent(cours, cur){
     if(!p || String(c.slotKey)>String(p.slotKey)) p=c;
   });
   return p;
+}
+/** V11.4.33 — Note « Prochain cours » laissée au modal Séance du cours PRÉCÉDENT
+ *  (même cours précédent que « Réalisé au cours précédent »). noteDe(p) lit la note
+ *  d'un cours. Pure. */
+function _sdcNoteDuPrecedent(cours, cur, noteDe){
+  const p=_sdcCoursPrecedent(cours, cur);
+  return p ? String((noteDe && noteDe(p)) || '').trim() : '';
+}
+/** La note d'un cours : celle de la séance enregistrée, sinon celle du brouillon du modal. */
+function _sdcNoteProchainDe(cls, p){
+  const se=p && p.saved;
+  if(se && typeof se.prochainCours==='string' && se.prochainCours.trim()) return se.prochainCours;
+  const d=_sdcDraft(cls, p.slotKey);
+  return (d && typeof d.prochain==='string') ? d.prochain : '';
+}
+/** Texte de départ de l'écran : la note n'entre que dans un cours dont le texte n'a
+ *  JAMAIS été saisi (une saisie vidée exprès reste vide). Pure. */
+function _sdcTexteAvecNote(texte0, draft, note){
+  if(String(texte0||'').trim() || !String(note||'').trim()) return texte0;
+  if(draft && typeof draft.saisie==='string') return texte0;
+  return String(note).trim();
 }
 function _sdcZoneRealise(parent, cls, cours, cur){
   const p=_sdcCoursPrecedent(cours, cur);
@@ -48237,6 +48260,24 @@ function openSaveSeance(){
   extra.appendChild(commWrap);
   extra._commTa=commTa;
 
+  // V11.4.33 — « Prochain cours » : intentions libres, recopiées telles quelles dans le
+  // texte du cours suivant de « Saisir mes cours » (où on les affine). Même modèle que le
+  // commentaire : brouillon (clé 'prochain') puis séance (prochainCours).
+  const prochWrap=document.createElement('div');
+  prochWrap.style.cssText='margin-bottom:10px';
+  const prochLbl=document.createElement('div');
+  prochLbl.style.cssText=commLbl.style.cssText;
+  prochLbl.textContent='➡️ Prochain cours';
+  const prochTa=document.createElement('textarea');
+  prochTa.rows=2;
+  prochTa.value=_draftOrSaved(_contentDraft.prochain, (existing && existing.prochainCours) || '').value;
+  prochTa.placeholder='Ce qu’on fera la prochaine fois (repris dans « Saisir mes cours »)…';
+  prochTa.style.cssText=commTa.style.cssText;
+  prochTa.addEventListener('input', ()=>_persistSeanceContentDraft(curCls, slotKey, 'prochain', prochTa.value));
+  prochWrap.appendChild(prochLbl); prochWrap.appendChild(prochTa);
+  extra.appendChild(prochWrap);
+  extra._prochTa=prochTa;
+
   // ── COURS1 : Liste tâches avec état coches VUE3 + Reporter / Annuler ──
   const tachesWrap=document.createElement('div');
   extra.appendChild(tachesWrap);
@@ -49904,6 +49945,7 @@ function openSaveSeance(){
       });
     }
     const seance={date:effectiveDateStr,debut,fin,slotKey,statuts,competences,observations,contenu,commentaire,seqId,seanId};
+    { const _proch=extra._prochTa?extra._prochTa.value.trim():''; if(_proch) seance.prochainCours=_proch; }   // V11.4.33
     if(_avtFige) seance.avtNiveaux=_avtFige;   // V11.3.74 — niveaux d'avertissement figés avec les statuts
     // V035-V11.3.35 (Q1) — Réalignement des identités AVANT d'écrire la séance et
     // AVANT l'auto-cochage : chaque TAF déjà enregistré retrouve sa coche et sa
