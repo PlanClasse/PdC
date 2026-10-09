@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.29';
+const APP_VERSION = 'v11.4.30';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -48352,8 +48352,11 @@ function openSaveSeance(){
     let layoutTasks=layoutSlot?layoutSlot.items.filter(it=>it.type==='task'&&it.seanId===(seanId||sean2?.id)):[];
     if(layoutTasks.length){
       layoutTasks.forEach(it=>{ items.push({key:'mo_'+it.taskIdx, icon:'⚙️', label:it.label+(it.doneBeforeSlot>0?' (suite)':''), checked:!!coches2['mo_'+it.taskIdx], source:'modeOp', duree:it.dureeSlot}); });
-    } else {
+    } else if(!_sdcEntreeComposee(entry4)){
       // fallback : toutes les tâches de la séance
+      // V11.4.30 — pas pour un cours composé : son texte fait foi. Des lignes toutes
+      // « ce cours seulement » sous « /Séance 2 » faisaient revenir les 6 tâches de
+      // la bibliothèque (signalé le 09/10, 3E1).
       const modeOp2=(sean2&&sean2.modeOp||[]).filter(x=>x&&x.trim());
       modeOp2.forEach((t,i)=>{ items.push({key:'mo_'+i, icon:'⚙️', label:t, checked:!!coches2['mo_'+i], source:'modeOp', duree:getMoDuree(sean2,i)}); });
     }
