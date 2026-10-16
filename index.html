@@ -4316,7 +4316,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.33';
+const APP_VERSION = 'v11.4.34';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -17347,12 +17347,64 @@ const _PAL_ACTIONS = [
    run:()=>{ _palDeep('donnees','psec-mode-demo'); }},
 ];
 
+// V11.4.34 — Écrans arrivés après la v11.2 et absents du lanceur prof (qui
+// reste tel quel : il dessine aussi les tuiles). Même forme que le lanceur.
+const _PAL_ECRANS_EXTRA = [
+  {ic:'🗓️', full:'Saisir mes cours · Composer les cours du niveau',
+   kw:'saisir saisie cours composer bibliothèque séance préparer contenu',
+   fn:()=>{ openSaisieCours(); }},
+  {ic:'📋', full:'Cahier de texte du jour · Tous les cours, prêts pour Pronote',
+   kw:'cahier texte cdt pronote journée jour copier',
+   fn:()=>{ openCahierTexte(toDateStr((typeof _appNow==='function')?_appNow():new Date())); }},
+  {ic:'📝', full:'Suivi › Observations · Par élève',
+   kw:'observations observation suivi élève notes remarques',
+   fn:()=>{ openSuivi(); showRupnTab('obs'); }},
+  {ic:'📋', full:'Suivi › Gestion des demandes · Réinitialisations d\'accès',
+   kw:'demandes réinitialisation réinit accès mot de passe rrupn',
+   fn:()=>{ openSuivi(); showRupnTab('demandes'); }},
+  {ic:'❓', full:'Aide · Questions fréquentes',
+   kw:'aide faq questions help comment',
+   fn:()=>{ openParams(); showParamsTab('aide'); }},
+  {ic:'ℹ️', full:'À propos · Version et nouveautés',
+   kw:'à propos version nouveautés licence diagnostic affichage',
+   fn:()=>{ showAboutModal(); }},
+];
+
+// V11.4.34 — Outils de cours : ils agissent SUR le plan ouvert, donc la palette
+// ne ferme rien avant de les lancer (garde:true). Grisés, avec la raison, quand
+// il n'y a pas de plan ou de cours ouvert.
+function _palPlanOuvert(){
+  const app=document.getElementById('app');
+  return !!(app && app.style.display==='flex' && typeof curCls!=='undefined' && curCls);
+}
+const _PAL_OUTILS_COURS = [
+  {id:'act-tirage', icon:'🎲', label:'Tirage au sort',
+   sub:'Parmi les élèves du plan ouvert (absents exclus pendant un cours)',
+   kw:'tirage sort hasard aléatoire choisir interroger interrogation cahier',
+   precond:()=>(_palPlanOuvert()?{ok:true}:{ok:false, why:'Ouvrez d\'abord un plan de classe'}),
+   run:()=>{ openTirageModal(); }},
+  {id:'act-minuteur', icon:'⏱', label:'Compte à rebours',
+   sub:'Décompte du temps, alertes sonores',
+   kw:'compte rebours minuteur timer chrono décompte temps alerte',
+   run:()=>{ openTimerModal(); }},
+  {id:'act-ecran', icon:'🖥️', label:'Écran classe',
+   sub:'Écrans projetés du cours ouvert (accueil, séance, fin, évaluation)',
+   kw:'écran classe projeter projection vidéoprojecteur accueil séance fin évaluation tbi',
+   precond:()=>((_palPlanOuvert() && typeof curSlotKey!=='undefined' && curSlotKey
+       && !(typeof curGrpInter!=='undefined' && curGrpInter && S.groupes && S.groupes[curGrpInter]))
+     ? {ok:true} : {ok:false, why:'Ouvrez d\'abord un cours (pas un groupe inter-classes)'}),
+   run:()=>{ openEcranAccueil(curCls, curSlotKey); }},
+];
+
 function _palIndex(){
   const out=[];
   // 1) Écrans — lanceur réutilisé tel quel (fn() incluses).
   (typeof _PROF_LAUNCHER_ITEMS!=='undefined'?_PROF_LAUNCHER_ITEMS:[]).forEach(l=>{
     const label=(l.tx==='Sett.')?'Paramètres · Hub d\'accueil':l.full;
     out.push({type:'screen', icon:l.ic, label:label, sub:'', kw:l.tx+' '+l.full, run:l.fn, tx:l.tx});
+  });
+  (typeof _PAL_ECRANS_EXTRA!=='undefined'?_PAL_ECRANS_EXTRA:[]).forEach(l=>{
+    out.push({type:'screen', icon:l.ic, label:l.full, sub:'', kw:l.kw||'', run:l.fn});
   });
   // 2) Sections Paramètres — index complet (v11.1.9), fil d'Ariane en sous-titre.
   (typeof _PARAMS_INDEX!=='undefined'?_PARAMS_INDEX:[]).forEach(it=>{
@@ -17361,10 +17413,12 @@ function _palIndex(){
       kw:(it.kw||'')+' '+(it.sub||''), tab:it.tab, anchor:it.anchor, direct:it.direct});
   });
   // 3) Actions ⚡ — préconditions évaluées à la construction : grisé + raison.
-  (typeof _PAL_ACTIONS!=='undefined'?_PAL_ACTIONS:[]).forEach(a=>{
+  const outils=(typeof _PAL_OUTILS_COURS!=='undefined')?_PAL_OUTILS_COURS:[];
+  (typeof _PAL_ACTIONS!=='undefined'?_PAL_ACTIONS:[]).concat(outils).forEach(a=>{
     const p=a.precond?a.precond():{ok:true};
     out.push({type:'action', id:a.id, icon:a.icon, label:a.label,
-      sub:p.ok?a.sub:(p.why||a.sub), kw:a.kw, run:a.run, off:!p.ok, why:p.why});
+      sub:p.ok?a.sub:(p.why||a.sub), kw:a.kw, run:a.run, off:!p.ok, why:p.why,
+      garde:outils.indexOf(a)>=0});
   });
   return out;
 }
@@ -17547,6 +17601,7 @@ function _palCloseSurfaces(){
 function _palGo(en){
   if(!en||en.off) return;
   _palClose();
+  if(en.garde){ if(typeof en.run==='function') en.run(); return; } // V11.4.34 — outil de cours : le plan reste ouvert
   _palCloseSurfaces();
   if(en.type==='param'){
     // Routage identique à la recherche des Paramètres (v11.1.8) :
@@ -47566,7 +47621,7 @@ function showAboutModal(){
      'Impression PDF, une classe par page. Dispositions réutilisables d’une classe à l’autre. Placement mixte en îlots. Le PAI n’apparaît plus dans les vues EBEP. Le nombre de présents s’affiche en bas.'],
     ['📚 Référentiels et disciplines', 'juillet 2026',
      'Votre discipline et son référentiel importé deviennent le socle de la progression. L’import des classes est plus tolérant.'],
-    ['⌨️ Prise en main', 'début 2026',
+    ['⌨️ Prise en main', 'octobre 2026',
      'Palette d’actions (Ctrl+K), démarrage guidé. Un clic à côté ferme les fenêtres ; ce qui supprime est en rouge.']
   ]));
 
