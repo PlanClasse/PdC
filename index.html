@@ -2820,10 +2820,25 @@ body:has(#sdc-bg) .mobile-menu-btn{display:none}
 .sdc-autre-l{display:flex;align-items:center;gap:4px;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--tx2)}
 .sdc-grp{font-size:11px;font-weight:800;color:#fff;background:#6B21A8;border-radius:10px;padding:2px 8px}
 .sdc-jumeau{align-self:flex-start;margin-bottom:6px;font-family:inherit;font-weight:700;color:#6B21A8;border-color:#C4B5FD;background:#F5F3FF}
-.sdc-reste{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0;font-size:12.5px}
-.sdc-reste-meta{font-size:11px;color:#92400E}
-.sdc-reste-b{font-size:11.5px;padding:4px 10px;margin-left:auto}
-.sdc-reste-i{font-size:11.5px;border:none;background:none;color:var(--tx3);text-decoration:underline;cursor:pointer;padding:4px 6px}
+.sdc-reste{display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:12.5px;border-top:1px solid var(--brd);background:var(--sur)}
+.sdc-reste .sdc-lbl{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sdc-reste-meta{font-size:11px;white-space:nowrap;border-radius:99px;padding:1px 8px;background:#FAEEDA;color:#633806}
+.sdc-reste-meta:empty{display:none}
+.sdc-reste-b,.sdc-reste-i{flex-shrink:0;width:28px;height:28px;min-height:0;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:14px;border:1px solid var(--brd);border-radius:6px;background:var(--sur);color:var(--tx2);cursor:pointer}
+.sdc-reste-b:hover{background:#E6F1FB;color:#0C447C}
+.sdc-reste-i:hover{background:#FCEBEB;color:#791F1F}
+/* V11.4.35 — zone « À reprendre » : un bloc par cours d'origine */
+.sdc-restes-h{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.sdc-restes-n{font-size:11px;color:var(--tx3)}
+.sdc-rg{border:1px solid var(--brd);border-radius:8px;overflow:hidden;margin-bottom:8px}
+.sdc-rg-h{display:flex;align-items:center;gap:8px;padding:5px 8px 5px 10px;font-size:12px;font-weight:700;color:#fff}
+.sdc-rg-h .sdc-rg-t{flex:1;min-width:0}
+.sdc-rg-tout{flex-shrink:0;font-size:11.5px;font-weight:700;padding:3px 10px;min-height:0;border-radius:6px;border:1px solid rgba(255,255,255,.7);background:rgba(255,255,255,.15);color:#fff;cursor:pointer}
+.sdc-rg-h .sdc-reste-i{background:transparent;border-color:rgba(255,255,255,.7);color:#fff}
+.sdc-rg-reste{border-color:#185FA5}.sdc-rg-reste .sdc-rg-h{background:#1D6FD8}
+.sdc-rg-annule{border-color:#A32D2D}.sdc-rg-annule .sdc-rg-h{background:#B91C1C}
+.sdc-rg-ancien{border-color:#888780}.sdc-rg-ancien .sdc-rg-h{background:#5F5E5A}
+.sdc-reprise-info{font-size:11.5px;color:#791F1F;background:#FCEBEB;border:1px solid #F09595;border-radius:6px;padding:5px 9px;margin:0 0 6px}
 .sdc-carte-tot{font-size:10px;font-weight:700;color:var(--tx3);margin-top:3px;text-align:right}
 .sdc-etat{flex:1;font-size:12px;color:var(--tx2)}
 .sdc-etat.sdc-ok{color:var(--acc);font-weight:700}
@@ -4316,7 +4331,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.34';
+const APP_VERSION = 'v11.4.35';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -31346,6 +31361,13 @@ function _sdcRendre(){
   const zAutres=_sdcEl('div','sdc-zautres'); colB.appendChild(zAutres);
   const zBib=_sdcEl('div','sdc-bibzone'); colB.appendChild(zBib);
   zBib.appendChild(_sdcEl('div','sdc-h','Bibliothèque'));
+  // V11.4.35 — cours qui avait été annulé, puis rétabli : son prévu a déjà été repris ailleurs.
+  try{
+    const ri=_sdcRepriseInfo(_sdcDraft(cls, slotKey));
+    if(ri){ const d=(sk)=>{ try{ return new Date(String(sk).slice(0,10)+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return ''; } };
+      const phr=('⚠ Ce cours avait été annulé : '+ri.n+' élément'+(ri.n>1?'s':'')+' de son contenu '+(ri.n>1?'ont':'a')+' déjà été repris'+(ri.vers?' dans le cours du '+d(ri.vers):'')+'.').replace(/\.\.$/,'.');
+      colG.appendChild(_sdcEl('div','sdc-reprise-info',phr)); }
+  }catch(e){}
   if(!lectureSeule) _sdcZoneRestes(colG, cls, slotKey, prog, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
 
   // ── Bibliothèque : choisir une séance, en prendre tout ou partie
@@ -31877,38 +31899,134 @@ function _sdcRetirerReportHerite(cls, slotKey, fiId){
   saveS();
 }
 
-/** La zone, construite dans l'écran. `ajouter(ligneOuFn)` modifie le texte. */
+/* ── V11.4.35 — « Cours précédent annulé » (demande du 16/10, cadrage du 18/10) ──
+   Un cours annulé garde son brouillon (texte de « Saisir mes cours »), invisible :
+   les vues écartent les cours annulés. Ses lignes sont PROPOSÉES aux cours suivants
+   de la classe, comme les restes (proposé, jamais imposé). On COPIE (arbitrage du
+   18/10) : le brouillon d'origine reste intact, et le choix de chaque ligne est noté
+   sur lui (dd.annuleRepris[idx | idx@gid] = {etat, vers, at}) — si l'annulation est
+   levée, le cours retrouve son texte et l'écran dit qu'il a déjà été repris.
+   Un cours annulé mais ENREGISTRÉ n'est pas proposé : la séance fait foi. */
+
+/** Les cours annulés dont le prévu est à reprendre avant `avantSlotKey`. Pure.
+ *  cours : [{slotKey, dateStr, annule, saved}] ; texteDe(sk) : texte du brouillon ;
+ *  choixDe(sk) : dd.annuleRepris ; estFait(c) : séance renseignée ; grpDe : comme _sdcRestes. */
+function _sdcAnnulesAReprendre(cours, texteDe, choixDe, estFait, bascule, avantSlotKey, grpDe){
+  const out=[];
+  const gOf=(sk)=>{ try{ return (typeof grpDe==='function' && grpDe(sk)) || ''; }catch(e){ return ''; } };
+  const gCible=gOf(avantSlotKey);
+  (Array.isArray(cours)?cours:[]).forEach(c=>{
+    if(!c || !c.annule || !c.slotKey) return;
+    if(bascule && String(c.slotKey).slice(0,10)<bascule) return;
+    if(avantSlotKey && !(String(c.slotKey)<String(avantSlotKey))) return;
+    if(typeof estFait==='function' && estFait(c)) return;
+    const gSrc=gOf(c.slotKey);
+    if(gSrc && gCible && gSrc!==gCible) return;
+    const parGroupe = !gSrc && !!gCible;
+    const choix=(typeof choixDe==='function' && choixDe(c.slotKey)) || {};
+    const lignes=[];
+    _sdcLignesPrenables((typeof texteDe==='function' && texteDe(c.slotKey)) || '').forEach((p,i)=>{
+      const cle = parGroupe ? i+'@'+gCible : String(i);
+      if(choix[String(i)] || choix[cle]) return;
+      lignes.push(Object.assign({}, p, {idx:i, cle, srcSlot:c.slotKey}));
+    });
+    if(lignes.length) out.push({srcSlot:c.slotKey, dateStr:c.dateStr||String(c.slotKey).slice(0,10), lignes});
+  });
+  out.sort((a,b)=>String(b.srcSlot).localeCompare(String(a.srcSlot)));
+  return out;
+}
+/** Libellé et pastille d'une ligne de cours annulé. Pure. */
+function _sdcLigneAnnuleAffichee(p){
+  const brut=String((p&&p.ligne)||'').trim();
+  const t=(p&&p.type)||'';
+  const prefixe={doc:'Doc', taf:'TAF', res:'Ressource', eval:'Évaluation'}[t];
+  if(prefixe) return {label: brut.replace(/^\/\S+\s*/,'').trim() || brut, pastille: prefixe};
+  const d=(typeof _srParseDur==='function') ? _srParseDur(brut) : {label:brut, duree:0};
+  return {label: d.label, pastille: d.duree>0 ? d.duree+' min' : ''};
+}
+/** Ce que le brouillon d'un cours dit de sa reprise (annulation levée ensuite). Pure. */
+function _sdcRepriseInfo(draft){
+  const R=(draft && draft.annuleRepris) || {};
+  const repris=Object.values(R).filter(x=>x && x.etat==='repris');
+  if(!repris.length) return null;
+  const vers=repris.map(x=>x.vers||'').filter(Boolean).sort();
+  return {n:repris.length, vers:vers[0]||'', dernier:vers[vers.length-1]||''};
+}
+/** Note le choix (repris / ignoré) d'une ligne SUR le brouillon du cours annulé. */
+function _sdcMarquerAnnule(cls, srcSlot, cle, etat, versSlotKey){
+  const dd=_sdcDraft(cls, srcSlot);
+  if(!dd) return false;
+  if(!dd.annuleRepris) dd.annuleRepris={};
+  if(etat) dd.annuleRepris[cle]={etat, vers:versSlotKey||'', at:Date.now()};
+  else delete dd.annuleRepris[cle];
+  saveS();
+  return true;
+}
+
+/** La zone, construite dans l'écran. `ajouter(ligneOuFn)` modifie le texte.
+ *  V11.4.35 — maquette A (18/10) : un bloc par cours d'origine, du plus récent au
+ *  plus ancien ; cours annulés en tête (rouge), non terminés en bleu vif ; ↩ insère
+ *  une ligne, ✕ l'ignore ; « Tout insérer / Tout reprendre » et ✕ par bloc. */
 function _sdcZoneRestes(parent, cls, slotKey, prog, lectureSeule, ajouter){
   const zone=_sdcEl('div','sdc-restes'); parent.appendChild(zone);
   const restes=_sdcRestes(_sdcSeancesEnregistrees(cls), prog, S.planningBascule, slotKey, _sdcGrpResolveur(cls));
+  const annules=_sdcAnnulesAReprendre(_sdcCoursDeClasse(cls), (sk)=>_sdcTexteInitial(cls, sk),
+    (sk)=>(_sdcDraft(cls, sk)||{}).annuleRepris,
+    (c)=>(typeof _seanceRenseignee==='function') ? _seanceRenseignee(c.saved) : !!c.saved,
+    S.planningBascule, slotKey, _sdcGrpResolveur(cls));
   const herites=_sdcReportsHerites(cls, slotKey);
   let nTaf=0;
   try{ nTaf=(typeof getTafVerifsForTargetSlot==='function') ? (getTafVerifsForTargetSlot(slotKey, cls)||[]).length : 0; }catch(e){}
-  if(!restes.length && !herites.length && !nTaf){ zone.remove(); return; }
-  zone.appendChild(_sdcEl('div','sdc-h','Reste des cours précédents'));
-  const dateCourte=(sk)=>{ try{ return new Date(sk.slice(0,10)+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return sk.slice(0,10); } };
-  const ligne=(texte, meta, onPrendre, onIgnorer)=>{
-    const row=_sdcEl('div','sdc-reste');
-    row.appendChild(_sdcEl('span','sdc-lbl',texte));
-    row.appendChild(_sdcEl('span','sdc-reste-meta',meta));
-    const bP=_sdcEl('button','bs sdc-reste-b','Reprendre'); bP.disabled=lectureSeule; bP.onclick=onPrendre;
-    const bI=_sdcEl('button','sdc-reste-i','Ignorer'); bI.disabled=lectureSeule; bI.onclick=onIgnorer;
-    row.appendChild(bP); row.appendChild(bI);
-    zone.appendChild(row);
+  if(!restes.length && !annules.length && !herites.length && !nTaf){ zone.remove(); return; }
+  const nTot=restes.length+herites.length+annules.reduce((a,g)=>a+g.lignes.length,0);
+  const hd=_sdcEl('div','sdc-restes-h'); zone.appendChild(hd);
+  hd.appendChild(_sdcEl('div','sdc-h','À reprendre'));
+  if(nTot) hd.appendChild(_sdcEl('span','sdc-restes-n', nTot+' élément'+(nTot>1?'s':'')));
+  const dateCourte=(sk)=>{ try{ return new Date(String(sk).slice(0,10)+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return String(sk).slice(0,10); } };
+  const bouton=(cl, txt, titre, onclick)=>{ const b=_sdcEl('button', cl, txt); b.type='button'; b.title=titre; b.setAttribute('aria-label', titre); b.disabled=lectureSeule; b.onclick=onclick; return b; };
+  const bloc=(type, titre, libTout, onTout, onToutIgnorer)=>{
+    const g=_sdcEl('div','sdc-rg sdc-rg-'+type); zone.appendChild(g);
+    const h=_sdcEl('div','sdc-rg-h'); g.appendChild(h);
+    h.appendChild(_sdcEl('span','sdc-rg-t',titre));
+    h.appendChild(bouton('sdc-rg-tout', libTout, libTout, onTout));
+    h.appendChild(bouton('sdc-reste-i', '✕', 'Ignorer tout ce bloc', onToutIgnorer));
+    return g;
   };
-  restes.forEach(p=>{
-    const meta=(p.etat==='partielle'?'partielle':'reportée')+' · '+dateCourte(p.srcSlot)
-      +(p.duree?' · '+(p.etat==='partielle'?'reste ':'')+p.duree+' min':'')+(p.ref?' · bibliothèque':'');
-    ligne('↩ '+p.label, meta,
-      ()=>{ ajouter(t=>_sdcReprendreDansTexte(t, p, prog)); _sdcMarquerReste(cls, p, 'repris', slotKey); _sdcRendre(); },
-      ()=>{ _sdcMarquerReste(cls, p, 'ignore', slotKey); _sdcRendre(); });
+  const ligne=(g, texte, meta, onPrendre, onIgnorer)=>{
+    const row=_sdcEl('div','sdc-reste'); g.appendChild(row);
+    const lb=_sdcEl('span','sdc-lbl',texte); lb.title=texte; row.appendChild(lb);
+    row.appendChild(_sdcEl('span','sdc-reste-meta',meta||''));
+    row.appendChild(bouton('sdc-reste-b','↩','Reprendre',onPrendre));
+    row.appendChild(bouton('sdc-reste-i','✕','Ignorer',onIgnorer));
+  };
+  // 1. Cours annulés (les plus récents d'abord) — on COPIE, le brouillon d'origine reste.
+  annules.forEach(gr=>{
+    const inserer=(L)=>{ ajouter(t=>L.reduce((acc,p)=>_sdcPrendreLigne(acc,p), t)); L.forEach(p=>_sdcMarquerAnnule(cls, gr.srcSlot, p.cle, 'repris', slotKey)); _sdcRendre(); };
+    const ignorer=(L)=>{ L.forEach(p=>_sdcMarquerAnnule(cls, gr.srcSlot, p.cle, 'ignore', slotKey)); _sdcRendre(); };
+    const g=bloc('annule', '🚫 Cours annulé · '+dateCourte(gr.srcSlot), 'Tout insérer', ()=>inserer(gr.lignes), ()=>ignorer(gr.lignes));
+    gr.lignes.forEach(p=>{ const a=_sdcLigneAnnuleAffichee(p); ligne(g, a.label, a.pastille, ()=>inserer([p]), ()=>ignorer([p])); });
   });
-  herites.forEach(fi=>{
-    const p={label:fi.label||'', duree:fi.duree||0, ref:null};
-    ligne('↩ '+p.label, 'report de l’ancien planning'+(p.duree?' · '+p.duree+' min':''),
-      ()=>{ ajouter(t=>_sdcReprendreDansTexte(t, p, prog)); _sdcRetirerReportHerite(cls, slotKey, fi.id); _sdcRendre(); },
-      ()=>{ _sdcRetirerReportHerite(cls, slotKey, fi.id); _sdcRendre(); });
+  // 2. Non terminé, regroupé par cours d'origine (les plus récents d'abord).
+  const parSrc={};
+  restes.forEach(p=>{ (parSrc[p.srcSlot]=parSrc[p.srcSlot]||[]).push(p); });
+  Object.keys(parSrc).sort().reverse().forEach(src=>{
+    const L=parSrc[src];
+    const reprendre=(X)=>{ ajouter(t=>X.reduce((acc,p)=>_sdcReprendreDansTexte(acc, p, prog), t)); X.forEach(p=>_sdcMarquerReste(cls, p, 'repris', slotKey)); _sdcRendre(); };
+    const ignorer=(X)=>{ X.forEach(p=>_sdcMarquerReste(cls, p, 'ignore', slotKey)); _sdcRendre(); };
+    const g=bloc('reste', '⏸ Non terminé · '+dateCourte(src), 'Tout reprendre', ()=>reprendre(L), ()=>ignorer(L));
+    L.forEach(p=>{
+      const meta=(p.etat==='partielle'?'partielle':'reportée')+(p.duree?' · '+(p.etat==='partielle'?'reste ':'')+p.duree+' min':'');
+      ligne(g, p.label, meta, ()=>reprendre([p]), ()=>ignorer([p]));
+    });
   });
+  // 3. Reports hérités de l'ancien planning.
+  if(herites.length){
+    const P=(fi)=>({label:fi.label||'', duree:fi.duree||0, ref:null});
+    const reprendre=(X)=>{ ajouter(t=>X.reduce((acc,fi)=>_sdcReprendreDansTexte(acc, P(fi), prog), t)); X.forEach(fi=>_sdcRetirerReportHerite(cls, slotKey, fi.id)); _sdcRendre(); };
+    const ignorer=(X)=>{ X.forEach(fi=>_sdcRetirerReportHerite(cls, slotKey, fi.id)); _sdcRendre(); };
+    const g=bloc('ancien', '↪ Report de l’ancien planning', 'Tout reprendre', ()=>reprendre(herites), ()=>ignorer(herites));
+    herites.forEach(fi=>ligne(g, fi.label||'', fi.duree?fi.duree+' min':'', ()=>reprendre([fi]), ()=>ignorer([fi])));
+  }
   if(nTaf) zone.appendChild(_sdcEl('div','sdc-pref-n','📌 '+nTaf+' TAF à vérifier pendant ce cours — proposé'+(nTaf>1?'s':'')+' d’office dans le modal Séance.'));
 }
 
@@ -59072,7 +59190,8 @@ function openAnnuelleCardMenu(e, slot, cc, isCancelled, seqObj, seanObj){
           return w;
         };
 
-        document.getElementById('mt').textContent='↔ Confirmer le décalage du planning';
+        const _sansDecalage=!!S.planningBascule;   // V11.4.35
+        document.getElementById('mt').textContent=_sansDecalage?'✕ Annuler ce cours ?':'↔ Confirmer le décalage du planning';
         document.getElementById('mb').textContent='';
         document.getElementById('mok').style.display='none';
         const extra=document.getElementById('modal-extra'); extra.innerHTML='';
@@ -59080,10 +59199,13 @@ function openAnnuelleCardMenu(e, slot, cc, isCancelled, seqObj, seanObj){
         // Intro
         const intro=document.createElement('div');
         intro.style.cssText='font-size:11px;color:var(--tx2);margin-bottom:10px;line-height:1.5;background:var(--sur2);padding:7px 10px;border-radius:var(--r1);border:1px solid var(--brd)';
-        intro.innerHTML='Le cours du <b>'+fmtDate(slot.slotKey)+'</b> sera annulé.<br>Les affectations suivantes seront décalées d\'un cours.';
+        intro.innerHTML='Le cours du <b>'+fmtDate(slot.slotKey)+'</b> sera annulé.<br>'+(_sansDecalage
+          ? 'Son contenu sera proposé au cours suivant, dans « Saisir mes cours ».'
+          : 'Les affectations suivantes seront décalées d\'un cours.');
         extra.appendChild(intro);
 
-        if(!preview.slots.length){
+        if(_sansDecalage){ /* V11.4.35 — rien à décaler */ }
+        else if(!preview.slots.length){
           const nm=document.createElement('div'); nm.style.cssText='font-size:12px;color:var(--tx3);text-align:center;padding:12px'; nm.textContent='Aucun cours suivant à décaler.'; extra.appendChild(nm);
         } else {
           // En-têtes colonnes
@@ -59298,20 +59420,24 @@ function openAnnuelleCardMenu(e, slot, cc, isCancelled, seqObj, seanObj){
         btnConfirm.onclick=()=>{ closeModal(); doCancelAndCascade(tvChoices); };
         const btnNoShift2=document.createElement('button'); btnNoShift2.className='bs';
         btnNoShift2.style.cssText='width:100%;font-size:12px;padding:6px 14px;background:var(--sur2);color:var(--tx);border:1px solid var(--brd)';
-        btnNoShift2.textContent='Annuler sans décaler le planning';
+        btnNoShift2.textContent=_sansDecalage?'✕ Confirmer l\'annulation':'Annuler sans décaler le planning';
         btnNoShift2.onclick=()=>{ closeModal(); doCancel(tvChoices); };
         const btnAbort2=document.createElement('button'); btnAbort2.className='bs';
         btnAbort2.style.cssText='width:100%;font-size:12px;padding:6px 14px;background:var(--sur);color:var(--tx3);border:1px solid var(--brd)';
         btnAbort2.textContent='← Ne pas annuler ce cours';
         btnAbort2.onclick=()=>closeModal();
-        btnRow.appendChild(btnConfirm); btnRow.appendChild(btnNoShift2); btnRow.appendChild(btnAbort2);
+        if(!_sansDecalage) btnRow.appendChild(btnConfirm);
+        btnRow.appendChild(btnNoShift2); btnRow.appendChild(btnAbort2);
         extra.appendChild(btnRow);
         document.getElementById('mbg').classList.add('open');
       };
-      if(hasAffectations || hasTvImpact){
+      // V11.4.35 — Mode « Saisir mes cours » : le planning n'est qu'une visualisation, on
+      // ne décale plus rien (le prévu du cours annulé est proposé au cours suivant).
+      const _sansDecalage=!!S.planningBascule;
+      if((hasAffectations && !_sansDecalage) || hasTvImpact){
         // §5.12 (S19) — Si tafVerifs impactés OU affectations à décaler, on ouvre le preview/popup unifié.
         // Sans affectations mais avec tafVerifs : on saute le pré-modal et on va direct au popup unifié.
-        if(!hasAffectations){
+        if(!hasAffectations || _sansDecalage){
           openCascadePreviewModal();
           return;
         }
