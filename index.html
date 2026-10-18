@@ -1296,6 +1296,9 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .vd-ctx-dur{font-size:10px;color:var(--tx3);flex-shrink:0;white-space:nowrap;margin-left:3px}
 .vd-ctx-recorded{font-size:10px;font-weight:600;color:#16a34a;margin-bottom:3px}
 .vd-ctx-empty{font-size:10px;color:var(--tx3);font-style:italic;padding:2px 0}
+.vd-ctx-annule-tag{font-size:9px;font-weight:800;color:#fff;background:#B91C1C;border-radius:3px;padding:1px 6px;flex-shrink:0}
+.vd-ctx-annule .vd-ctx-slot-ref,.vd-ctx-annule .vd-ctx-lbl,.vd-ctx-annule .vd-ctx-seq-hdr{text-decoration:line-through;color:var(--tx3)}
+.vd-ctx-annule .vd-ctx-dur,.vd-ctx-annule .vd-ctx-ico{color:var(--tx3)}
 .body{position:relative}
 .sb-h{padding:.5rem .6rem;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between;gap:4px}
 .sb-toggle{display:flex;border:1px solid var(--brd);border-radius:var(--r1);overflow:hidden;flex:1}
@@ -4331,7 +4334,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.35';
+const APP_VERSION = 'v11.4.36';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -42575,6 +42578,21 @@ function triggerLayoutRecalc(clsCode, fromSlotKey, grpId) {
 }
 
 /* ── VOLET-DROIT2 : Contexte pédagogique N-1/N/N+1/N+2 ── */
+/** V11.4.36 — Cours précédents à afficher : le N-1, puis, tant qu'il est annulé, le
+ *  précédent, etc., jusqu'au premier cours qui a eu lieu (inclus). `max` borne la
+ *  chaîne (sécurité). Pure : estAnnule(sk) et precedent(sk) sont fournis. */
+function _vdChainePrecedents(premier, estAnnule, precedent, max){
+  const out=[]; const vus=new Set();
+  let sk=premier;
+  while(sk && !vus.has(sk) && out.length<(max||8)){
+    vus.add(sk);
+    const a=!!estAnnule(sk);
+    out.push({slotKey:sk, annule:a});
+    if(!a) break;
+    sk=precedent(sk);
+  }
+  return out;
+}
 function renderVdContexte(inner, slotKey, clsCode){
   const lv=clsCode.replace(/\d+$/,'')||'5e';
   const prog=getProgression(lv)||[];
@@ -42655,11 +42673,49 @@ function renderVdContexte(inner, slotKey, clsCode){
 
   const scroll=document.createElement('div'); scroll.className='vd-scroll';
 
-  // ── N-1 ──
-  const s1=document.createElement('div'); s1.className='vd-ctx-slot';
-  if(prevSlotKey){
+  // ── N-1 (puis N-2, N-3… tant que le précédent est ANNULÉ) ──
+  // V11.4.36 — getPrevSlotKey ne saute pas les cours annulés (voulu pour ses autres
+  // appelants). Ici, un cours annulé est affiché comme tel, avec son prévu barré, et
+  // on remonte au cours d'avant, jusqu'au premier cours qui a bien eu lieu.
+  const _estAnnule=(sk)=>{ try{ const pp=String(sk).split('_'); return !!(typeof isSlotCancelled==='function' && isSlotCancelled(pp[0], pp[1]||'', clsCode)); }catch(e){ return false; } };
+  const chaine=_vdChainePrecedents(prevSlotKey, _estAnnule, (sk)=>getPrevSlotKey(clsCode, sk, _grpCtx), 8);
+  if(!chaine.length){
+    const s1=document.createElement('div'); s1.className='vd-ctx-slot';
+    s1.appendChild(mkSlotHdr('N-1','#1D4ED8','#DBEAFE',null,'Aucun cours précédent'));
+    const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Pas de cours précédent'; s1.appendChild(e);
+    scroll.appendChild(s1);
+  }
+  chaine.forEach((m, rang)=>{
+    const prevSlotKey=m.slotKey;
+    const s1=document.createElement('div'); s1.className='vd-ctx-slot'+(m.annule?' vd-ctx-annule':'');
     const pe=getMapEntry(prevSlotKey+'|'+clsCode); const ps=pe.seances[0];
-    s1.appendChild(mkSlotHdr('N-1','#1D4ED8','#DBEAFE',prevSlotKey,ps?seqRef(ps.seqId,ps.seanId):'—'));
+    const hdr=mkSlotHdr('N-'+(rang+1),'#1D4ED8','#DBEAFE',prevSlotKey,ps?seqRef(ps.seqId,ps.seanId):'—');
+    if(m.annule){ const t=document.createElement('span'); t.className='vd-ctx-annule-tag'; t.textContent='🚫 Annulé'; hdr.insertBefore(t, hdr.children[1]||null); }
+    s1.appendChild(hdr);
+    if(m.annule){
+      const pl=getSlotLayout(clsCode, prevSlotKey);
+      let lignesBrouillon=[];
+      try{ if(typeof _sdcLignesPrenables==='function' && typeof _sdcTexteInitial==='function')
+        lignesBrouillon=_sdcLignesPrenables(_sdcTexteInitial(_sdcClsCanon(clsCode), prevSlotKey)); }catch(e){}
+      if(pl && (pl.items||[]).length) renderItems(pl.items, s1, null);
+      else if(lignesBrouillon.length){
+        // Prévu tapé dans « Saisir mes cours » mais pas (ou plus) visible dans le planning.
+        lignesBrouillon.forEach(p=>{
+          const row=document.createElement('div'); row.className='vd-ctx-item';
+          const ico=document.createElement('span'); ico.className='vd-ctx-ico'; ico.textContent='▪';
+          const lbl=document.createElement('span'); lbl.className='vd-ctx-lbl'; lbl.textContent=p.ligne; lbl.title=p.ligne;
+          row.appendChild(ico); row.appendChild(lbl); s1.appendChild(row);
+        });
+      }
+      else { const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Rien de prévu'; s1.appendChild(e); }
+      if((pl && (pl.items||[]).length) || lignesBrouillon.length){
+        const note=document.createElement('div'); note.className='vd-ctx-empty';
+        note.textContent='Prévu non fait — proposé dans « À reprendre » (Saisir mes cours).';
+        s1.appendChild(note);
+      }
+      scroll.appendChild(s1);
+      return;
+    }
     // Phase 2d v32 — Option A : grp du prev-slot, pas du curSlot.
     const _grpPrvR=(typeof getCurrentGrpId==='function')?getCurrentGrpId(clsCode, prevSlotKey):'';
     const recorded=readSeancesBucket(clsCode, _grpPrvR).find(s=>s.slotKey===prevSlotKey);
@@ -42676,11 +42732,8 @@ function renderVdContexte(inner, slotKey, clsCode){
       c.textContent='💬 '+recorded.commentaire.slice(0,70)+(recorded.commentaire.length>70?'…':'');
       s1.appendChild(c);
     }
-  } else {
-    s1.appendChild(mkSlotHdr('N-1','#1D4ED8','#DBEAFE',null,'Aucun cours précédent'));
-    const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Pas de cours précédent'; s1.appendChild(e);
-  }
-  scroll.appendChild(s1);
+    scroll.appendChild(s1);
+  });
 
   // ── N ──
   const s2=document.createElement('div'); s2.className='vd-ctx-slot';
