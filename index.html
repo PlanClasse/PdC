@@ -1284,10 +1284,11 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .vd-tab-btn.act{color:var(--acc);border-bottom-color:var(--acc);background:var(--sur)}
 /* Contexte pédagogique N-1/N/N+1/N+2 */
 .vd-ctx-slot{margin-bottom:10px}
-.vd-ctx-slot-hdr{display:flex;align-items:center;gap:5px;padding:3px 0 4px;border-bottom:1px solid var(--brd);margin-bottom:4px}
-.vd-ctx-slot-badge{font-size:9px;font-weight:800;padding:1px 6px;border-radius:3px;flex-shrink:0;letter-spacing:.03em}
-.vd-ctx-slot-ref{font-size:10px;font-weight:700;color:var(--acc);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.vd-ctx-slot-date{font-size:9px;color:var(--tx3);white-space:nowrap;flex-shrink:0}
+/* V11.4.37 — maquette A (18/10) : bande de couleur pleine, texte blanc */
+.vd-ctx-slot-hdr{display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:5px;margin-bottom:4px;color:#fff}
+.vd-ctx-slot-badge{font-size:11px;font-weight:800;flex-shrink:0;letter-spacing:.02em;color:#fff}
+.vd-ctx-slot-ref{font-size:11px;font-weight:700;color:#fff;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vd-ctx-slot-date{font-size:10px;color:#fff;opacity:.9;white-space:nowrap;flex-shrink:0}
 .vd-ctx-seq-hdr{font-size:10px;font-weight:700;color:var(--acc);padding:3px 0 1px;margin-top:3px}
 .vd-ctx-item{display:flex;align-items:baseline;gap:4px;font-size:11px;color:var(--tx2);padding:1px 0;min-height:17px}
 .vd-ctx-item.done .vd-ctx-lbl{text-decoration:line-through;color:var(--tx3)}
@@ -1296,8 +1297,8 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .vd-ctx-dur{font-size:10px;color:var(--tx3);flex-shrink:0;white-space:nowrap;margin-left:3px}
 .vd-ctx-recorded{font-size:10px;font-weight:600;color:#16a34a;margin-bottom:3px}
 .vd-ctx-empty{font-size:10px;color:var(--tx3);font-style:italic;padding:2px 0}
-.vd-ctx-annule-tag{font-size:9px;font-weight:800;color:#fff;background:#B91C1C;border-radius:3px;padding:1px 6px;flex-shrink:0}
-.vd-ctx-annule .vd-ctx-slot-ref,.vd-ctx-annule .vd-ctx-lbl,.vd-ctx-annule .vd-ctx-seq-hdr{text-decoration:line-through;color:var(--tx3)}
+.vd-ctx-annule-tag{font-size:9px;font-weight:800;color:#A32D2D;background:#fff;border-radius:3px;padding:1px 6px;flex-shrink:0}
+.vd-ctx-annule .vd-ctx-lbl,.vd-ctx-annule .vd-ctx-seq-hdr{text-decoration:line-through;color:var(--tx3)}
 .vd-ctx-annule .vd-ctx-dur,.vd-ctx-annule .vd-ctx-ico{color:var(--tx3)}
 .body{position:relative}
 .sb-h{padding:.5rem .6rem;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between;gap:4px}
@@ -4334,7 +4335,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.36';
+const APP_VERSION = 'v11.4.37';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -42616,8 +42617,8 @@ function renderVdContexte(inner, slotKey, clsCode){
 
   const mkSlotHdr=(label, color, bg, sk2, ref)=>{
     const hdr=document.createElement('div'); hdr.className='vd-ctx-slot-hdr';
-    const badge=document.createElement('span'); badge.className='vd-ctx-slot-badge';
-    badge.style.cssText=`background:${bg};color:${color}`; badge.textContent=label;
+    hdr.style.background=color;   // V11.4.37 — bande pleine (bg n'est plus utilisé)
+    const badge=document.createElement('span'); badge.className='vd-ctx-slot-badge'; badge.textContent=label;
     const refEl=document.createElement('span'); refEl.className='vd-ctx-slot-ref'; refEl.textContent=ref||'—';
     const dateEl=document.createElement('span'); dateEl.className='vd-ctx-slot-date'; dateEl.textContent=sk2?fmtDate(sk2):'';
     hdr.appendChild(badge); hdr.appendChild(refEl); hdr.appendChild(dateEl); return hdr;
@@ -42681,16 +42682,19 @@ function renderVdContexte(inner, slotKey, clsCode){
   const chaine=_vdChainePrecedents(prevSlotKey, _estAnnule, (sk)=>getPrevSlotKey(clsCode, sk, _grpCtx), 8);
   if(!chaine.length){
     const s1=document.createElement('div'); s1.className='vd-ctx-slot';
-    s1.appendChild(mkSlotHdr('N-1','#1D4ED8','#DBEAFE',null,'Aucun cours précédent'));
+    s1.appendChild(mkSlotHdr('N-1','#185FA5','#DBEAFE',null,'Aucun cours précédent'));
     const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Pas de cours précédent'; s1.appendChild(e);
     scroll.appendChild(s1);
   }
-  chaine.forEach((m, rang)=>{
+  // V11.4.37 — ordre CHRONOLOGIQUE : le plus ancien en haut (N-3, N-2, N-1, puis N).
+  chaine.slice().reverse().forEach((m)=>{
+    const rang=chaine.indexOf(m);
     const prevSlotKey=m.slotKey;
     const s1=document.createElement('div'); s1.className='vd-ctx-slot'+(m.annule?' vd-ctx-annule':'');
     const pe=getMapEntry(prevSlotKey+'|'+clsCode); const ps=pe.seances[0];
-    const hdr=mkSlotHdr('N-'+(rang+1),'#1D4ED8','#DBEAFE',prevSlotKey,ps?seqRef(ps.seqId,ps.seanId):'—');
-    if(m.annule){ const t=document.createElement('span'); t.className='vd-ctx-annule-tag'; t.textContent='🚫 Annulé'; hdr.insertBefore(t, hdr.children[1]||null); }
+    const hdr=mkSlotHdr('N-'+(rang+1),'#185FA5','#DBEAFE',prevSlotKey,ps?seqRef(ps.seqId,ps.seanId):'—');
+    if(m.annule){ hdr.style.background='#B91C1C';
+      const t=document.createElement('span'); t.className='vd-ctx-annule-tag'; t.textContent='🚫 Annulé'; hdr.insertBefore(t, hdr.children[2]||null); }
     s1.appendChild(hdr);
     if(m.annule){
       const pl=getSlotLayout(clsCode, prevSlotKey);
