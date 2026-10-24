@@ -2722,6 +2722,105 @@ body.is-touch .v169-source{
    (invariants de balises inchangés). */
 .cdt-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;z-index:600;padding:34px 14px;overflow-y:auto;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
 .cdt-bg.open{display:flex}
+/* V11.4.38 — Gestion des impressions (tuile bleue, écran plein, createElement) */
+.htile-imp{background:#1D4ED8;border-color:#1D4ED8;color:#fff;position:relative}
+.htile-imp:hover{background:#1E40AF;border-color:#1E40AF}
+.htile-imp .htile-t{color:#fff}
+.htile-imp .htile-s{color:rgba(255,255,255,.82)}
+.imp-tile-pas{position:absolute;top:6px;right:8px;min-width:20px;padding:1px 7px;border-radius:999px;background:#fff;color:#B91C1C;font-size:12px;font-weight:800;text-align:center}
+.imp-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:450;display:flex;justify-content:center;align-items:stretch;padding:max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px))}
+body:has(#imp-bg) .mobile-menu-btn{display:none}
+body:has(#imp-bg) #font-ctrl{display:none}
+.imp-pan{background:var(--sur);border-radius:var(--r3);box-shadow:var(--sh2);width:min(1440px,100%);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.imp-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--brd);background:var(--sur2)}
+.imp-titre{font-weight:800;font-size:15px;color:#1D4ED8;margin-right:4px}
+.imp-head-z{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1 1 auto;min-width:0}
+.imp-fermer{margin-left:auto;padding:.45rem 1rem}
+.imp-seg{display:inline-flex;border:1px solid var(--brd);border-radius:var(--r2);overflow:hidden;flex:none}
+.imp-seg-b{border:0;border-left:1px solid var(--brd);background:var(--sur);color:var(--tx);font-size:13px;padding:7px 12px;cursor:pointer;min-height:34px;font-family:inherit}
+.imp-seg-b:first-child{border-left:0}
+.imp-seg-b.on{background:#1D4ED8;color:#fff;font-weight:700}
+.imp-alerte{padding:4px 10px;border-radius:999px;background:#FDE2E0;color:#8E1B1B;font-size:12px;font-weight:800}
+.imp-corps{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.imp-vide{padding:14px;color:var(--tx3);font-size:13px;font-style:italic}
+.imp-g,.imp-g-ent{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) 82px 78px 150px 104px;gap:12px;align-items:center}
+.imp-g-ent{padding:0 14px;font-size:11px;font-weight:700;color:var(--tx3)}
+.imp-bloc{background:var(--sur);border:1px solid var(--brd);border-radius:12px;overflow:hidden}
+.imp-bloc-h{padding:8px 14px;background:var(--acc-l);font-size:13px;font-weight:800}
+.imp-bloc-s{font-weight:400;color:var(--tx2)}
+.imp-ligne{padding:10px 14px;border-top:1px solid var(--brd)}
+.imp-doc{font-size:14px;font-weight:600;color:var(--tx)}
+.imp-doc-s{font-size:12px;color:var(--tx2);margin-top:1px}
+.imp-ebep{color:#6B3FA0;font-weight:600}
+.imp-chips{display:flex;flex-wrap:wrap;gap:6px}
+.imp-chip{padding:3px 8px;border-radius:6px;font-size:12px;font-weight:600}
+.imp-hors{background:transparent;border:1px dashed #9FB09A;color:var(--tx2);font-weight:400}
+.imp-chip-r{background:#FDE2E0;color:#8E1B1B}
+.imp-chip-a{background:#FEF1C7;color:#7A4300}
+.imp-n{font-size:15px;font-weight:700}
+.imp-muet{color:var(--tx3);font-weight:400;font-size:13px}
+.imp-puce{padding:6px 8px;border-radius:8px;font-size:13px;font-weight:800;text-align:center}
+.imp-puce-s{font-size:11px;font-weight:600}
+.imp-rouge{background:#FDE2E0;color:#8E1B1B}
+.imp-ambre{background:#FEF1C7;color:#7A4300}
+.imp-vert{background:#E3F1E3;color:#1E5B1E}
+.imp-neutre{background:#F0F2EE;color:#4F5E4F}
+.imp-plus{padding:6px 8px;font-size:13px;min-height:34px}
+.imp-plus-fort{border-color:#1D4ED8;color:#1D4ED8;font-weight:700}
+.imp-form{margin-top:8px;padding:10px 12px;background:#EFF4FF;border:1px solid #BFD0F5;border-radius:10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.imp-form-l{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.imp-num{width:72px;height:36px;border:1px solid #93A8D8;border-radius:8px;font-size:15px;font-weight:700;text-align:center;font-family:inherit}
+.imp-valider{background:#1D4ED8;padding:.45rem 1.1rem;margin-left:auto}
+.imp-valider:hover{background:#1E40AF}
+.imp-form-x{padding:.4rem .7rem}
+.imp-legende{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:10px 14px;border:1px solid var(--brd);border-radius:12px;font-size:12px;color:var(--tx2)}
+.imp-leg-i{display:inline-flex;align-items:center;gap:6px}
+.imp-leg-n{margin-left:auto}
+.imp-nav{display:flex;align-items:center;gap:6px}
+.imp-nav-b{padding:.4rem .7rem;min-width:36px}
+.imp-nav-j{font-size:15px;font-weight:700;min-width:180px;text-align:center}
+.imp-jour{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.imp-col{display:flex;flex-direction:column;gap:12px}
+.imp-col-h{font-size:12px;font-weight:800;color:var(--tx2);letter-spacing:.04em}
+.imp-carte{display:flex;background:var(--sur);border:1px solid var(--brd);border-radius:12px;overflow:hidden}
+.imp-carte-vide{border-style:dashed}
+.imp-rail{width:96px;flex:none;padding:12px 10px;background:var(--acc-l);display:flex;flex-direction:column;gap:3px}
+.imp-rail-c{font-size:21px;font-weight:800}
+.imp-rail-s{font-size:12px;color:var(--tx2)}
+.imp-rail-n{margin-top:auto;font-size:12px;font-weight:700}
+.imp-carte-c{flex:1;min-width:0;padding:4px 0 6px}
+.imp-carte-c>.imp-muet{padding:12px 14px}
+.imp-carte-c .imp-ligne:first-child{border-top:0}
+.imp-gj{display:grid;grid-template-columns:minmax(0,1fr) 140px 82px 104px;gap:10px;align-items:center}
+.imp-retour{max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.imp-retour-h{font-size:13px;color:var(--tx2)}
+.imp-gr{display:grid;grid-template-columns:28px minmax(0,1fr) 84px 84px;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--brd);border-radius:10px;cursor:pointer}
+.imp-gr input[type=checkbox]{width:18px;height:18px}
+.imp-mode{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;background:#EFF4FF;border:1px solid #BFD0F5;border-radius:10px;font-size:13px;font-weight:600}
+.imp-eff{border:1px solid var(--brd);border-radius:10px;overflow:hidden;font-size:13px}
+.imp-eff-h{padding:6px 12px;background:var(--acc-l);font-size:11px;font-weight:700;color:var(--tx2)}
+.imp-eff-r{display:grid;grid-template-columns:44px minmax(0,1fr) 54px;gap:10px;align-items:center;padding:6px 12px;border-top:1px solid var(--brd)}
+.imp-eff-r span{color:var(--tx2)}
+.imp-eff-t{text-align:right}
+.imp-pied{display:flex;justify-content:flex-end;gap:10px;padding-top:4px}
+.imp-pied .bp{background:#1D4ED8}
+.imp-pied .bp:disabled{opacity:.5;cursor:default}
+.imp-coche{font-size:10px;color:var(--tx3);white-space:nowrap;flex-shrink:0}
+@media (max-width:1000px){
+  .imp-head-z{order:5;flex-basis:100%}
+  .imp-g-ent{display:none}
+  .imp-g{grid-template-columns:repeat(4,minmax(0,1fr));row-gap:8px}
+  .imp-g>:first-child,.imp-g>.imp-chips{grid-column:1/-1}
+  .imp-g>[data-l]::before{content:attr(data-l);display:block;font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:.03em}
+  .imp-jour{grid-template-columns:1fr}
+}
+@media (max-width:600px){
+  .imp-seg{flex-wrap:wrap;flex:0 1 auto}
+  .imp-gj{grid-template-columns:minmax(0,1fr) 120px}
+  .imp-rail{width:74px}
+  .imp-gr{grid-template-columns:28px minmax(0,1fr) 64px}
+  .imp-gr>.imp-puce{display:none}
+}
 /* V11.3.63 — Saisir mes cours */
 .sdc-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:450;display:flex;justify-content:center;align-items:stretch;padding:max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px))}
 .sdc-avert{position:fixed;left:50%;transform:translateX(-50%);bottom:max(16px,env(safe-area-inset-bottom,0px));z-index:490;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 280px);background:#FEF3C7;color:#78350F;border:1px solid #F59E0B;border-radius:var(--r2);box-shadow:var(--sh2);padding:8px 10px;font-size:13px;line-height:1.35}
@@ -4335,7 +4434,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.37';
+const APP_VERSION = 'v11.4.38';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -14462,6 +14561,7 @@ function renderProfAujd(){
 
 /* Réutilise le helper _showHomeListModal existant pour ouvrir la liste complète. */
 function _aujdOpenModal(cat, items){
+  if(cat && cat.key==='docsAujourdhui' && typeof openImpressions==='function'){ openImpressions({vue:'jour'}); return; }   // V11.4.38
   if(typeof _showHomeListModal !== 'function') return;
   const mappedItems = items.map(it=>{
     const m = cat.map(it);
@@ -14797,6 +14897,7 @@ function _profEdtExtras(slotKey, clsCode, dateStr){
 }
 
 function renderRappelsBandeau(){
+  try{ _impEnsureTuile(); _impMajTuileDiff(); }catch(e){}   // V11.4.38 — tuile « Gestion des impressions »
   const bandeau = document.getElementById('rappels-bandeau');
   if(!bandeau) return;
   try{ _syncPendingPlanningAlertsFromSeances(); }catch(e){}  // ════════════════════════════════════════════════════════════
@@ -15306,6 +15407,7 @@ function _rbgHidePopover(){
 
 /* Ouvre le popup détaillé d'une catégorie, avec bouton 🔕 si mutable. */
 function _rbgOpenCategoryModal(cat, items){
+  if(cat && cat.key==='docsAujourdhui' && typeof openImpressions==='function'){ openImpressions({vue:'jour'}); return; }   // V11.4.38
   const mappedItems = items.map(cat.mapItem);
   const headerStats = cat.headerStatsBuilder ? cat.headerStatsBuilder(items) : null;
   const cap = cat.footerCap || 0;
@@ -15719,6 +15821,590 @@ function _homeGetDocsAujourdhui(){
   traces.sort((a,b)=>(a.debut).localeCompare(b.debut));
 
   return out.concat(traces);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════
+   V11.4.38 — GESTION DES IMPRESSIONS (demande du 24/10, maquettes A B D E)
+   ──────────────────────────────────────────────────────────────────
+   Question à laquelle l'écran répond : « ai-je imprimé assez d'exemplaires
+   pour toutes mes classes d'un niveau ? ».
+   – Un document est identifié par son NIVEAU et son LIBELLÉ normalisé
+     (_impCle) : la même fiche sert à toutes les classes du niveau et aux deux
+     demi-groupes, c'est ce qui permet d'imprimer une fois pour la semaine.
+   – Magasin S.impressions = {docs:{cle:{label, lv, evts:[{ts,n,mode}]}},
+     distrib:{clé:{doc, slot, n, ts}}}. mode 'add' = en plus du stock,
+     'set' = remplace le stock.
+   – Le stock BAISSE à l'enregistrement de la séance (_writeSeanceScoped) :
+     chaque document coché « Faite » retire l'EFFECTIF THÉORIQUE du public
+     (classe ou demi-groupe), absents compris — arbitrage du 24/10 : le reliquat
+     des absents reste à la main de l'enseignant (rappel existant). Réenregistrer
+     ne décompte pas deux fois (_impMajLedger, une entrée par cours).
+   – Reste à servir = effectifs des cours PROGRAMMÉS non enregistrés de
+     l'horizon ; une classe pas encore programmée n'est pas comptée (24/10).
+   – Tout le DOM est en createElement (invariants de balises).
+   ════════════════════════════════════════════════════════════════════ */
+const IMP_HORIZONS=[{j:7,l:'7 jours'},{j:21,l:'3 semaines'},{j:60,l:'2 mois'}];
+const IMP_SERVIS_JOURS=45;   // cours enregistrés pris en compte pour les pastilles « ✓ »
+var _imp=null;               // écran ouvert : {vue, horizon, niveau, jour, form, mode}
+var _impTuileAt=0;
+
+/** Libellé lisible d'un document : sans étiquette [SEQx-Sy] ni durée finale. Pure. */
+function _impLibelle(label){
+  return String(label||'').replace(/^\s*\[[^\]]*\]\s*/,'').replace(/\s*\(\s*\d+\s*mn\s*\)\s*$/i,'').replace(/\s+/g,' ').trim();
+}
+/** Forme comparable d'un libellé (minuscules). Pure. */
+function _impNorm(label){ return _impLibelle(label).toLowerCase(); }
+/** Identifiant d'un document : niveau + libellé normalisé. '' si vide. Pure. */
+function _impCle(lv, label){
+  const n=_impNorm(label);
+  return n ? String(lv||'').toLowerCase()+'|'+n : '';
+}
+/** Documents DISTRIBUÉS d'une séance enregistrée : ses lignes cochées « Faite »
+ *  qui sont des documents (bibliothèque doc_…, ou doc tapé dans « Saisir mes
+ *  cours » : fi_… à l'icône 📄). Sans doublon. Pure. */
+function _impDocsDeSeance(taskRows){
+  const out=[], vus=new Set();
+  (Array.isArray(taskRows)?taskRows:[]).forEach(tr=>{
+    if(!tr || tr.stateLabel!=='Faite') return;
+    const k=String(tr.key||'');
+    const estDoc=/^doc_/.test(k) || tr.sourceLabel==='doc' || (/^fi_/.test(k) && tr.icon==='📄');
+    if(!estDoc) return;
+    const l=_impLibelle(tr.label), n=l.toLowerCase();
+    if(!n || vus.has(n)) return;
+    vus.add(n); out.push(l);
+  });
+  return out;
+}
+/** Stock d'un document. rec={evts:[{ts,n,mode}]}, distribs=[{ts,n}]. Pure.
+ *  null = aucun stock déclaré. Départ : la dernière déclaration « remplace le
+ *  stock », à son instant ; sinon 0 au DÉBUT DU JOUR de la première impression
+ *  (un cours du matin enregistré avant la déclaration de midi est décompté). */
+function _impStock(rec, distribs){
+  const ev=(rec && Array.isArray(rec.evts) ? rec.evts : [])
+    .filter(e=>e && isFinite(e.ts) && isFinite(e.n)).slice().sort((a,b)=>a.ts-b.ts);
+  if(!ev.length) return null;
+  let i0=-1; ev.forEach((e,i)=>{ if(e.mode==='set') i0=i; });
+  let stock, t0;
+  if(i0>=0){ stock=Math.max(0, Math.round(ev[i0].n)); t0=ev[i0].ts; }
+  else { stock=0; const d=new Date(ev[0].ts); d.setHours(0,0,0,0); t0=d.getTime(); }
+  ev.forEach((e,i)=>{ if(i>i0 && e.mode!=='set') stock+=Math.max(0, Math.round(e.n)); });
+  (Array.isArray(distribs)?distribs:[]).forEach(d=>{ if(d && isFinite(d.ts) && d.ts>=t0) stock-=Math.max(0, Math.round(d.n)||0); });
+  return stock;
+}
+/** Bilan d'un document sur ses publics programmés. Pure.
+ *  publics=[{cle, label, effectif, dateStr, debut}] ; le stock est attribué dans
+ *  l'ordre des cours. statut : 'rouge' (rien de déclaré), 'ambre' (insuffisant),
+ *  'vert' (couvert), 'fini' (plus rien à servir), 'neutre' (rien à servir, rien
+ *  de déclaré). parPublic[cle] = {statut, manque}. */
+function _impBilan(stock, publics){
+  const P=(Array.isArray(publics)?publics:[]).slice()
+    .sort((a,b)=>(String(a.dateStr)+String(a.debut||'')).localeCompare(String(b.dateStr)+String(b.debut||'')));
+  const reste=P.reduce((s,p)=>s+Math.max(0, p.effectif|0), 0);
+  const parPublic={};
+  if(stock===null || stock===undefined){
+    P.forEach(p=>{ parPublic[p.cle]={statut:'rouge', manque:Math.max(0,p.effectif|0)}; });
+    return {reste, stock:null, manque:reste, surplus:0, statut:reste>0?'rouge':'neutre', jusqua:null, parPublic};
+  }
+  const s=Math.max(0, stock|0);
+  let cumul=0, jusqua=null;
+  P.forEach(p=>{
+    const e=Math.max(0, p.effectif|0), avant=cumul;
+    cumul+=e;
+    if(cumul<=s){ parPublic[p.cle]={statut:'vert', manque:0}; jusqua=p.label; }
+    else parPublic[p.cle]={statut:'ambre', manque:Math.min(e, cumul-Math.max(s, avant))};
+  });
+  const manque=Math.max(0, reste-s);
+  return {reste, stock:s, manque, surplus:Math.max(0, s-reste),
+          statut: reste===0 ? 'fini' : (manque>0 ? 'ambre' : 'vert'), jusqua, parPublic};
+}
+/** Registre des distributions, un cours à la fois. Pure : rend un NOUVEL objet.
+ *  prefixe = 'slotKey|cls|grp' ; entries=[{doc, n}]. Les entrées de ce cours
+ *  absentes de `entries` partent (document décoché) ; une entrée gardée garde
+ *  son instant d'origine (réenregistrer ne la rajeunit pas). */
+function _impMajLedger(distrib, prefixe, entries, maintenant){
+  const out={}, src=(distrib && typeof distrib==='object') ? distrib : {};
+  const p=String(prefixe)+'#';
+  Object.keys(src).forEach(k=>{ if(k.indexOf(p)!==0) out[k]=src[k]; });
+  (Array.isArray(entries)?entries:[]).forEach(e=>{
+    if(!e || !e.doc) return;
+    const k=p+e.doc, old=src[k];
+    out[k]={doc:e.doc, slot:String(prefixe), n:Math.max(0, e.n|0), ts:(old && isFinite(old.ts)) ? old.ts : maintenant};
+  });
+  return out;
+}
+function _impStore(){
+  if(!S.impressions || typeof S.impressions!=='object') S.impressions={};
+  const s=S.impressions;
+  if(!s.docs || typeof s.docs!=='object') s.docs={};
+  if(!s.distrib || typeof s.distrib!=='object') s.distrib={};
+  return s;
+}
+function _impEffectif(cls, gid){
+  if(gid){ const g=S.groupes && S.groupes[gid]; return (g && Array.isArray(g.students)) ? g.students.length : 0; }
+  const c=S.cl && S.cl[cls]; return (c && Array.isArray(c.students)) ? c.students.length : 0;
+}
+function _impGrpLibelle(gid){
+  const g=S.groupes && S.groupes[gid];
+  return (g && g.label) ? String(g.label) : String(gid||'');
+}
+/** Nom COURT d'un demi-groupe pour une pastille : « TECHNOLOGIE - [4E1P2] - … »
+ *  → « P2 » ; « Groupe A » reste « Groupe A ». Pure. */
+function _impGrpCourt(label, cls){
+  let x=String(label||'').trim();
+  const m=x.match(/\[([^\]]+)\]/); if(m) x=m[1].trim();
+  const c=String(cls||'').trim();
+  if(c && x.toLowerCase().indexOf(c.toLowerCase())===0) x=x.slice(c.length).replace(/^[\s._-]+/,'');
+  if(!x) x=String(label||'').trim();
+  if(x.length>14){ const mots=x.split(/[\s_-]+/).filter(Boolean); x=mots.length ? mots[mots.length-1] : x.slice(0,14); }
+  return x;
+}
+function _impPublicLibelle(cls, gid){ return String(cls||'').toUpperCase()+(gid ? ' '+_impGrpCourt(_impGrpLibelle(gid), cls) : ''); }
+function _impDistribsDoc(cle, sauf){
+  const st=_impStore();
+  return Object.keys(st.distrib).filter(k=>{ const d=st.distrib[k]; return d && d.doc===cle && (!sauf || d.slot!==sauf); }).map(k=>st.distrib[k]);
+}
+function _impStockDoc(cle, sauf){ return _impStock(_impStore().docs[cle], _impDistribsDoc(cle, sauf)); }
+
+/** Branché sur _writeSeanceScoped : après l'écriture d'une séance de classe,
+ *  les documents cochés « Faite » retirent l'effectif théorique du stock. */
+function _impEnregistrerDistribution(cls, slotKey, seance){
+  if(!cls || !slotKey || !seance) return;
+  const lv=_sdcNiveau(cls);
+  let gid='';
+  try{ gid=(typeof getCurrentGrpId==='function') ? (getCurrentGrpId(cls, slotKey)||'') : ''; }catch(e){ gid=''; }
+  const n=_impEffectif(cls, gid);
+  const entries=_impDocsDeSeance(seance.taskRows).map(l=>({doc:_impCle(lv, l), n})).filter(e=>e.doc);
+  const st=_impStore();
+  st.distrib=_impMajLedger(st.distrib, slotKey+'|'+cls+'|'+gid, entries, Date.now());
+  _impTuileAt=0;
+}
+function _impAjouter(cle, lv, label, n, mode){
+  const v=Math.round(Number(n));
+  if(!cle || !isFinite(v) || v<0) return false;
+  const st=_impStore();
+  if(!st.docs[cle]) st.docs[cle]={label:_impLibelle(label), lv:String(lv||''), evts:[]};
+  if(!Array.isArray(st.docs[cle].evts)) st.docs[cle].evts=[];
+  st.docs[cle].evts.push({ts:Date.now(), n:v, mode:mode==='set'?'set':'add'});
+  _impTuileAt=0;
+  saveS();
+  return true;
+}
+function _impDateDecalee(dateStr, j){
+  const d=new Date(dateStr+'T12:00:00'); d.setDate(d.getDate()+j);
+  return toDateStr(d);
+}
+function _impNiveauxTries(lvs){
+  return lvs.slice().sort((a,b)=>(parseInt(b,10)||0)-(parseInt(a,10)||0) || String(a).localeCompare(String(b)));
+}
+
+/** Relevé : documents programmés entre `du` et `au` (cours non enregistrés,
+ *  non annulés), et documents servis par les séances enregistrées récentes. */
+function _impCollecte(du, au){
+  const docs={}, classes={};
+  const actives=_homeListActiveClasses();
+  const doc=(lv, label)=>{
+    const k=_impCle(lv, label); if(!k) return null;
+    if(!docs[k]) docs[k]={cle:k, lv, label:_impLibelle(label), prevus:[], servis:[]};
+    return docs[k];
+  };
+  actives.forEach(cls=>{
+    const lv=_sdcNiveau(cls); (classes[lv]=classes[lv]||[]).push(cls);
+    let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ slots=[]; }
+    slots.forEach(sl=>{
+      if(!sl || !sl.slotKey || !sl.dateStr || sl.dateStr<du || sl.dateStr>au || sl.saved) return;
+      if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, cls)) return;
+      let ds=[]; try{ ds=_docsDistribuesAuCours(sl.slotKey, cls)||[]; }catch(e){ ds=[]; }
+      const gid=_numPublicDuSlot(sl), cle=cls+'|'+gid;
+      ds.forEach(l=>{
+        const d=doc(lv, l); if(!d || d.prevus.some(p=>p.cle===cle)) return;
+        d.prevus.push({cle, cls, gid, label:_impPublicLibelle(cls, gid), effectif:_impEffectif(cls, gid),
+                       dateStr:sl.dateStr, debut:sl.debut||'', slotKey:sl.slotKey});
+      });
+    });
+  });
+  const depuis=_impDateDecalee(du, -IMP_SERVIS_JOURS), set=new Set(actives);
+  Object.keys(S.seances||{}).forEach(bk=>{
+    if(/^grp:/.test(bk)) return;
+    const parts=bk.split('|'), cls=parts[0], gid=parts[1]||'';
+    if(!set.has(cls)) return;
+    const lv=_sdcNiveau(cls);
+    (S.seances[bk]||[]).forEach(se=>{
+      if(!se || !se.slotKey) return;
+      const dateStr=String(se.slotKey).slice(0,10);
+      if(dateStr<depuis || dateStr>au) return;
+      _impDocsDeSeance(se.taskRows).forEach(l=>{
+        const d=docs[_impCle(lv, l)]; if(!d) return;   // seulement les documents encore d'actualité
+        const cle=cls+'|'+gid;
+        if(d.servis.some(p=>p.cle===cle)) return;
+        d.servis.push({cle, cls, gid, label:_impPublicLibelle(cls, gid), effectif:_impEffectif(cls, gid), dateStr, slotKey:se.slotKey});
+      });
+    });
+  });
+  // Documents imprimés, plus programmés, servis récemment : « terminé · reste n ».
+  const st=_impStore();
+  Object.keys(st.docs).forEach(k=>{
+    if(docs[k]) return;
+    const r=st.docs[k], lv=r.lv||k.split('|')[0];
+    const recents=_impDistribsDoc(k).filter(x=>String(x.slot).slice(0,10)>=depuis);
+    if(!recents.length) return;
+    const d=doc(lv, r.label||k.split('|')[1]);
+    recents.forEach(x=>{
+      const p=String(x.slot).split('|'), cls=p[1], gid=p[2]||'', cle=cls+'|'+gid;
+      if(d.servis.some(s=>s.cle===cle)) return;
+      d.servis.push({cle, cls, gid, label:_impPublicLibelle(cls, gid), effectif:x.n, dateStr:String(x.slot).slice(0,10), slotKey:p[0]});
+    });
+  });
+  Object.keys(docs).forEach(k=>{
+    const d=docs[k];
+    d.stock=_impStockDoc(k);
+    d.bilan=_impBilan(d.stock, d.prevus);
+    const vus=new Set(d.prevus.map(p=>p.cls).concat(d.servis.map(p=>p.cls)));
+    d.horsCompte=(classes[d.lv]||[]).filter(c=>!vus.has(c));
+  });
+  return {docs, classes};
+}
+function _impLignes(col){
+  return Object.keys(col.docs).map(k=>col.docs[k]).filter(d=>d.prevus.length || d.servis.length)
+    .sort((a,b)=>{
+      const pa=a.prevus.length?a.prevus.map(p=>p.dateStr+p.debut).sort()[0]:'9', pb=b.prevus.length?b.prevus.map(p=>p.dateStr+p.debut).sort()[0]:'9';
+      return pa.localeCompare(pb) || a.label.localeCompare(b.label);
+    });
+}
+/** Nombre de documents dont le niveau n'est pas couvert (pastille de la tuile). Pure. */
+function _impNbACouvrir(lignes){
+  return (Array.isArray(lignes)?lignes:[]).filter(d=>d && d.bilan && (d.bilan.statut==='rouge' || d.bilan.statut==='ambre')).length;
+}
+function _impMajTuileDiff(){
+  if(Date.now()-_impTuileAt < 30000) return;
+  _impTuileAt=Date.now();
+  setTimeout(()=>{
+    try{
+      const pas=document.getElementById('imp-tile-pas'); if(!pas) return;
+      const t=_appToday(), n=_impNbACouvrir(_impLignes(_impCollecte(t, _impDateDecalee(t, 21))));
+      pas.textContent=n ? String(n) : '';
+      pas.style.display=n ? '' : 'none';
+      pas.title=n ? n+' document(s) dont le niveau n’est pas couvert (3 semaines)' : '';
+    }catch(e){ console.warn('[imp] tuile', e); }
+  }, 400);
+}
+
+/* ── Rendu ──────────────────────────────────────────────────────────── */
+function _impEl(tag, cls, txt){
+  const e=document.createElement(tag);
+  if(cls) e.className=cls;
+  if(txt!==undefined && txt!==null) e.textContent=txt;
+  return e;
+}
+function _impBtn(txt, cls, onclick, titre){
+  const b=_impEl('button', cls||'bs', txt); b.type='button';
+  if(titre) b.title=titre;
+  b.onclick=(e)=>{ e.stopPropagation(); onclick(e); };
+  return b;
+}
+function _impPuce(bilan){
+  const b=bilan||{}; let t='', c='imp-neutre', s='';
+  if(b.statut==='rouge'){ t=b.reste+' à imprimer'; c='imp-rouge'; }
+  else if(b.statut==='ambre'){ t='manque '+b.manque; c='imp-ambre'; s=b.jusqua ? 'suffit jusqu’à '+b.jusqua : 'ne couvre pas le 1er cours'; }
+  else if(b.statut==='vert'){ t='couvert'+(b.surplus?' · +'+b.surplus:''); c='imp-vert'; }
+  else if(b.statut==='fini'){ t='terminé'+(b.stock!=null?' · reste '+b.stock:''); }
+  else t='—';
+  const e=_impEl('div', 'imp-puce '+c, t);
+  if(s) e.appendChild(_impEl('div', 'imp-puce-s', s));
+  return e;
+}
+function openImpressions(opts){
+  opts=opts||{};
+  const t=_appToday();
+  _imp={vue:opts.vue||'gestion', horizon:(_imp && _imp.horizon) || 21, niveau:(_imp && _imp.niveau) || '',
+        jour:opts.jour || t, form:null, mode:'add'};
+  _impRendre();
+}
+function closeImpressions(){
+  const bg=document.getElementById('imp-bg'); if(bg) bg.remove();
+  document.removeEventListener('keydown', _impEchap, true);
+  _imp=null; _impTuileAt=0;
+  try{ _impMajTuileDiff(); }catch(e){}
+}
+function _impEchap(e){ if(e.key==='Escape' && _imp && !document.querySelector('#mbg.open')){ e.stopPropagation(); closeImpressions(); } }
+function _impRendre(){
+  if(!_imp) return;
+  let bg=document.getElementById('imp-bg');
+  const scroll=bg && bg.querySelector('.imp-corps') ? bg.querySelector('.imp-corps').scrollTop : 0;
+  if(!bg){
+    bg=_impEl('div', 'imp-bg'); bg.id='imp-bg';
+    let depart=null;
+    bg.addEventListener('pointerdown', (e)=>{ depart=e.target; });
+    bg.addEventListener('click', (e)=>{
+      // C2 : fond = fermer, sauf pendant la saisie du retour du photocopieur.
+      if(e.target===bg && depart===bg && _imp && _imp.vue!=='retour') closeImpressions();
+    });
+    document.body.appendChild(bg);
+    document.addEventListener('keydown', _impEchap, true);
+  }
+  bg.textContent='';
+  const pan=_impEl('div', 'imp-pan'); bg.appendChild(pan);
+  const head=_impEl('div', 'imp-head'); pan.appendChild(head);
+  head.appendChild(_impEl('div', 'imp-titre', '🖨️ Impressions'));
+  const onglets=_impEl('div', 'imp-seg');
+  [['gestion','Gestion des impressions'],['jour','Par jour'],['retour','Retour du photocopieur']].forEach(([v,l])=>{
+    onglets.appendChild(_impBtn(l, 'imp-seg-b'+(_imp.vue===v?' on':''), ()=>{ _imp.vue=v; _imp.form=null; _impRendre(); }));
+  });
+  head.appendChild(onglets);
+  const zone=_impEl('div', 'imp-head-z'); head.appendChild(zone);
+  head.appendChild(_impBtn('Fermer', 'bs imp-fermer', closeImpressions));
+  const corps=_impEl('div', 'imp-corps'); pan.appendChild(corps);
+  if(_imp.vue==='jour') _impRendreJour(zone, corps);
+  else if(_imp.vue==='retour') _impRendreRetour(zone, corps);
+  else _impRendreGestion(zone, corps);
+  corps.scrollTop=scroll;
+}
+function _impHorizonSel(zone){
+  const seg=_impEl('div', 'imp-seg');
+  IMP_HORIZONS.forEach(h=>seg.appendChild(_impBtn(h.l, 'imp-seg-b'+(_imp.horizon===h.j?' on':''), ()=>{ _imp.horizon=h.j; _impRendre(); })));
+  zone.appendChild(seg);
+}
+/** Petit formulaire « J'ai imprimé [n] · en plus du stock | nouveau stock · Valider ». */
+function _impFormImprime(d, defaut){
+  const f=_impEl('div', 'imp-form');
+  const lab=_impEl('label', 'imp-form-l', 'J’ai imprimé');
+  const inp=_impEl('input', 'imp-num'); inp.type='number'; inp.min='0'; inp.step='1';
+  inp.value=String(Math.max(0, defaut|0)); inp.setAttribute('aria-label', 'Exemplaires imprimés');
+  lab.appendChild(inp); f.appendChild(lab);
+  let mode='add';
+  if(d.stock!=null){
+    const seg=_impEl('div', 'imp-seg');
+    const bA=_impBtn('', 'imp-seg-b on', ()=>{ mode='add'; bA.classList.add('on'); bS.classList.remove('on'); });
+    const bS=_impBtn('', 'imp-seg-b', ()=>{ mode='set'; bS.classList.add('on'); bA.classList.remove('on'); });
+    const maj=()=>{ const v=Math.max(0, Math.round(Number(inp.value))||0);
+      bA.textContent='en plus du stock → '+(d.stock+v); bS.textContent='nouveau stock = '+v; };
+    inp.addEventListener('input', maj); maj();
+    seg.appendChild(bA); seg.appendChild(bS); f.appendChild(seg);
+  }
+  f.appendChild(_impBtn('Valider', 'bp imp-valider', ()=>{
+    if(_impAjouter(d.cle, d.lv, d.label, inp.value, mode)){ _imp.form=null; _impRendre(); }
+  }));
+  f.appendChild(_impBtn('✕', 'bs imp-form-x', ()=>{ _imp.form=null; _impRendre(); }, 'Fermer'));
+  setTimeout(()=>{ try{ inp.focus(); inp.select(); }catch(e){} }, 0);
+  inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); f.querySelector('.imp-valider').click(); } });
+  return f;
+}
+function _impRendreGestion(zone, corps){
+  _impHorizonSel(zone);
+  const t=_appToday();
+  const col=_impCollecte(t, _impDateDecalee(t, _imp.horizon));
+  const lignes=_impLignes(col);
+  const niveaux=_impNiveauxTries(Object.keys(col.classes));
+  const seg=_impEl('div', 'imp-seg');
+  [''].concat(niveaux).forEach(lv=>seg.appendChild(_impBtn(lv||'Tous niveaux', 'imp-seg-b'+(_imp.niveau===lv?' on':''), ()=>{ _imp.niveau=lv; _impRendre(); })));
+  zone.appendChild(seg);
+  const nb=_impNbACouvrir(lignes);
+  if(nb) zone.appendChild(_impEl('span', 'imp-alerte', nb+' à couvrir'));
+  if(!lignes.length){ corps.appendChild(_impEl('div', 'imp-vide', 'Aucun document programmé sur cette période.')); return; }
+  const ent=_impEl('div', 'imp-g imp-g-ent');
+  ['DOCUMENT','CLASSES DU NIVEAU','RESTE À SERVIR','STOCK','BILAN NIVEAU',''].forEach(x=>ent.appendChild(_impEl('div', '', x)));
+  corps.appendChild(ent);
+  niveaux.filter(lv=>!_imp.niveau || lv===_imp.niveau).forEach(lv=>{
+    const ds=lignes.filter(d=>d.lv===lv); if(!ds.length) return;
+    const bloc=_impEl('section', 'imp-bloc'); corps.appendChild(bloc);
+    const cls=col.classes[lv]||[], eff=cls.reduce((s,c)=>s+_impEffectif(c,''),0);
+    const h=_impEl('div', 'imp-bloc-h', lv); h.appendChild(_impEl('span', 'imp-bloc-s', ' · '+cls.length+' classe'+(cls.length>1?'s':'')+' · '+eff+' élèves'));
+    bloc.appendChild(h);
+    ds.forEach(d=>bloc.appendChild(_impLigneGestion(d)));
+  });
+  const leg=_impEl('div', 'imp-legende');
+  [['imp-vert','classe ✓ effectif','servie (effectif retiré du stock)'],['imp-neutre','classe · date · effectif','programmée'],['imp-hors','classe','pas encore programmée : non comptée']].forEach(([c,a,b])=>{
+    const s=_impEl('span', 'imp-leg-i'); s.appendChild(_impEl('span', 'imp-chip '+c, a)); s.appendChild(document.createTextNode(b)); leg.appendChild(s);
+  });
+  leg.appendChild(_impEl('span', 'imp-leg-n', 'Reste à servir = effectifs des cours programmés non enregistrés · Stock = imprimé − effectifs servis'));
+  corps.appendChild(leg);
+}
+function _impLigneGestion(d){
+  const row=_impEl('div', 'imp-ligne');
+  const g=_impEl('div', 'imp-g'); row.appendChild(g);
+  const c1=_impEl('div'); c1.appendChild(_impEl('div', 'imp-doc', d.label));
+  const ebep=d.prevus.reduce((s,p)=>s+((typeof _ebepWithPhotocopiesForCls==='function' && !p.gid) ? _ebepWithPhotocopiesForCls(p.cls).length : 0), 0);
+  if(ebep) c1.appendChild(_impEl('div', 'imp-doc-s imp-ebep', 'dont '+ebep+' EBEP (photocopies adaptées)'));
+  g.appendChild(c1);
+  const chips=_impEl('div', 'imp-chips');
+  d.servis.filter(s=>!d.prevus.some(p=>p.cle===s.cle)).forEach(s=>chips.appendChild(_impEl('span', 'imp-chip imp-vert', s.label+' ✓ '+s.effectif)));
+  d.prevus.slice().sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut)).forEach(p=>{
+    const st=d.bilan.parPublic[p.cle]||{};
+    const ch=_impEl('span', 'imp-chip '+(st.statut==='rouge'?'imp-chip-r':st.statut==='ambre'?'imp-chip-a':'imp-neutre'),
+      p.label+' · '+_homeFormatDate(p.dateStr)+' · '+p.effectif);
+    chips.appendChild(ch);
+  });
+  d.horsCompte.forEach(c=>chips.appendChild(_impEl('span', 'imp-chip imp-hors', String(c).toUpperCase()+' · non comptée')));
+  g.appendChild(chips);
+  const cR=_impEl('div', 'imp-n', String(d.bilan.reste)); cR.dataset.l='RESTE À SERVIR'; g.appendChild(cR);
+  const cS=_impEl('div', 'imp-n'+(d.stock==null?' imp-muet':''), d.stock==null?'— aucun':String(Math.max(0,d.stock))); cS.dataset.l='STOCK'; g.appendChild(cS);
+  g.appendChild(_impPuce(d.bilan));
+  const besoin=(d.bilan.statut==='rouge'||d.bilan.statut==='ambre');
+  g.appendChild(_impBtn('＋ Imprimé', 'bs imp-plus'+(besoin?' imp-plus-fort':''), ()=>{ _imp.form=d.cle; _impRendre(); }));
+  if(_imp.form===d.cle) row.appendChild(_impFormImprime(d, d.bilan.manque));
+  return row;
+}
+function _impRendreJour(zone, corps){
+  const nav=_impEl('div', 'imp-nav');
+  nav.appendChild(_impBtn('◀', 'bs imp-nav-b', ()=>{ _imp.jour=_impDateDecalee(_imp.jour, -1); _impRendre(); }, 'Jour précédent'));
+  let lib=_imp.jour; try{ lib=new Date(_imp.jour+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}); }catch(e){}
+  nav.appendChild(_impEl('span', 'imp-nav-j', lib));
+  nav.appendChild(_impBtn('▶', 'bs imp-nav-b', ()=>{ _imp.jour=_impDateDecalee(_imp.jour, 1); _impRendre(); }, 'Jour suivant'));
+  nav.appendChild(_impBtn('Aujourd’hui', 'bs', ()=>{ _imp.jour=_appToday(); _impRendre(); }));
+  zone.appendChild(nav);
+  const t=_appToday(), J=_imp.jour, passe=J<t;
+  const au=_impDateDecalee(J>t?J:t, 21);
+  const col=passe ? null : _impCollecte(t, au);
+  const cours=[];
+  _homeListActiveClasses().forEach(cls=>{
+    let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ slots=[]; }
+    slots.filter(s=>s && s.dateStr===J).forEach(sl=>{
+      if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, cls)) return;
+      let ds=[]; try{ ds=_docsDistribuesAuCours(sl.slotKey, cls)||[]; }catch(e){ ds=[]; }
+      cours.push({cls, sl, gid:_numPublicDuSlot(sl), docs:ds.map(_impLibelle).filter(Boolean)});
+    });
+  });
+  cours.sort((a,b)=>String(a.sl.debut).localeCompare(String(b.sl.debut)));
+  if(!cours.length){ corps.appendChild(_impEl('div', 'imp-vide', 'Aucun cours ce jour-là.')); return; }
+  const grille=_impEl('div', 'imp-jour'); corps.appendChild(grille);
+  [['MATIN', c=>String(c.sl.debut)<'12:30'], ['APRÈS-MIDI', c=>String(c.sl.debut)>='12:30']].forEach(([titre, f])=>{
+    const colEl=_impEl('div', 'imp-col'); grille.appendChild(colEl);
+    colEl.appendChild(_impEl('div', 'imp-col-h', titre));
+    const liste=cours.filter(f);
+    if(!liste.length) colEl.appendChild(_impEl('div', 'imp-vide', 'Aucun cours'));
+    liste.forEach(c=>colEl.appendChild(_impCarteJour(c, col)));
+  });
+}
+function _impCarteJour(c, col){
+  const lv=_sdcNiveau(c.cls), carte=_impEl('article', 'imp-carte'+(c.docs.length?'':' imp-carte-vide'));
+  const rail=_impEl('div', 'imp-rail'); carte.appendChild(rail);
+  rail.appendChild(_impEl('div', 'imp-rail-c', String(c.cls).toUpperCase()));
+  rail.appendChild(_impEl('div', 'imp-rail-s', (c.sl.debut||'')+(c.sl.fin?'–'+c.sl.fin:'')));
+  rail.appendChild(_impEl('div', 'imp-rail-s', c.gid ? 'Groupe '+_impGrpCourt(_impGrpLibelle(c.gid), c.cls) : 'Classe entière'));
+  const eff=_impEffectif(c.cls, c.gid);
+  rail.appendChild(_impEl('div', 'imp-rail-n', eff+' élèves'));
+  const corps=_impEl('div', 'imp-carte-c'); carte.appendChild(corps);
+  if(!c.docs.length){ corps.appendChild(_impEl('div', 'imp-muet', 'Aucun document prévu pour ce cours.')); return carte; }
+  const servis=c.sl.saved ? new Set(_impDocsDeSeance(c.sl.saved.taskRows).map(l=>l.toLowerCase())) : null;
+  c.docs.forEach(l=>{
+    const cle=_impCle(lv, l), d=col && col.docs[cle];
+    const row=_impEl('div', 'imp-ligne'); corps.appendChild(row);
+    const g=_impEl('div', 'imp-gj'); row.appendChild(g);
+    const c1=_impEl('div'); c1.appendChild(_impEl('div', 'imp-doc', l));
+    if(d){
+      const b=d.bilan, autres=d.prevus.filter(p=>p.cls!==c.cls).slice().sort((x,y)=>(x.dateStr+x.debut).localeCompare(y.dateStr+y.debut)).map(p=>p.label+' '+_homeFormatDate(p.dateStr));
+      const s=b.statut==='rouge' ? 'Niveau '+lv+' : '+b.reste+' à imprimer' : b.statut==='ambre' ? 'Niveau '+lv+' : manque '+b.manque : 'Niveau '+lv+' : couvert';
+      c1.appendChild(_impEl('div', 'imp-doc-s', s+(autres.length?' · aussi '+autres.slice(0,3).join(', ')+(autres.length>3?'…':''):'')));
+    }
+    g.appendChild(c1);
+    let puce, besoin=false;
+    if(servis){ const ok=servis.has(l.toLowerCase()); puce=_impEl('div', 'imp-puce '+(ok?'imp-vert':'imp-neutre'), ok?'✓ distribué':'non distribué'); }
+    else if(!d){ puce=_impEl('div', 'imp-puce imp-neutre', '—'); }
+    else {
+      const st=d.bilan.parPublic[c.cls+'|'+c.gid]||{statut:d.stock==null?'rouge':'vert', manque:0};
+      besoin=st.statut!=='vert';
+      puce=_impEl('div', 'imp-puce '+(st.statut==='rouge'?'imp-rouge':st.statut==='ambre'?'imp-ambre':'imp-vert'),
+        st.statut==='rouge' ? eff+' à imprimer' : st.statut==='ambre' ? eff+' · manque '+st.manque : eff+' · couvert');
+    }
+    g.appendChild(puce);
+    g.appendChild(_impEl('div', 'imp-n'+(d && d.stock!=null?'':' imp-muet'), d && d.stock!=null ? 'stock '+Math.max(0,d.stock) : '— aucun'));
+    if(d && !servis){
+      g.appendChild(_impBtn('＋ Imprimé', 'bs imp-plus'+(besoin?' imp-plus-fort':''), ()=>{ _imp.form=c.sl.slotKey+'#'+cle; _impRendre(); }));
+      if(_imp.form===c.sl.slotKey+'#'+cle) row.appendChild(_impFormImprime(d, d.bilan.manque||eff));
+    } else g.appendChild(_impEl('div'));
+  });
+  return carte;
+}
+function _impRendreRetour(zone, corps){
+  _impHorizonSel(zone);
+  const t=_appToday();
+  const col=_impCollecte(t, _impDateDecalee(t, _imp.horizon));
+  const ds=_impLignes(col).filter(d=>d.bilan.statut==='rouge'||d.bilan.statut==='ambre');
+  const saisie=_imp.retour || (_imp.retour={});
+  const box=_impEl('div', 'imp-retour'); corps.appendChild(box);
+  box.appendChild(_impEl('div', 'imp-retour-h', 'Documents non couverts — cochez ce qui sort du photocopieur, corrigez les quantités.'));
+  if(!ds.length) box.appendChild(_impEl('div', 'imp-vide', 'Tout est couvert sur cette période.'));
+  const champs=[];
+  ds.forEach(d=>{
+    const s=saisie[d.cle] || (saisie[d.cle]={on:true, n:d.bilan.manque});
+    const r=_impEl('label', 'imp-gr');
+    const cb=_impEl('input'); cb.type='checkbox'; cb.checked=!!s.on; cb.setAttribute('aria-label', 'Imprimé');
+    cb.onchange=()=>{ s.on=cb.checked; majBouton(); };
+    r.appendChild(cb);
+    const c1=_impEl('div'); c1.appendChild(_impEl('div', 'imp-doc', d.label));
+    c1.appendChild(_impEl('div', 'imp-doc-s', d.lv+(d.stock!=null?' · stock '+Math.max(0,d.stock):'')+' · '+d.prevus.map(p=>p.label).join(', ')));
+    r.appendChild(c1);
+    r.appendChild(_impEl('div', 'imp-puce '+(d.bilan.statut==='rouge'?'imp-rouge':'imp-ambre'), String(d.bilan.manque)));
+    const inp=_impEl('input', 'imp-num'); inp.type='number'; inp.min='0'; inp.step='1'; inp.value=String(s.n); inp.setAttribute('aria-label', 'Exemplaires imprimés');
+    inp.addEventListener('input', ()=>{ s.n=Math.max(0, Math.round(Number(inp.value))||0); if(s.n>0 && !cb.checked){ cb.checked=true; s.on=true; } majBouton(); });
+    r.appendChild(inp);
+    box.appendChild(r);
+    champs.push({d, s});
+  });
+  const modeL=_impEl('div', 'imp-mode');
+  modeL.appendChild(_impEl('span', '', 'Les quantités'));
+  const seg=_impEl('div', 'imp-seg');
+  seg.appendChild(_impBtn('s’ajoutent au stock', 'imp-seg-b'+(_imp.mode!=='set'?' on':''), ()=>{ _imp.mode='add'; _impRendre(); }));
+  seg.appendChild(_impBtn('remplacent le stock', 'imp-seg-b'+(_imp.mode==='set'?' on':''), ()=>{ _imp.mode='set'; _impRendre(); }));
+  modeL.appendChild(seg); box.appendChild(modeL);
+  box.appendChild(_impTableEffectifs(col.classes));
+  const pied=_impEl('div', 'imp-pied'); box.appendChild(pied);
+  pied.appendChild(_impBtn('Annuler', 'bs', ()=>{ _imp.retour=null; _imp.vue='gestion'; _impRendre(); }));
+  const ok=_impBtn('', 'bp', ()=>{
+    let n=0;
+    champs.forEach(({d, s})=>{ if(s.on && s.n>0){ const st=_impStore(); if(!st.docs[d.cle]) st.docs[d.cle]={label:d.label, lv:d.lv, evts:[]};
+      st.docs[d.cle].evts.push({ts:Date.now(), n:s.n, mode:_imp.mode==='set'?'set':'add'}); n++; } });
+    if(n){ saveS(); _impTuileAt=0; }
+    _imp.retour=null; _imp.vue='gestion'; _impRendre();
+  });
+  const majBouton=()=>{ const n=champs.filter(x=>x.s.on && x.s.n>0).length; ok.textContent='Enregistrer '+n+' impression'+(n>1?'s':''); ok.disabled=!n; };
+  majBouton();
+  pied.appendChild(ok);
+}
+/** Tableau des effectifs par niveau (repère au photocopieur). */
+function _impTableEffectifs(classes){
+  const t=_impEl('div', 'imp-eff');
+  t.appendChild(_impEl('div', 'imp-eff-h', 'EFFECTIFS PAR NIVEAU'));
+  _impNiveauxTries(Object.keys(classes||{})).forEach(lv=>{
+    const cls=(classes[lv]||[]).slice().sort();
+    const r=_impEl('div', 'imp-eff-r');
+    r.appendChild(_impEl('b', '', lv));
+    const det=cls.map(c=>{
+      const gs=(typeof listGroupesDef==='function') ? listGroupesDef(c) : [];
+      return String(c).toUpperCase()+' '+_impEffectif(c,'')+(gs.length?' ('+gs.map(g=>_impGrpCourt(g.label, c)+' '+_impEffectif(c, g.id)).join(', ')+')':'');
+    }).join(' · ');
+    r.appendChild(_impEl('span', '', det));
+    r.appendChild(_impEl('b', 'imp-eff-t', String(cls.reduce((s,c)=>s+_impEffectif(c,''),0))));
+    t.appendChild(r);
+  });
+  return t;
+}
+/** Modal Séance (E) : à côté d'un document, ce que la coche retirera du stock. */
+function _impInfoCoche(cls, slotKey, label){
+  const lv=_sdcNiveau(cls), cle=_impCle(lv, label); if(!cle) return '';
+  let gid=''; try{ gid=(typeof getCurrentGrpId==='function') ? (getCurrentGrpId(cls, slotKey)||'') : ''; }catch(e){}
+  const n=_impEffectif(cls, gid);
+  const s=_impStockDoc(cle, slotKey+'|'+cls+'|'+gid);
+  if(s===null) return '−'+n+' · aucun stock';
+  return '−'+n+' · stock '+Math.max(0,s)+' → '+Math.max(0, s-n);
+}
+/** Tuile d'accueil « Gestion des impressions » : créée en createElement (invariants
+ *  de balises), colonne 2 de la dernière ligne ; Mode démo → 3, Aide → 4. Idempotente. */
+function _impEnsureTuile(){
+  if(document.getElementById('imp-tile')) return;
+  const sdc=document.getElementById('sdc-tile'); if(!sdc || !sdc.parentNode) return;
+  const b=document.createElement('button'); b.id='imp-tile'; b.type='button';
+  b.className='htile htile-imp'; b.style.gridColumn='2';
+  b.onclick=()=>openImpressions({vue:'gestion'});
+  const ic=_impEl('span', 'htile-ic', '🖨️');
+  const tx=_impEl('span', 'htile-tx');
+  tx.appendChild(_impEl('span', 'htile-t', 'Gestion des impressions'));
+  tx.appendChild(_impEl('span', 'htile-s', 'Assez d’exemplaires pour le niveau ?'));
+  const pas=_impEl('span', 'imp-tile-pas'); pas.id='imp-tile-pas'; pas.style.display='none';
+  b.appendChild(ic); b.appendChild(tx); b.appendChild(pas);
+  sdc.parentNode.insertBefore(b, sdc.nextSibling);
+  const demo=document.getElementById('demo-pub-tile'); if(demo) demo.style.gridColumn='3';
+  const aide=document.getElementById('help-faq-tile'); if(aide) aide.style.gridColumn='4';
 }
 
 /* 4 — Évaluations prévues aujourd'hui (seq.evals[] uniquement). */
@@ -35611,7 +36297,10 @@ function _writeSeanceScoped(slotKey, seance){
     if(idx>=0) arr[idx]=seance; else arr.push(seance);
     return seance;
   }
-  return writeSeanceForSlot(curCls, slotKey, seance);
+  const _w=writeSeanceForSlot(curCls, slotKey, seance);
+  // V11.4.38 — documents cochés « Faite » : l'effectif théorique sort du stock d'impressions.
+  try{ _impEnregistrerDistribution(curCls, slotKey, seance); }catch(e){ console.warn('[imp] distribution', e); }
+  return _w;
 }
 // V035-v181.15.28 (v5c-2a-2) — Niveau pédagogique du scope courant.
 // Classe : niveau de curCls. Groupe inter-classes : niveau unique des membres
@@ -49059,7 +49748,13 @@ function openSaveSeance(){
       }
       actionsDiv.style.display=item.checked?'none':'flex';
 
-      row.appendChild(cb); row.appendChild(ico); row.appendChild(lbl); row.appendChild(actionsDiv);
+      row.appendChild(cb); row.appendChild(ico); row.appendChild(lbl);
+      // V11.4.38 — document : ce que la coche retirera du stock d'impressions (maquette E).
+      if(item.source==='doc' || (item.fi && item.fi.type==='doc')){
+        const _ii=_impInfoCoche(curCls, slotKey, item.label);
+        if(_ii){ const _sp=document.createElement('span'); _sp.className='imp-coche'; _sp.textContent=_ii; _sp.title='Coché à l’enregistrement : l’effectif théorique est retiré du stock (absents compris).'; row.appendChild(_sp); }
+      }
+      row.appendChild(actionsDiv);
 
       // ── Phase 3a v35 : si TAF coché, on va passer la row en 2 lignes.
       // Wrapper les 4 enfants déjà ajoutés (cb/ico/lbl/actionsDiv) dans un sous-div horizontal,
