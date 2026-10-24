@@ -2805,6 +2805,12 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .imp-pied{display:flex;justify-content:flex-end;gap:10px;padding-top:4px}
 .imp-pied .bp{background:#1D4ED8}
 .imp-pied .bp:disabled{opacity:.5;cursor:default}
+.imp-act{display:flex;flex-direction:column;gap:4px;align-items:stretch}
+.imp-retirer{border:0;background:transparent;color:var(--tx3);font-size:12px;text-decoration:underline;cursor:pointer;padding:2px;font-family:inherit}
+.imp-retirer:hover{color:#B91C1C}
+.imp-arch{background:var(--sur2)}
+.imp-arch-h{display:block;width:100%;text-align:left;border:0;background:transparent;padding:9px 14px;font-size:13px;font-weight:700;color:var(--tx2);cursor:pointer;font-family:inherit}
+.imp-arch-r{display:grid;grid-template-columns:minmax(0,1fr) 90px 104px;gap:12px;align-items:center;padding:8px 14px;border-top:1px solid var(--brd)}
 .imp-coche{font-size:10px;color:var(--tx3);white-space:nowrap;flex-shrink:0}
 @media (max-width:1000px){
   .imp-head-z{order:5;flex-basis:100%}
@@ -4434,7 +4440,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.38';
+const APP_VERSION = 'v11.4.40';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -15933,6 +15939,60 @@ function _impMajLedger(distrib, prefixe, entries, maintenant){
   });
   return out;
 }
+/** V11.4.39 — Un document qu'aucun cours programmé n'appelle reste-t-il listé ? Pure.
+ *  Oui s'il en reste en stock ; non s'il a été retiré (sauf impression postérieure
+ *  au retrait) ; non s'il n'a jamais été imprimé. */
+function _impVisibleSansCours(rec, stock){
+  return _impEtatSansCours(rec, stock, false)==='visible';
+}
+function _impRetirer(cle){
+  const st=_impStore(); if(!st.docs[cle]) return;
+  st.docs[cle].retire=Date.now();
+  _impTuileAt=0; saveS();
+}
+/** V11.4.40 — État d'un document qu'aucun cours programmé n'appelle. Pure.
+ *  'aucun' (jamais imprimé, ou stock épuisé) | 'retire' (« Retirer ») |
+ *  'synthese' (séances achevées dans toutes les classes, cf. Synthèse) | 'visible'.
+ *  « Rétablir » pose rec.retabli : il l'emporte sur la Synthèse ; une impression
+ *  postérieure au retrait le lève aussi. */
+function _impEtatSansCours(rec, stock, acheve){
+  if(!rec || !Array.isArray(rec.evts) || !rec.evts.length) return 'aucun';
+  if(rec.retire && !rec.evts.some(e=>e && isFinite(e.ts) && e.ts>rec.retire)) return 'retire';
+  if(acheve && !rec.retabli) return 'synthese';
+  return (stock!==null && stock!==undefined && stock>0) ? 'visible' : 'aucun';
+}
+/** V11.4.40 — Une séance de la bibliothèque est-elle achevée dans TOUTES les classes ?
+ *  Pure. suivis = S.suiviProg ({'lv|seqId|cls': {done, seances:{seanId:true}}}) ;
+ *  le chapitre coché « achevé » vaut pour toutes ses séances. */
+function _impSeanceAchevee(suivis, lv, seqId, seanId, classes){
+  if(!Array.isArray(classes) || !classes.length) return false;
+  const src=suivis || {};
+  return classes.every(c=>{ const sv=src[lv+'|'+seqId+'|'+c]; return !!(sv && (sv.done || (sv.seances && sv.seances[seanId]))); });
+}
+/** V11.4.40 — Un document est archivé par la Synthèse quand TOUTES les séances qui le
+ *  portent sont achevées partout. Un document tapé hors bibliothèque n'en porte aucune :
+ *  jamais archivé ainsi (seul « Retirer » s'applique). Pure. occ=[{seqId, seanId}]. */
+function _impDocAcheve(suivis, lv, occ, classes){
+  return Array.isArray(occ) && occ.length>0 && occ.every(o=>_impSeanceAchevee(suivis, lv, o.seqId, o.seanId, classes));
+}
+function _impClassesSynthese(lv){
+  return Object.keys(S.cl||{}).filter(c=>_sdcNiveau(c)===lv && S.cl[c] && (S.cl[c].students||[]).length);
+}
+/** Index niveau → libellé normalisé → séances de la bibliothèque qui le portent. */
+function _impOccurrences(lv){
+  const out={};
+  let prog=[]; try{ prog=getProgression(lv)||[]; }catch(e){ prog=[]; }
+  prog.forEach(q=>(q && q.seances || []).forEach(s=>(s && s.docs || []).forEach(d=>{
+    const n=_impNorm(d); if(!n) return;
+    (out[n]=out[n]||[]).push({seqId:q.id, seanId:s.id});
+  })));
+  return out;
+}
+function _impRetablir(cle){
+  const st=_impStore(); const r=st.docs[cle]; if(!r) return;
+  delete r.retire; r.retabli=Date.now();
+  _impTuileAt=0; saveS();
+}
 function _impStore(){
   if(!S.impressions || typeof S.impressions!=='object') S.impressions={};
   const s=S.impressions;
@@ -15986,6 +16046,7 @@ function _impAjouter(cle, lv, label, n, mode){
   if(!st.docs[cle]) st.docs[cle]={label:_impLibelle(label), lv:String(lv||''), evts:[]};
   if(!Array.isArray(st.docs[cle].evts)) st.docs[cle].evts=[];
   st.docs[cle].evts.push({ts:Date.now(), n:v, mode:mode==='set'?'set':'add'});
+  delete st.docs[cle].retire;
   _impTuileAt=0;
   saveS();
   return true;
@@ -16041,14 +16102,23 @@ function _impCollecte(du, au){
       });
     });
   });
-  // Documents imprimés, plus programmés, servis récemment : « terminé · reste n ».
-  const st=_impStore();
+  // V11.4.39 — Documents imprimés que plus aucun cours de l'horizon n'appelle : ils
+  // RESTENT listés tant qu'il en reste en stock (arbitrage du 24/10), ou s'ils ont
+  // été servis récemment ; « Retirer » les masque (_impRetirer) jusqu'à ce qu'ils
+  // soient de nouveau programmés ou réimprimés.
+  // V11.4.40 — ou archivés : par « Retirer », ou par la Synthèse (séances achevées partout).
+  const st=_impStore(), archives=[], occs={}, clsSy={};
   Object.keys(st.docs).forEach(k=>{
     if(docs[k]) return;
     const r=st.docs[k], lv=r.lv||k.split('|')[0];
+    if(!occs[lv]){ occs[lv]=_impOccurrences(lv); clsSy[lv]=_impClassesSynthese(lv); }
+    const stock=_impStockDoc(k);
+    const etat=_impEtatSansCours(r, stock, _impDocAcheve(S.suiviProg, lv, occs[lv][k.slice(k.indexOf('|')+1)], clsSy[lv]));
+    if(etat==='retire' || etat==='synthese'){ archives.push({cle:k, lv, label:r.label||k.split('|')[1], stock, etat, retire:r.retire||0}); return; }
+    if(etat!=='visible') return;
     const recents=_impDistribsDoc(k).filter(x=>String(x.slot).slice(0,10)>=depuis);
-    if(!recents.length) return;
     const d=doc(lv, r.label||k.split('|')[1]);
+    d.enStock=true;
     recents.forEach(x=>{
       const p=String(x.slot).split('|'), cls=p[1], gid=p[2]||'', cle=cls+'|'+gid;
       if(d.servis.some(s=>s.cle===cle)) return;
@@ -16062,10 +16132,10 @@ function _impCollecte(du, au){
     const vus=new Set(d.prevus.map(p=>p.cls).concat(d.servis.map(p=>p.cls)));
     d.horsCompte=(classes[d.lv]||[]).filter(c=>!vus.has(c));
   });
-  return {docs, classes};
+  return {docs, classes, archives};
 }
 function _impLignes(col){
-  return Object.keys(col.docs).map(k=>col.docs[k]).filter(d=>d.prevus.length || d.servis.length)
+  return Object.keys(col.docs).map(k=>col.docs[k]).filter(d=>d.prevus.length || d.servis.length || d.enStock)
     .sort((a,b)=>{
       const pa=a.prevus.length?a.prevus.map(p=>p.dateStr+p.debut).sort()[0]:'9', pb=b.prevus.length?b.prevus.map(p=>p.dateStr+p.debut).sort()[0]:'9';
       return pa.localeCompare(pb) || a.label.localeCompare(b.label);
@@ -16107,7 +16177,7 @@ function _impPuce(bilan){
   if(b.statut==='rouge'){ t=b.reste+' à imprimer'; c='imp-rouge'; }
   else if(b.statut==='ambre'){ t='manque '+b.manque; c='imp-ambre'; s=b.jusqua ? 'suffit jusqu’à '+b.jusqua : 'ne couvre pas le 1er cours'; }
   else if(b.statut==='vert'){ t='couvert'+(b.surplus?' · +'+b.surplus:''); c='imp-vert'; }
-  else if(b.statut==='fini'){ t='terminé'+(b.stock!=null?' · reste '+b.stock:''); }
+  else if(b.statut==='fini'){ t=(b.stock>0) ? 'en stock · '+b.stock : 'terminé'; if(b.stock>0) s='rien de programmé'; }
   else t='—';
   const e=_impEl('div', 'imp-puce '+c, t);
   if(s) e.appendChild(_impEl('div', 'imp-puce-s', s));
@@ -16200,7 +16270,7 @@ function _impRendreGestion(zone, corps){
   zone.appendChild(seg);
   const nb=_impNbACouvrir(lignes);
   if(nb) zone.appendChild(_impEl('span', 'imp-alerte', nb+' à couvrir'));
-  if(!lignes.length){ corps.appendChild(_impEl('div', 'imp-vide', 'Aucun document programmé sur cette période.')); return; }
+  if(!lignes.length){ corps.appendChild(_impEl('div', 'imp-vide', 'Aucun document programmé sur cette période.')); _impBlocArchives(corps, col.archives); return; }
   const ent=_impEl('div', 'imp-g imp-g-ent');
   ['DOCUMENT','CLASSES DU NIVEAU','RESTE À SERVIR','STOCK','BILAN NIVEAU',''].forEach(x=>ent.appendChild(_impEl('div', '', x)));
   corps.appendChild(ent);
@@ -16212,10 +16282,12 @@ function _impRendreGestion(zone, corps){
     bloc.appendChild(h);
     ds.forEach(d=>bloc.appendChild(_impLigneGestion(d)));
   });
+  _impBlocArchives(corps, col.archives.filter(a=>!_imp.niveau || a.lv===_imp.niveau));
   const leg=_impEl('div', 'imp-legende');
   [['imp-vert','classe ✓ effectif','servie (effectif retiré du stock)'],['imp-neutre','classe · date · effectif','programmée'],['imp-hors','classe','pas encore programmée : non comptée']].forEach(([c,a,b])=>{
     const s=_impEl('span', 'imp-leg-i'); s.appendChild(_impEl('span', 'imp-chip '+c, a)); s.appendChild(document.createTextNode(b)); leg.appendChild(s);
   });
+  leg.appendChild(_impEl('span', 'imp-leg-i', 'Un document imprimé reste listé tant qu’il en reste en stock ; « Retirer » le masque.'));
   leg.appendChild(_impEl('span', 'imp-leg-n', 'Reste à servir = effectifs des cours programmés non enregistrés · Stock = imprimé − effectifs servis'));
   corps.appendChild(leg);
 }
@@ -16240,7 +16312,11 @@ function _impLigneGestion(d){
   const cS=_impEl('div', 'imp-n'+(d.stock==null?' imp-muet':''), d.stock==null?'— aucun':String(Math.max(0,d.stock))); cS.dataset.l='STOCK'; g.appendChild(cS);
   g.appendChild(_impPuce(d.bilan));
   const besoin=(d.bilan.statut==='rouge'||d.bilan.statut==='ambre');
-  g.appendChild(_impBtn('＋ Imprimé', 'bs imp-plus'+(besoin?' imp-plus-fort':''), ()=>{ _imp.form=d.cle; _impRendre(); }));
+  const act=_impEl('div', 'imp-act'); g.appendChild(act);
+  act.appendChild(_impBtn('＋ Imprimé', 'bs imp-plus'+(besoin?' imp-plus-fort':''), ()=>{ _imp.form=d.cle; _impRendre(); }));
+  // V11.4.39 — plus aucun cours programmé : on peut le sortir des pages (surplus d'impression).
+  if(!d.prevus.length && _impStore().docs[d.cle])
+    act.appendChild(_impBtn('Retirer', 'imp-retirer', ()=>{ _impRetirer(d.cle); _impRendre(); }, 'Ne plus afficher ce document (il revient s’il est de nouveau programmé ou réimprimé)'));
   if(_imp.form===d.cle) row.appendChild(_impFormImprime(d, d.bilan.manque));
   return row;
 }
@@ -16353,7 +16429,7 @@ function _impRendreRetour(zone, corps){
   const ok=_impBtn('', 'bp', ()=>{
     let n=0;
     champs.forEach(({d, s})=>{ if(s.on && s.n>0){ const st=_impStore(); if(!st.docs[d.cle]) st.docs[d.cle]={label:d.label, lv:d.lv, evts:[]};
-      st.docs[d.cle].evts.push({ts:Date.now(), n:s.n, mode:_imp.mode==='set'?'set':'add'}); n++; } });
+      st.docs[d.cle].evts.push({ts:Date.now(), n:s.n, mode:_imp.mode==='set'?'set':'add'}); delete st.docs[d.cle].retire; n++; } });
     if(n){ saveS(); _impTuileAt=0; }
     _imp.retour=null; _imp.vue='gestion'; _impRendre();
   });
@@ -16405,6 +16481,27 @@ function _impEnsureTuile(){
   sdc.parentNode.insertBefore(b, sdc.nextSibling);
   const demo=document.getElementById('demo-pub-tile'); if(demo) demo.style.gridColumn='3';
   const aide=document.getElementById('help-faq-tile'); if(aide) aide.style.gridColumn='4';
+}
+/** V11.4.40 — Section repliée « Archivés (n) » : documents retirés ou archivés par la
+ *  Synthèse, chacun avec « Rétablir ». Un document reprogrammé en sort de lui-même. */
+function _impBlocArchives(corps, archives){
+  if(!archives || !archives.length) return;
+  const bloc=_impEl('section', 'imp-bloc imp-arch'); corps.appendChild(bloc);
+  const h=_impBtn((_imp.archOuvert?'▾ ':'▸ ')+'Archivés ('+archives.length+')', 'imp-arch-h', ()=>{ _imp.archOuvert=!_imp.archOuvert; _impRendre(); });
+  bloc.appendChild(h);
+  if(!_imp.archOuvert) return;
+  archives.slice().sort((a,b)=>a.lv.localeCompare(b.lv) || a.label.localeCompare(b.label)).forEach(a=>{
+    const r=_impEl('div', 'imp-arch-r');
+    const c1=_impEl('div'); c1.appendChild(_impEl('div', 'imp-doc', a.label));
+    let pourquoi='';
+    if(a.etat==='synthese') pourquoi='séance achevée dans toutes les classes (Synthèse)';
+    else { let d=''; try{ d=new Date(a.retire).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}); }catch(e){} pourquoi='retiré'+(d?' le '+d:''); }
+    c1.appendChild(_impEl('div', 'imp-doc-s', a.lv+' · '+pourquoi));
+    r.appendChild(c1);
+    r.appendChild(_impEl('div', 'imp-n'+(a.stock==null||a.stock<=0?' imp-muet':''), a.stock==null?'—':'stock '+Math.max(0,a.stock)));
+    r.appendChild(_impBtn('Rétablir', 'bs imp-plus', ()=>{ _impRetablir(a.cle); _impRendre(); }, 'Remettre ce document dans les pages'));
+    bloc.appendChild(r);
+  });
 }
 
 /* 4 — Évaluations prévues aujourd'hui (seq.evals[] uniquement). */
