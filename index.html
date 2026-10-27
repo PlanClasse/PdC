@@ -4440,7 +4440,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.40';
+const APP_VERSION = 'v11.4.41';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -51872,13 +51872,50 @@ function _srCreateSequenceFromParsed(parsedSeq, niveau){
   return seq.id;
 }
 
+/** V11.4.41 — Texte d'une séquence EXISTANTE, dans la syntaxe de la saisie rapide,
+ *  pour la CONSULTATION en lecture seule (demande du 27/10). Pure (getMoDuree si
+ *  présent). N'a pas de syntaxe, donc absent : compétences, connaissances, contenu
+ *  détaillé des séances. Ce texte n'est jamais réinterprété : la saisie rapide crée
+ *  toujours une séquence NEUVE (§5.20), d'où la lecture seule. */
+function _srSerialiserSequence(seq){
+  if(!seq) return '';
+  const L=[];
+  const dur=(d)=>{ const n=parseInt(d,10); return n>0 ? ' - '+n+' min' : ''; };
+  const net=(x)=>String(x==null?'':x).replace(/\s*\n\s*/g,' ').trim();
+  L.push('/SEQ'+(seq.num!=null && String(seq.num).trim()!=='' ? String(seq.num).trim() : '')+' '+(net(seq.titre)||'(sans titre)'));
+  String(seq.intention||'').split('\n').map(t=>t.trim()).filter(Boolean).forEach(t=>L.push(t));
+  const evals=Array.isArray(seq.evals)?seq.evals.filter(Boolean):[];
+  (Array.isArray(seq.seances)?seq.seances:[]).forEach((sn,k)=>{
+    if(!sn) return;
+    L.push('/Séance '+(k+1)+' '+(net(sn.titre)||'(sans titre)'));
+    (Array.isArray(sn.modeOp)?sn.modeOp:[]).forEach((t,i)=>{
+      const lbl=net(t); if(!lbl) return;
+      let d=0; try{ d=(typeof getMoDuree==='function') ? getMoDuree(sn,i) : ((sn.modeOpDurees||[])[i]||0); }catch(e){ d=(sn.modeOpDurees||[])[i]||0; }
+      L.push(lbl+dur(d));
+    });
+    (Array.isArray(sn.docs)?sn.docs:[]).map(net).filter(Boolean).forEach(d=>L.push('/Doc '+d));
+    (Array.isArray(sn.ressources)?sn.ressources:[]).map(net).filter(Boolean).forEach(d=>L.push('/Res '+d));
+    const tafs=Array.isArray(sn.tafs)?sn.tafs:(sn.taf?[sn.taf]:[]);
+    tafs.map(net).filter(Boolean).forEach(d=>L.push('/TAF '+d));
+    evals.filter(e=>!e.isFinal && e.afterSeanceId===sn.id).forEach(e=>L.push('/Eval inter '+(net(e.titre||e.contenu)||'Évaluation')+dur(e.duree)));
+  });
+  evals.filter(e=>e.isFinal).forEach(e=>L.push('/Eval finale '+(net(e.titre||e.contenu)||'Évaluation finale')+dur(e.duree)));
+  return L.join('\n');
+}
+/** V11.4.41 — Libellé d'une séquence dans le sélecteur de consultation. Pure. */
+function _srLibelleSequence(seq, rang){
+  const n=(seq && seq.num!=null && String(seq.num).trim()!=='') ? String(seq.num).trim() : String(rang+1);
+  const t=String((seq && seq.titre)||'(sans titre)').trim();
+  return 'SEQ'+n+' · '+(t.length>48 ? t.slice(0,47)+'…' : t);
+}
 function renderProgSaisieRapide(){
   const pane = document.getElementById('prog-pane-saisie');
   if(!pane) return;
 
   // Capturer le draft AVANT de vider (sinon on perd la saisie au re-render)
   const _prevTa = pane.querySelector('#sr-textarea');
-  if(_prevTa) pane._draftText = _prevTa.value;
+  // V11.4.41 — un texte de CONSULTATION n'est pas un brouillon : on ne l'écrase pas avec.
+  if(_prevTa && !_prevTa.readOnly) pane._draftText = _prevTa.value;
 
   pane.innerHTML = '';
   const activeLevels = LEVELS.filter(l=>S.en[l]);
@@ -51899,9 +51936,24 @@ function renderProgSaisieRapide(){
     const b = document.createElement('button');
     b.className = 'fp-tab' + (pane._lv===lv?' act':'');
     b.textContent = LBL[lv]||lv;
-    b.onclick = ()=>{ pane._lv = lv; renderProgSaisieRapide(); };
+    b.onclick = ()=>{ pane._lv = lv; pane._consult = null; renderProgSaisieRapide(); };
     lvBar.appendChild(b);
   });
+  // V11.4.41 — Consulter une séquence déjà saisie (lecture seule).
+  const _progLv = (typeof getProgression==='function') ? (getProgression(pane._lv)||[]) : [];
+  const _seqConsult = pane._consult ? _progLv.find(q=>q && q.id===pane._consult) : null;
+  if(!_seqConsult) pane._consult = null;
+  if(_progLv.length){
+    const sel = document.createElement('select');
+    sel.id = 'sr-consult';
+    sel.title = 'Afficher une séquence déjà saisie (lecture seule)';
+    sel.style.cssText = 'margin-left:12px;font-size:13px;padding:5px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur);color:var(--tx);max-width:100%;min-height:32px';
+    const o0 = document.createElement('option'); o0.value=''; o0.textContent='📖 Consulter une séquence…'; sel.appendChild(o0);
+    _progLv.forEach((q,i)=>{ if(!q) return; const o=document.createElement('option'); o.value=q.id; o.textContent=_srLibelleSequence(q,i); sel.appendChild(o); });
+    sel.value = pane._consult || '';
+    sel.onchange = ()=>{ pane._consult = sel.value || null; renderProgSaisieRapide(); };
+    lvBar.appendChild(sel);
+  }
   pane.appendChild(lvBar);
 
   // ── Layout 2 colonnes ──
@@ -51933,6 +51985,18 @@ function renderProgSaisieRapide(){
     '/Séance 2 …\n' +
     '/Eval finale Bilan - 60 min';
   ta.value = pane._draftText || '';
+  if(_seqConsult){
+    // V11.4.41 — lecture seule : le texte de la séquence, sans brouillon touché.
+    ta.value = _srSerialiserSequence(_seqConsult);
+    ta.readOnly = true;
+    ta.style.background = 'var(--sur2)';
+    leftLabel.textContent = '';
+    const tag = document.createElement('span');
+    tag.style.cssText = 'font-weight:700;color:#1D4ED8';
+    tag.textContent = '🔒 Lecture seule — '+_srLibelleSequence(_seqConsult, _progLv.indexOf(_seqConsult));
+    leftLabel.appendChild(tag);
+    leftLabel.appendChild(document.createTextNode(' · compétences, connaissances et contenu détaillé non affichés · pour modifier : onglet Construction'));
+  }
   leftCol.appendChild(ta);
 
   // Aide-mémoire repliable
@@ -51971,7 +52035,7 @@ function renderProgSaisieRapide(){
 
   // ── Footer : stats + bouton créer ──
   const footer = document.createElement('div');
-  footer.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:.8rem 1.5rem;border-top:1px solid var(--brd);background:var(--sur2);flex-shrink:0;gap:12px;flex-wrap:wrap';
+  footer.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:.8rem 1.5rem;padding-right:max(1.5rem, 150px);border-top:1px solid var(--brd);background:var(--sur2);flex-shrink:0;gap:12px;flex-wrap:wrap';   // V11.4.41 — place pour le réglage de zoom flottant (il couvrait le bouton de droite)
 
   const stats = document.createElement('div');
   stats.id = 'sr-stats';
@@ -52004,6 +52068,20 @@ function renderProgSaisieRapide(){
     showProgTab('construction');
   };
   footer.appendChild(createBtn);
+  if(_seqConsult){
+    // V11.4.41 — pas de création depuis un texte de consultation (doublon assuré).
+    createBtn.style.display = 'none';
+    const acts = document.createElement('div');
+    acts.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
+    const cop = document.createElement('button'); cop.className='bs'; cop.style.cssText='padding:8px 14px;font-size:13px'; cop.textContent='📋 Copier le texte';
+    cop.onclick = ()=>{ const t=ta.value; const fin=()=>{ cop.textContent='✓ Copié'; setTimeout(()=>{ cop.textContent='📋 Copier le texte'; }, 1500); };
+      try{ navigator.clipboard.writeText(t).then(fin, ()=>{ ta.select(); try{ document.execCommand('copy'); fin(); }catch(e){} }); }
+      catch(e){ ta.select(); try{ document.execCommand('copy'); fin(); }catch(e2){} } };
+    const ret = document.createElement('button'); ret.className='bp'; ret.style.cssText='padding:8px 16px;font-size:13px'; ret.textContent='✏ Revenir à ma saisie';
+    ret.onclick = ()=>{ pane._consult = null; renderProgSaisieRapide(); };
+    acts.appendChild(cop); acts.appendChild(ret);
+    footer.appendChild(acts);
+  }
 
   pane.appendChild(footer);
 
@@ -52011,7 +52089,7 @@ function renderProgSaisieRapide(){
   const refresh = ()=>{
     const parsed = _srParseProgressionText(ta.value);
     _srRenderPreview(parsed, prev, stats);
-    pane._draftText = ta.value;
+    if(!ta.readOnly) pane._draftText = ta.value;
     const seq = parsed.sequences[0];
     createBtn.disabled = !seq;
     createBtn.style.opacity = seq ? '' : '.5';
