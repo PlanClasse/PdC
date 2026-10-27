@@ -2851,6 +2851,8 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .ref-fam-code{font-size:22px;font-weight:800;color:var(--fc);letter-spacing:.02em}
 .ref-fam-nom{font-size:16px;font-weight:700;color:var(--tx)}
 .ref-fam-n{margin-left:auto;font-size:13px;font-weight:600;color:var(--tx2)}
+.ref-fam-code.ref-fam-long{font-size:18px;letter-spacing:0}
+.ref-sous.ref-sous-seul{grid-template-columns:minmax(0,1fr)}
 .ref-sous{display:grid;grid-template-columns:190px minmax(0,1fr);border-top:1px solid var(--brd)}
 .ref-sous:first-of-type{border-top:0}
 .ref-sous-nom{padding:12px 16px;font-size:13px;font-weight:700;color:var(--fc);text-transform:uppercase;letter-spacing:.04em;background:var(--sur2);border-right:1px solid var(--brd)}
@@ -4546,7 +4548,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.43';
+const APP_VERSION = 'v11.4.44';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -65317,6 +65319,35 @@ function _refFamille(it){
 }
 /** Regroupe les items par famille puis sous-domaine, dans l'ordre d'apparition ;
  *  familles connues dans l'ordre OST, SFC, CCRI, Socle, CRCN, puis les autres. Pure. */
+/** V11.4.44 — couleur d'une famille hors techno (domaine d'un référentiel importé) :
+ *  attribuée dans l'ordre de première rencontre, puis gardée pour la session ; une couleur
+ *  différente par domaine tant qu'il y en a moins de 7. */
+function _refCouleurLibre(code){
+  const pal=[{coul:'#0369A1',fond:'#E8F4FB'},{coul:'#15803D',fond:'#ECF8EF'},{coul:'#BE185D',fond:'#FCEFF5'},
+             {coul:'#A16207',fond:'#FBF6E6'},{coul:'#4338CA',fond:'#EEEFFC'},{coul:'#C2410C',fond:'#FDF1EA'},{coul:'#7E22CE',fond:'#F5EDFC'}];
+  const m=_refCouleurLibre._m||(_refCouleurLibre._m={});
+  const k=String(code||'');
+  if(!(k in m)) m[k]=Object.keys(m).length;
+  return pal[m[k]%pal.length];
+}
+/** V11.4.44 — nom lisible de la source d'une compétence (le libellé du référentiel importé, pas son code). */
+function _refNomSource(src){
+  const s=String(src||'');
+  if(s==='boizard') return 'Technologie (programme)';
+  if(s==='crcn') return 'CRCN';
+  if(s==='socle') return 'Socle commun';
+  if(s==='custom') return 'Personnalisée';
+  const r=(typeof S!=='undefined' && S && S.referentiels) ? S.referentiels[s] : null;
+  return (r && r.label) ? String(r.label) : s;
+}
+/** V11.4.44 — niveaux de la page Référentiels : 5e, 4e, 3e (inchangé) ; en mode universel,
+ *  les niveaux actifs, 6e comprise. */
+function _refNiveauxPage(){
+  const base=['5e','4e','3e'];
+  if(!(typeof S!=='undefined' && S && S.reglages && S.reglages.pdcUniversel)) return base;
+  const act=(typeof LEVELS!=='undefined' ? LEVELS : base).filter(l=>S.en && S.en[l]);
+  return act.length ? act : base;
+}
 function _refGrouper(items){
   const fam={}, ordre=[];
   (Array.isArray(items)?items:[]).forEach(it=>{
@@ -65329,8 +65360,8 @@ function _refGrouper(items){
   });
   const rang=(c)=>{ const i=REF_ORDRE.indexOf(c); return i<0 ? 100 : i; };
   return ordre.sort((a,b)=>rang(a)-rang(b) || String(a).localeCompare(String(b),'fr'))
-    .map(c=>{ const F=fam[c], d=REF_FAMILLES[c]||{};
-      return {code:c, nom:d.nom||'', coul:d.coul||'#475569', fond:d.fond||'#F1F5F9', n:F.n, sous:F.sous}; });
+    .map(c=>{ const F=fam[c], connue=!!REF_FAMILLES[c], d=connue ? REF_FAMILLES[c] : _refCouleurLibre(c);
+      return {code:c, nom:d.nom||'', coul:d.coul||'#475569', fond:d.fond||'#F1F5F9', long:!connue && String(c).length>8, n:F.n, sous:F.sous}; });
 }
 /** Index d'usage. Pure. prog = progression du niveau ; seances = [{competences, evalComps}]
  *  (séances enregistrées des classes du niveau) ; evalLive = [{uid:{id:val}}] (S.evalComps
@@ -65391,13 +65422,14 @@ function _refRendreMosaique(list, items, lv){
   _refGrouper(vis).forEach(F=>{
     const sec=_refEl('section', 'ref-fam'); sec.style.setProperty('--fc', F.coul); sec.style.setProperty('--ff', F.fond);
     const h=_refEl('div', 'ref-fam-h');
-    h.appendChild(_refEl('span', 'ref-fam-code', F.code));
+    h.appendChild(_refEl('span', 'ref-fam-code'+(F.long?' ref-fam-long':''), F.code));
     if(F.nom) h.appendChild(_refEl('span', 'ref-fam-nom', F.nom));
     h.appendChild(_refEl('span', 'ref-fam-n', F.n+' compétence'+(F.n>1?'s':'')));
     sec.appendChild(h);
     F.sous.forEach(s=>{
-      const r=_refEl('div', 'ref-sous');
-      r.appendChild(_refEl('div', 'ref-sous-nom', s.nom));
+      const seul=(F.sous.length===1 && s.nom===F.code);   // V11.4.44 — domaine sans sous-domaine : pas de libellé répété
+      const r=_refEl('div', 'ref-sous'+(seul?' ref-sous-seul':''));
+      if(!seul) r.appendChild(_refEl('div', 'ref-sous-nom', s.nom));
       const g=_refEl('div', 'ref-cartes');
       s.items.forEach(it=>g.appendChild(_refCarte(it, F, idx, lv)));
       r.appendChild(g); sec.appendChild(r);
@@ -65473,8 +65505,8 @@ function _refOuvrirFiche(it, F, lv){
 /** Fiche d'un item hors programme de technologie (CRCN, socle, personnalisé, importé). */
 function _refFicheSimple(p, it, F, x){
   const h=_refEl('div', 'ref-fiche-h');
-  h.appendChild(_refEl('span', 'ref-fam-code', F.code));
-  h.appendChild(_refEl('span', 'ref-fiche-sous', _refFamille(it).sous));
+  h.appendChild(_refEl('span', 'ref-fam-code'+(F.long?' ref-fam-long':''), F.code));
+  { const sous=_refFamille(it).sous; if(sous!==F.code) h.appendChild(_refEl('span', 'ref-fiche-sous', sous)); }
   h.appendChild(x); p.appendChild(h);
   const corps=_refEl('div', 'ref-fiche-c'); p.appendChild(corps);
   corps.appendChild(_refEl('div', 'ref-code ref-code-g', it.id));
@@ -65484,7 +65516,7 @@ function _refFicheSimple(p, it, F, x){
   const meta=_refEl('div', 'ref-fiche-meta');
   const ajout=(t,v)=>{ if(!v) return; const l=_refEl('div'); l.appendChild(_refEl('b','',t+' : ')); l.appendChild(document.createTextNode(v)); meta.appendChild(l); };
   ajout('Domaine', it.domaine||'');
-  ajout('Source', it.source==='boizard'?'Technologie (programme)':it.source==='crcn'?'CRCN':it.source==='socle'?'Socle commun':it.source==='custom'?'Personnalisée':String(it.source||''));
+  ajout('Source', _refNomSource(it.source));
   ajout('Niveaux', (it.niveaux||[]).map(n=>(typeof LBL!=='undefined' && LBL[n])||n).join(', '));
   ajout('Thèmes', (it.themes||[]).map(t=>{ const d=(typeof THEMES_DEF!=='undefined') ? THEMES_DEF.find(x=>x.id===t) : null; return d?d.label:t; }).join(', '));
   corps.appendChild(meta);
@@ -65517,7 +65549,7 @@ function _refFicheProgramme(p, it, F, lv, pl, bloc, P, x){
   const th=P.themes[pl.theme], comp=th.competences[pl.comp];
   const nivL={'5':'5e','4':'4e','3':'3e'}[pl.niv];
   const h=_refEl('div', 'ref-fiche-h');
-  h.appendChild(_refEl('span', 'ref-fam-code', F.code));
+  h.appendChild(_refEl('span', 'ref-fam-code'+(F.long?' ref-fam-long':''), F.code));
   h.appendChild(_refEl('span', 'ref-fiche-sous', th.titre));
   h.appendChild(x); p.appendChild(h);
   const corps=_refEl('div', 'ref-fiche-c'); p.appendChild(corps);
@@ -65645,7 +65677,8 @@ function renderCompsRef(){
   // Level buttons
   const lvBtns = document.getElementById('comps-ref-lv-btns');
   lvBtns.innerHTML = '';
-  ['5e','4e','3e'].forEach(lv=>{
+  const _nivsRef=_refNiveauxPage(); if(!_nivsRef.includes(compsRefLv)) compsRefLv=_nivsRef[0];   // V11.4.44
+  _nivsRef.forEach(lv=>{
     const b = document.createElement('button');
     b.className = 'fp-tab' + (compsRefLv===lv?' act':'');
     b.textContent = LBL[lv]||lv;
