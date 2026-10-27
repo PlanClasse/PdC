@@ -2830,6 +2830,10 @@ body:has(#imp-bg) #font-ctrl{display:none}
 /* V11.4.42 — Référentiels en mosaïque, fiche, couverture × séquences */
 .ref-mosaique{display:flex;flex-direction:column;gap:16px;padding-bottom:1rem}
 .ref-usage-barre{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ref-usage-ligne{margin-left:auto}
+.ref-usage-ligne .ref-seg-b{min-height:28px;padding:3px 10px;font-size:12px}
+.ref-usage-ligne .ref-switch{font-size:12px}
+.ref-usage-ligne+#comps-ref-search{margin-left:0!important}
 .ref-switch{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--tx);cursor:pointer;user-select:none}
 .ref-switch input{position:absolute;opacity:0;width:1px;height:1px}
 .ref-switch-piste{width:38px;height:22px;border-radius:999px;background:#C9CCC0;position:relative;transition:background .15s;flex:none}
@@ -2874,6 +2878,32 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .ref-fiche-meta{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--tx2);border-top:1px solid var(--brd);padding-top:10px}
 .ref-fiche-meta b{color:var(--tx)}
 .ref-fiche-usage{font-size:13px;color:var(--tx);background:var(--sur2);border-radius:9px;padding:9px 11px;line-height:1.5}
+.ref-fiche-prog{width:min(980px,100%)}
+.ref-fiche-apercu{font-size:13px;line-height:1.5;color:var(--tx2);font-style:italic}
+.ref-prog-texte{font-size:13px;line-height:1.55;color:var(--tx)}
+.ref-prog-texte p{margin:0 0 8px}
+.ref-repli{border:1px solid var(--brd);border-radius:9px;padding:6px 10px;background:var(--sur)}
+.ref-repli summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--fc)}
+.ref-repli[open] summary{margin-bottom:6px}
+.ref-prog-etq{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--fc);margin-bottom:4px}
+.ref-prog-comp{background:var(--ff);border-radius:10px;padding:10px 12px}
+.ref-prog-comp-t{font-size:15px;font-weight:700;color:var(--tx);margin-bottom:4px;line-height:1.35}
+.ref-prog-rep{border-left:0;display:flex;flex-direction:column;gap:4px}
+.ref-prog-court{font-size:12px;color:var(--tx2)}
+.ref-prog-grille{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ref-prog-col{border:1px solid var(--brd);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--sur)}
+.ref-prog-ici{border:2px solid var(--fc);background:var(--ff)}
+.ref-prog-col-h{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
+.ref-prog-col-h span{font-size:11px;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em}
+.ref-prog-it{display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--brd);border-radius:8px;padding:6px 8px;background:var(--sur);font:inherit;font-size:12.5px;line-height:1.35;color:var(--tx);cursor:pointer}
+.ref-prog-it:hover:not(:disabled){border-color:var(--fc)}
+.ref-prog-actuel{border:2px solid var(--fc);font-weight:700;cursor:default}
+.ref-prog-absent{opacity:.55;cursor:default}
+.ref-prog-vide{font-size:12px;color:var(--tx3);text-align:center;padding:6px}
+.ref-prog-ul{margin:0 0 6px 1.1rem;padding:0;font-size:13px;line-height:1.5;color:var(--tx)}
+.ref-prog-sub{margin:2px 0 2px 1.1rem;padding:0;list-style:circle}
+.ref-fiche-src{font-size:11px;color:var(--tx3);text-align:right}
+@media (max-width:700px){ .ref-prog-grille{grid-template-columns:1fr} }
 .cov2{display:flex;flex-direction:column;gap:12px;padding:1rem 1.5rem;flex:1;min-height:0}
 .cov2-barre{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .cov2-leg{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--tx2)}
@@ -4516,7 +4546,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.42';
+const APP_VERSION = 'v11.4.43';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -65063,6 +65093,194 @@ function computeVgDateBounds(semester, customFrom, customTo){
 
 
 /* ════════════════════════════════════════════════════════════════════
+   V11.4.43 — Programme de technologie du cycle 4 (BO n° 9 du 29 février 2024),
+   texte officiel recopié du PDF fourni le 27/10, pour la fiche d'une compétence.
+   Clé d'un bloc = préfixe des identifiants de l'appli (OST11, SFC21, CCRI31…) ;
+   repères[niveau] dans l'ordre du programme : l'item k du niveau L a pour
+   identifiant BLOC-L-k (ou BLOC-L s'il est seul).
+   ════════════════════════════════════════════════════════════════════ */
+const PROG_TECHNO_C4={
+  source:"Programme de technologie du cycle 4 — Bulletin officiel n° 9 du 29 février 2024",
+  themes:{
+    OST:{
+      titre:"Les objets et les systèmes techniques : leurs usages et leurs interactions à découvrir et à analyser",
+      apercu:"Le thème « Les objets et les systèmes techniques : leurs usages et leurs interactions à découvrir et analyser » permet, dans le cadre d’une approche socioculturelle, d’étudier le cycle de vie, les usages et le fonctionnement global des objets et des systèmes techniques. Ce thème vise à une meilleure compréhension de l’environnement technologique de proximité, dans l’environnement quotidien des élèves ou approché dans le cadre de la découverte des métiers ainsi que les relations entre la technologie, les systèmes naturels, les sciences, la société, l’économie, le développement durable, etc.",
+      intro:["Les objets et les systèmes techniques peuvent évoluer rapidement et changer notre quotidien. Au travers de ce thème, les élèves étudient les objets et les systèmes techniques qui les entourent en décrivant leur fonctionnement global (mise en service et contexte d’utilisation), les usages raisonnés et détournés ainsi que l’incidence de leurs usages sur notre environnement : consommation d’énergie, disponibilité et consommation de ressources, rejets et déchets, échanges de données (images, textes, etc.). De plus, en s’appuyant sur l’étude de l’évolution des usages en fonction des innovations, des inventions et du contexte socio-économique, les élèves sont en mesure de faire le choix éclairé d’un objet ou d’un système technique au regard de critères identifiés.",
+        "L’étude de cas à partir de manipulations et d’expérimentations est privilégiée. Un travail collaboratif doit conduire les élèves à exprimer et à structurer leur pensée en mobilisant le langage naturel et des outils de représentation (croquis, textes, schémas, diagrammes, algorithmes, etc.)."],
+      progressivite:{
+        '5e':"En classe de 5e, il s’agit d’amener les élèves à mieux appréhender les usages d’objets et de systèmes techniques de leur quotidien, par la mise en service, la manipulation, le recours à des expériences d’utilisateurs, des activités de paramétrage, de configuration et de tests, etc. Les élèves commencent ainsi à construire et à conceptualiser les premiers éléments d’une culture des solutions technologiques.",
+        '4e':"En classe de 4e, dans le prolongement et la continuité des activités pratiques découvertes en 5e, il s’agit d’approfondir ces usages et cette culture technologiques en intégrant les conditions et les contraintes associées aux différents objets et systèmes techniques.",
+        '3e':"En classe de 3e, toujours dans le cadre d’activités pratiques, il s’agit d’amener les élèves à formuler les liens entre sciences, technologies, innovations et inventions, en tenant compte des besoins, des usages et du cycle de vie de ces objets ou de ces systèmes."},
+      competences:{
+        '1':{titre:"Décrire les liens entre usages et évolutions technologiques des objets et des systèmes techniques",
+          texte:"Au-delà du simple constat, les élèves apprennent à décrire les liens entre l’évolution des besoins et des exigences, et la conception des objets et des systèmes techniques, mais aussi les relations entre les avancées scientifiques, les inventions et les innovations technologiques et les transformations de la société.",
+          crcn:["Informations et données : mener une recherche ou une veille d’information","Environnement numérique : évoluer dans un environnement numérique","Communication et collaboration : s’insérer dans un environnement numérique","Communication et collaboration : interagir","Protection et sécurité : protéger les données personnelles et la vie privée","Protection et sécurité : protéger la santé, le bien-être et l’environnement"],
+          disciplines:["Sciences de la vie et de la Terre — la planète Terre, l’environnement et l’activité humaine : identifier les principales incidences de l’activité humaine, les bénéfices et les risques, à la surface de la Terre","Sciences de la vie et de la Terre — la planète Terre, l’environnement et l’activité humaine : envisager ou justifier des comportements responsables face à l’environnement et à la préservation des ressources limitées de la planète"]},
+        '2':{titre:"Décrire les interactions entre un objet ou un système technique, son environnement et les utilisateurs",
+          texte:"Les élèves doivent appréhender des objets et des systèmes techniques de plus en plus complexes, que ce soit par l’augmentation du nombre de leurs fonctions, par la diversité de leurs interactions ou encore par la prise en compte des expériences vécues par les utilisateurs. La mise en service et la manipulation d’objets réels sont à privilégier, afin que les descriptions produites s’inscrivent dans la réalité.",
+          crcn:["Création de contenus : développer des documents textuels","Création de contenus : développer des documents multimédias"], disciplines:[]},
+        '3':{titre:"Caractériser et choisir un objet ou un système technique selon différents critères",
+          texte:"Les élèves font un choix éclairé en identifiant les critères à prendre en compte pour comparer des objets et des systèmes techniques répondant à un même besoin. Ces critères portent sur les performances des objets ou des systèmes techniques, mais aussi sur leurs incidences environnementales tout au long de leur cycle de vie.",
+          crcn:["Information et données : mener une recherche et une veille d’informations"],
+          disciplines:["Physique-chimie — l’énergie, ses transferts et ses conversions : identifier les sources, les transferts, les types de conversions et les formes d’énergie","Sciences de la vie et de la Terre — la planète Terre, l’environnement et l’activité humaine : identifier les principaux effets de l’activité humaine, bénéfices et risques, à la surface de la Terre","Mathématiques — grandeurs et mesures : calculer avec des grandeurs mesurables ; exprimer les résultats dans les unités adaptées"]}
+      }
+    },
+    SFC:{
+      titre:"Structure, fonctionnement, comportement : des objets et des systèmes techniques à comprendre",
+      apercu:"Le thème « Structure, fonctionnement, comportement : des objets et des systèmes techniques à comprendre » permet, dans le cadre d’approches scientifiques et techniques, d’étudier la structure interne des objets et des systèmes techniques, d’évaluer leurs comportements, leurs performances et leurs caractéristiques. Ce thème vise à mieux comprendre les choix faits lors de leur conception en réponse à des besoins, à un cahier des charges et à des exigences. Il s’agit également de comprendre comment certains objets et systèmes techniques, à partir d’acquisitions et de traitements de données, communiquent et interagissent avec leur environnement.",
+      intro:["Ce thème permet d’étudier, au sein d’objets et de systèmes techniques contemporains, les relations internes entre des fonctions techniques ainsi que les relations entre leurs constituants. L’exploration et l’expérimentation technologique des objets et des systèmes techniques disponibles qui servent de supports aux apprentissages de ce thème mobilisent des documentations techniques et des modèles numériques associés pour développer les compétences liées à ce thème. Il est nécessaire de préciser aux élèves le périmètre d’étude des objets et des systèmes techniques.",
+        "Tout au long du cycle 4, en mobilisant à la fois leur habileté manuelle, mais aussi leur capacité de programmation, d’usage des logiciels et des ressources informatiques disponibles, les élèves manipulent, réparent, fabriquent et, ce faisant, deviennent capables de comprendre et d’analyser le fonctionnement des objets et des systèmes techniques. L’atelier de fabrication collaboratif offre le cadre idéal pour ces apprentissages. La démarche d’investigation, la démarche technologique et la démarche de résolution de problèmes sont privilégiées."],
+      progressivite:{
+        '5e':"En classe de 5e, à partir d’observations, de manipulations, de réparations, les élèves abordent les objets et les systèmes techniques et identifient leurs entrées et leurs sorties (mouvements, informations). Ils doivent être en mesure de modifier les paramètres d’entrée d’un programme pour en identifier les conséquences sur les fonctionnalités d’un objet ou d’un système technique. Ils doivent également être en mesure d’effectuer une réparation d’une pièce d’un objet ou d’un système technique après avoir repéré visuellement un dysfonctionnement.",
+        '4e':"En classe de 4e, en étudiant la composition interne des objets et des systèmes techniques, les élèves explorent et étudient les composants et les solutions techniques qui constituent les chaînes d’énergie et d’information. Les flux d’information, d’énergie et de matière sont abordés et caractérisés afin de comprendre les éléments qui les constituent. Les élèves analysent les données, complètent et testent un programme pour modifier une fonctionnalité d’un objet ou d’un système technique. L’étude d’un système et de ses données nécessite d’aborder l’architecture de réseaux locaux. Après avoir identifié un dysfonctionnement, les élèves définissent un protocole de réparation et le mettent en œuvre.",
+        '3e':"En classe de 3e, les élèves caractérisent les chaînes d’information et d’énergie en matière de fonctions. Ils utilisent des modèles pour caractériser les objets et les systèmes techniques et intervenir sur eux (nouvelle fonctionnalité, réparation). Ils déterminent les données et conçoivent l’algorithme associé à une nouvelle fonctionnalité d’un objet ou d’un système technique, puis le programment et le testent. Les élèves découvrent la façon dont des données de différentes natures sont numérisées, stockées, mises en forme et transmises par un objet ou un système technique. La circulation de ces données dans le réseau Internet est étudiée. Les élèves fabriquent une pièce sur mesure ou utilisent des composants issus de bibliothèques (réelles ou virtuelles) pour remédier à un dysfonctionnement."},
+      competences:{
+        '1':{titre:"Décrire et caractériser l’organisation interne d’un objet ou d’un système technique et ses échanges avec son environnement (énergies, données)",
+          texte:"En manipulant un objet ou un système technique, l’élève est capable de décrire son fonctionnement, la chaîne d’énergie et la chaîne d’information. Les sources et les formes d’énergie sont identifiées, tout comme les conversions et les transferts. Les mouvements mécaniques sont analysés en distinguant les transmissions et les transformations au sein des objets et des systèmes techniques. L’étude de la chaîne d’information est abordée au travers du rôle central des données dans le traitement informatique, en particulier au niveau des entrées et des sorties du programme associé à l’objet ou au système technique. Les élèves doivent savoir décrire un objet à l’aide de données, puis les structurer pour en extraire de l’information et les analyser avec des outils de mise en forme et de traitement figurant dans un tableur. Après l’étude du stockage de ces données dans des fichiers, celle des composants du réseau permet de comprendre comment ces données circulent dans l’Internet.",
+          crcn:["Information et données : mener une recherche ou une veille d’information","Communication et collaboration : partager et publier","Communication et collaboration : collaborer","Environnement numérique : évoluer dans un environnement numérique"],
+          disciplines:["Mathématiques — organisation et gestion des données, fonctions : interpréter, représenter et traiter des données","Physique-chimie — l’énergie, ses transferts et ses conversions : identifier les sources, les transferts, les types de conversions et les formes d’énergie","Physique-chimie — mouvements et interactions : caractériser un mouvement ; des signaux pour observer et communiquer : caractériser différents types de signaux"]},
+        '2':{titre:"Identifier un dysfonctionnement d’un objet technique et y remédier",
+          texte:"L’initiation des élèves au dépannage et à la réparation d’objets s’appuie sur des problèmes techniques réels. Leur résolution mobilise notamment des compétences manuelles. Ces interventions encouragent le développement de la curiosité et de l’ingéniosité des élèves. Détecter un dysfonctionnement, l’analyser, proposer une solution, réparer puis tester et valider des améliorations sont des activités à proposer aux élèves pour les aider à comprendre la structure d’un objet technique, le rôle des matériaux, l’agencement des solutions constructives. L’étude des propriétés et des caractéristiques des matériaux mobilisés permet aux élèves de comprendre le comportement mécanique des structures et les mécanismes de transformation de mouvements.",
+          crcn:["Information et données : mener une recherche ou une veille d’information"],
+          disciplines:["Physique-chimie — l’énergie, ses transferts et ses conversions : identifier les sources, les transferts, les types de conversions et les formes d’énergie","Physique-chimie — mouvements et interactions : caractériser un mouvement"]},
+        '3':{titre:"Comprendre et modifier un programme associé à une fonctionnalité d’un objet ou d’un système technique",
+          texte:"L’étude du programme réalisant une ou plusieurs fonctionnalités d’un objet ou d’un système technique permet aux élèves d’explorer son comportement. En produisant un algorithme en langage naturel, les élèves identifient les données utilisées ou produites, les interprètent et les traitent si besoin est. Des modifications peuvent être apportées à ce programme, pour répondre à une nouvelle fonctionnalité. L’acquisition des concepts fondamentaux de la programmation s’effectue tout au long du cycle 4, en lien avec le professeur de mathématiques de la classe.",
+          crcn:["Création de contenus : programmer"],
+          disciplines:["Mathématiques — algorithmique et programmation : écrire, mettre au point, exécuter un programme"]}
+      }
+    },
+    CCRI:{
+      titre:"Création, conception, réalisation, innovations : des objets à concevoir et à réaliser",
+      apercu:"Le thème « Création, conception, réalisation, innovations : des objets à concevoir et à réaliser » permet, dans le cadre d’une démarche d’ingénierie, d’imaginer, d’innover en faisant preuve de créativité, de concevoir, de mettre au point un prototype, de simuler, de fabriquer, de programmer, de valider des solutions techniques en réponse à un besoin ou à une évolution attendue.",
+      intro:["À travers ce thème, de manière collaborative, les élèves analysent un problème, conçoivent et matérialisent des solutions. Ils développent des habiletés manuelles (créer, réaliser, construire, installer, assembler, produire, mettre en œuvre, mesurer vérifier, exécuter) et des compétences de programmation et de communication au travers de revues de projets (suivi, validation, argumentation, explications, etc.).",
+        "Les démarches de projet et les phases de créativité mises en œuvre conduisent les élèves à mobiliser leurs connaissances et leurs compétences, notamment celles développées et décrites dans les deux thèmes précédents. Ils sont invités à développer leur esprit critique en réponse à un besoin lié à un enjeu sociétal, en s’appuyant sur des données fiables. Ils exercent leur esprit critique en identifiant les leviers d’action et en se centrant sur les besoins de l’utilisateur. Ils débattent, argumentent et portent un regard critique sur les solutions proposées au regard de leur efficacité et de leurs incidences environnementales et sociétales. Ils imaginent ainsi les solutions les plus appropriées, en alternant les phases de créativité individuelle et collective, et pouvant intégrer une dimension design.",
+        "Les démarches de projet et les phases de créativité sont menées dans un environnement de type classe modulaire ou flexible, au sein de l’atelier de fabrication collaboratif, tout en ayant recours à un environnement informatique maîtrisé (ENT, réseau, identité numérique, etc.)."],
+      progressivite:{
+        '5e':"En classe de 5e, dans le cadre de mini-projets, les élèves identifient des problématiques afin de répondre à des besoins en lien avec des enjeux. Ils choisissent ou proposent des solutions à partir d’éléments donnés en suivant une planification établie et arrêtée. L’organisation ainsi mise en place aboutit, après conception et réalisation d’un ou plusieurs éléments répondant à une fonction technique précise, à l’élaboration d’un prototype (constituants, assemblage, programme). L’objectif est de développer et d’acquérir les savoirs et les savoir-faire leur permettant de mener une démarche de projet globale durant l’année.",
+        '4e':"En classe de 4e, l’accent est mis sur la relation entre les besoins, les fonctions, les solutions dans la continuité de la démarche engagée en 5e en réinvestissant les compétences et les connaissances des élèves. Dans cette partie du cycle, ils identifient et résolvent un problème portant sur un objet ou un système technique existant. Ils doivent être en mesure d’ajouter une fonctionnalité en respectant les spécifications attendues par une approche Matériaux, Énergies, Information en prenant conscience de ses effets sur l’environnement.",
+        '3e':"En classe de 3e, en traitant de thématiques choisies, par exemple en lien avec les objectifs du développement durable, les élèves s’investissent dans un projet mené en groupe, leur permettant de mettre en œuvre les compétences développées lors des niveaux précédents."},
+      competences:{
+        '1':{titre:"Imaginer, concevoir et réaliser une ou des solutions en réponse à un besoin, à des exigences (de développement durable, par exemple) ou à la nécessité d’améliorations dans une démarche de créativité",
+          texte:"En comparant des solutions existantes ou des familles de produits, les élèves imaginent et formulent une solution associée à une fonction technique répondant à un besoin. Ainsi sont-ils amenés à conceptualiser progressivement les démarches d’investigation, de créativité et de projet.",
+          crcn:["Communication et collaboration : interagir","Communication et collaboration : collaborer","Création de contenus : développer des documents textuels dans le cadre des revues de projet","Création de contenus : développer des documents multimédias"],
+          disciplines:["Sciences de la vie et de la Terre — la planète Terre, l’environnement et l’activité humaine : envisager ou justifier des comportements responsables face à l’environnement et à la préservation des ressources limitées de la planète"]},
+        '2':{titre:"Valider les solutions techniques par des simulations ou par des protocoles de tests",
+          texte:"Après avoir concrétisé leurs choix de solutions lors de la phase de réalisation, les élèves s’attachent à la vérification, au contrôle et à la validation de solutions. Cette phase essentielle, menée par l’intermédiaire de simulations ou l’utilisation d’appareils de mesure, permet de comparer les résultats obtenus ou simulés avec des résultats attendus ou des exigences issues d’un cahier des charges. Les élèves identifient les écarts, la précision, les erreurs de mesure. Ils s’appuient sur les documentations techniques mises à leur disposition (documents des constructeurs, données des fabricants, etc.). Les élèves proposent et réalisent un protocole de tests (ce terme englobe l’ensemble des expérimentations, des essais et des mesures que les élèves sont amenés à mettre en œuvre pour valider leurs solutions).",
+          crcn:["Information et données : gérer et traiter des données","Communication et collaboration : partager et publier","Communication et collaboration : collaborer","Création de contenus : développer des documents à contenu majoritairement textuel","Création de contenus : concevoir des documents visuels et sonores","Environnement numérique : résoudre des problèmes techniques"],
+          disciplines:["Physique-chimie — l’énergie, ses transferts et ses conversions : réaliser des circuits électriques simples et exploiter les lois de l’électricité","Physique-chimie — mouvements et interactions : modéliser une action exercée sur un objet par une force caractérisée par une direction, un sens et une valeur"]},
+        '3':{titre:"Concevoir, écrire, tester et mettre au point un programme",
+          texte:"Face à un problème donné, dans le cadre d’un projet nécessitant de la programmation, une phase d’analyse permet aux élèves d’expliciter les fonctionnalités du programme à réaliser puis de concevoir un algorithme en langage naturel répondant au problème posé. Celui-ci est ensuite traduit dans un langage informatique en le structurant avec des sous-programmes ou des fonctions pour en assurer la lisibilité. Une phase de tests et de mise au point permet d’aboutir à un programme répondant aux besoins spécifiés. Le travail en équipe est privilégié pour l’élaboration de projets. Un partage des fonctionnalités à programmer est planifié et piloté par l’enseignant en interaction avec l’équipe d’élèves chargée du projet.",
+          crcn:["Informations et données : gérer et traiter des données","Communication et collaboration : partager et publier","Communication et collaboration : collaborer","Création de contenus : développer des documents visuels et sonores","Création de contenus : programmer","Environnement numérique : résoudre des problèmes techniques"],
+          disciplines:["Mathématiques — organisation et gestion de données, fonctions : interpréter, représenter et traiter des données","Mathématiques — algorithmique et programmation : écrire, mettre au point et exécuter un programme simple"]}
+      }
+    }
+  },
+  blocs:{
+    OST11:{titre:"L’évolution des OST",
+      reperes:{'5':["Collecter, trier et analyser des données","Comparer des principes techniques pour une même fonction technique"],
+        '4':["Mettre en relation les OST avec leurs usages","Identifier les avantages et les inconvénients associés aux évolutions technologiques et informatiques","Justifier l’évolution d’un OST pour répondre à l’évolution des besoins"],
+        '3':["Identifier les innovations de rupture qui sont attachées à l’évolution d’un OST","Mettre en relation une découverte scientifique avec ses développements technologiques et leurs effets sur la société","Exprimer dans un argumentaire court l’incidence d’un OST sur la société","Exprimer dans un argumentaire court l’incidence des contraintes sociétales sur les OST"]},
+      connaissances:["Les éléments qui participent à l’évolution des besoins (invention, innovation, développement durable)","La fonction technique, le principe technique","La famille et la lignée d’OST","Les contraintes sociétales","Les grands types d’apprentissage des intelligences artificielles et leurs usages possibles (géolocalisation, identification, calcul, traduction, etc.)","Les incidences sociétales, notamment l’étude du biais et de l’effet de l’usage d’une intelligence artificielle (IA)"]},
+    OST12:{titre:"Usages et impacts sociétaux du numérique",
+      reperes:{'5':["Décrire le rôle des systèmes d’information dans le partage d’information","Recenser des données, les identifier, les classer, les représenter, les stocker dans des fichiers, les retrouver dans une arborescence","Identifier des règles permettant de sécuriser un environnement numérique (bases de la cybersécurité) et des règles de respect de la propriété intellectuelle","Appréhender la responsabilité de chacun dans les dérives (cyberviolence, atteinte à la vie privée, aux données personnelles, usurpation d’identité)"],
+        '4':["Identifier et appliquer les règles pour un usage raisonné des objets communicants et des environnements numériques (propriété intellectuelle, identité numérique, témoins de connexion, géolocalisation)"],
+        '3':["Exprimer dans un argumentaire court le rôle du développement stratégique du numérique au sein de la société et des environnements professionnels (ou des métiers)"]},
+      connaissances:[["Système d’information et stockage des données :","fichiers informatiques (fichier texte, fichier image, fichier de type tableur ou CSV) et dossiers, arborescence","extension et format de fichiers, droits d’écriture et de lecture sur les fichiers","unité de quantité d’information : bit, octet et leurs multiples","ordre de grandeur de la taille d’un fichier image, d’un fichier son, d’une vidéo","incidences liées au stockage, au flux des données et aux réseaux d’information"],"Cybersécurité : protection des données personnelles, traces numériques (témoins de connexion, géolocalisation), identification, authentification, respect de la propriété intellectuelle","Cyberviolence : usurpation d’identité, usage détourné"]},
+    OST21:{titre:"L’OST dans son environnement",
+      reperes:{'5':["Faire la liste des interacteurs extérieurs d’un OST","Repérer et expliquer les choix de conception dans les domaines de l’ergonomie et de la sécurité ou en lien avec des objectifs de développement durable"],
+        '4':["Décrire l’expérience de l’utilisateur (ressenti et facilité d’usage) d’un OST en partant du langage naturel (texte, croquis) pour aboutir aux schémas, graphiques, algorithmes","Repérer et expliquer les contraintes, exigences prises en compte (sécurité, incidences environnementales, formes et fonctions, ergonomie, qualité, fiabilité) pour répondre aux attentes des utilisateurs"],
+        '3':["Décrire l’expérience de l’utilisateur d’un OST à l’aide de modes de représentation choisis"]},
+      connaissances:["Les interacteurs extérieurs : usagers, données, autres objets, éléments de l’environnement ; les modes de représentation : croquis, schéma, graphique, algorithme, modélisation","Les contraintes : prise en compte des exigences issues des normes ou d’un cahier des charges, labels et certifications ; l’ergonomie liée à l’usage"]},
+    OST31:{titre:"Le choix d’un OST dans un contexte de développement durable",
+      reperes:{'5':["Repérer pour un OST les matériaux, les sources et les formes d’énergie, le traitement de l’information","Identifier les étapes du cycle de vie d’un OST influencées par les choix de matériaux et d’énergie","Choisir un OST parmi plusieurs propositions en vue de répondre à un besoin"],
+        '4':["Identifier les caractéristiques à prendre en compte dans le choix d’un OST en vue de répondre à un besoin","Comparer qualitativement et/ou quantitativement (incidences environnementales, bilan carbone, efficacité énergétique) plusieurs OST répondant au même besoin et arrêter un choix"],
+        '3':["Établir une liste d’OST possibles en vue de répondre à un besoin","Choisir un OST et argumenter ce choix en prenant en compte son cycle de vie et les trois piliers du développement durable","Évaluer les OST selon des exigences ou des critères identifiés (caractéristiques, performances, coût, indice de réparabilité)"]},
+      connaissances:["Les composantes d’une notice et d’une documentation technique et leur organisation","L’indice énergétique et l’indice de réparabilité","Les impacts environnementaux (indicateurs : air, eau, sol et santé)","Les piliers du développement durable et les différentes étapes du cycle de vie d’un OST","Les critères de choix : la qualité, l’efficacité énergétique, la durabilité, la recyclabilité"]},
+    OST32:{titre:"La performance des OST",
+      reperes:{'5':["Mesurer et comparer une performance d’un OST à partir d’un protocole fourni"],'4':["Choisir les appareils de mesure à utiliser pour mesurer une performance d’un OST à partir d’un protocole donné"],'3':["Définir et mettre en œuvre un protocole pour mesurer une caractéristique, une performance d’un OST"]},
+      connaissances:["Les critères de performance d’un OST (grandeurs mesurables : vitesse, autonomie énergétique, etc.)"]},
+    SFC11:{titre:"Fonctions, solutions, constituants de la chaîne d’énergie",
+      reperes:{'5':["Associer des solutions techniques à une ou des fonctions techniques","Identifier des constituants de la chaîne d’énergie d’un objet technique (l’organisation de la chaîne d’énergie étant fournie)","Indiquer la nature des énergies en entrée et en sortie des constituants de la chaîne d’énergie"],
+        '4':["Identifier les constituants d’une chaîne d’énergie et les associer à leurs fonctions","Repérer les transformations d’énergie et les flux d’énergie au sein de l’OST"],
+        '3':["Élaborer, à l’aide d’un schéma bloc, la chaîne d’énergie d’un OST"]},
+      connaissances:["Les différentes formes d’énergie : électrique, cinétique, potentielle, thermique, lumineuse","Les conversions d’énergie des constituants suivants : moteur électrique, lampe, radiateur, génératrice, vérin","Les fonctions des constituants suivants : batterie, relais/interrupteur","Les mécanismes de transmission et de transformation de mouvements (engrenages, courroies, chaînes)"]},
+    SFC12:{titre:"Matériaux et procédés",
+      reperes:{'5':["Identifier les principaux matériaux constitutifs d’un OST"],'4':["Mettre en relation la forme d’une pièce avec le procédé de réalisation"],'3':["Justifier le choix d’un matériau et de son procédé de mise en forme au regard des contraintes techniques et environnementales"]},
+      connaissances:["Les caractéristiques et les propriétés des principaux matériaux","Les caractéristiques des procédés de mise en forme disponibles dans le laboratoire","Les étapes du cycle de vie d’un OST : extraction, traitement, fabrication, assemblage, utilisation, fin de vie, transport ; l’incidence environnementale"]},
+    SFC13:{titre:"Fonctions, solutions, constituants de la chaîne d’information",
+      reperes:{'5':["Identifier des constituants de la chaîne d’information d’un OST (l’organisation de la chaîne d’information étant fournie)"],'4':["Identifier les constituants de la chaîne d’information d’un objet réel et les associer à leur fonction"],'3':["Décrire un OST en caractérisant sa chaîne d’information","Associer des grandeurs analogiques issues d’un OST à des données exploitables"]},
+      connaissances:["Les fonctions des constituants suivants : capteurs (température, présence, distance, etc.), microcontrôleur, composants d’une interface entre l’humain et la machine (IHM) : boutons, afficheurs, etc."]},
+    SFC14:{titre:"Structuration et traitement des données",
+      reperes:{'5':["Déterminer des descripteurs permettant de décrire des objets sous forme de données en précisant leurs types et leurs formats"],
+        '4':["Décrire et analyser la transformation des données téléversées ou issues d’un OST","Décrire et analyser la structuration d’une table de données qui permet une exploitation et une interprétation du comportement d’un OST"],
+        '3':["Représenter sous forme de données les informations de diverses natures utilisées par un OST","Identifier, selon les cas, leur mise en forme, leur transmission, ou leur stockage dans des fichiers (texte, image, nombre) afin de comprendre le fonctionnement de l’OST"]},
+      connaissances:["Vocabulaire des données : objet / descripteur / collection (liste) / type (mot/chaîne de caractères, nombre et booléen) / données structurées",["Représentation des données :","le bit : élément minimum d’information, représentation par les symboles 0 et 1","représentation des booléens, des mots (code ASCII étendu), des nombres entiers naturels"],"Traitement des données : mise en forme et traitement de données (calculs, filtre, tri) dans un logiciel (tableur)"]},
+    SFC15:{titre:"La circulation de l’information dans un réseau informatique",
+      reperes:{'5':["Identifier les composants qui constituent un réseau local (terminaux, commutateurs, liaisons filaires et sans fil (WiFi)) et sa topologie","Justifier la nécessité d’identifier les terminaux pour communiquer sur un réseau local (activité débranchée et vérification par un outil de simulation)"],
+        '4':["Paramétrer une adresse IP fixe pour ajouter un objet connecté à un réseau local","Résoudre des problèmes pour assurer la communication entre les différents terminaux dans un réseau informatique (simulation ou réseau local déconnecté du réseau pédagogique)","Compléter une simulation fournie pour valider le comportement d’un réseau informatique"],
+        '3':["Identifier et représenter la circulation d’une information dans le réseau Internet","Justifier la nécessité d’un protocole de routage pour faire communiquer plusieurs réseaux (activité débranchée, table de routage donnée)"]},
+      connaissances:["Un réseau local, le réseau mondial (Internet)","Le rôle d’un terminal, d’une carte réseau, des liaisons (filaires ou non filaires), d’un commutateur, d’un routeur, d’un serveur","Le rôle et la structure d’une adresse IP, le rôle des tables de routage","Le débit et les ordres de grandeur associés"]},
+    SFC21:{titre:"Le dépannage et la réparation",
+      reperes:{'5':["Repérer visuellement une pièce défectueuse","Réaliser une réparation en suivant un protocole fourni","Découvrir les procédés de réalisation présents dans un atelier de fabrication collaboratif"],
+        '4':["Proposer un protocole permettant de vérifier l’origine d’un dysfonctionnement","Remplacer une pièce défectueuse sans protocole fourni (la pièce de remplacement étant fournie)","Choisir les procédés de réalisation et les mettre en œuvre"],
+        '3':["Formuler des hypothèses expliquant le dysfonctionnement d’un objet technique","Proposer un protocole de dépannage puis de réparation","Réaliser le dépannage ou la réparation d’un système défectueux","Réaliser une pièce sur mesure pour réparer un objet technique"]},
+      connaissances:["La fiabilité, la durabilité, l’indice de réparabilité",["Les règles usuelles de sécurité et de mise en œuvre des moyens de réalisation au sein d’un atelier de fabrication collaboratif ;","les équipements de protection individuelle","l’outillage manuel","l’appareillage de prototypage, de réalisation, de fabrication"],"La technologie et les caractéristiques des composants à remplacer : capteurs, actionneurs, composants, microcontrôleurs, générateurs","Les procédés d’obtention de pièce (ajout et enlèvement de matière), de mise en forme (pliage, thermoformage) et d’assemblage (fixe et démontable)","Les moyens de production : découpe au laser, centre d’usinage, fabrication additive (imprimante 3D)","Les moyens de prototypage électronique : plaque d’essai, fils, composants électroniques, générateurs","Les modes de sollicitation des matériaux (flexion, torsion)","Les conductibilités électrique et thermique ; la disponibilité, la valorisation, le recyclage des matériaux"]},
+    SFC31:{titre:"La programmation d’une nouvelle fonctionnalité",
+      reperes:{'5':["Identifier les données utilisées et produites par le programme associé à une fonctionnalité d’un OST (à partir d’un programme existant)","Comprendre et traduire en un algorithme en langage naturel le programme associé à une fonctionnalité d’un OST","Modifier les paramètres d’un programme et identifier ou évaluer ses effets en termes de fonctionnalité"],
+        '4':["Analyser les données et en déduire des modifications à apporter au programme","Compléter un programme pour répondre à une fonctionnalité d’un OST","Tester et valider, dans un environnement simulé ou réel, une modification du programme"],
+        '3':["Déterminer les données utilisées et produites par un programme associé à une fonctionnalité en vue de le modifier","Programmer un algorithme lié à une nouvelle fonctionnalité","Modifier et tester le programme associé à une nouvelle fonctionnalité d’un OST"]},
+      connaissances:[["Algorithmique et programmation :","instruction d’affectation, variable (type mot, nombre et booléen)","opérateurs arithmétiques et logiques (ET, OU, NON)","instruction conditionnelle","instructions itératives","structure de données « listes » afin de stocker des données issues du programme pour les parcourir et les traiter","séquences (bloc) d’instructions","événement","déclenchement d’une séquence d’instructions par un événement","entrées ou sorties d’un programme (données issues par exemple de capteurs IHM et sorties pouvant être en lien avec un actionneur, fichiers)"],"Programmation graphique par blocs","Lien entre la programmation graphique par bloc et la programmation textuelle (fin de 3e)"]},
+    CCRI11:{titre:"La gestion de projet technique",
+      reperes:{'5':["Suivre un processus de conception et de réalisation dans une durée, avec des tâches identifiées"],'4':["Organiser un processus de conception et de réalisation dans une durée, avec des tâches identifiées"],'3':["Élaborer un processus de conception et de réalisation dans une durée, avec des tâches identifiées"]},
+      connaissances:["Le diagramme de planification des tâches : notion de tâches, durée et contraintes entre tâches","Les étapes d’un projet, le rôle d’une revue de projet","L’écoconception"],
+      remobiliser:["Les différentes étapes du cycle de vie d’un OST","Les contraintes sociétales","L’incidence environnementale","Les piliers du développement durable"]},
+    CCRI12:{titre:"Le prototypage de solutions",
+      reperes:{'5':["Fabriquer une solution pour améliorer un OST existant"],'4':["Proposer et fabriquer une solution pour ajouter une nouvelle fonction à un OST (croquis, schéma, graphique, algorithme, modélisation)"],'3':["Proposer et fabriquer un ensemble de solutions pour produire un nouvel OST (croquis, schéma, graphique, algorithme, modélisation)"]},
+      remobiliser:["Les modes de représentation (croquis, schéma, graphique, algorithme, modélisation)","Les mécanismes de transmission et de transformation de mouvements","Les procédés d’obtention de pièce (ajout et enlèvement de matière), de mise en forme (pliage, thermoformage) et d’assemblage (fixe et démontable)","L’ergonomie liée à l’usage","Les règles usuelles de sécurité et de mise en œuvre des moyens de réalisation dans un atelier de fabrication collaboratif ; les exigences, les interacteurs, les critères"]},
+    CCRI13:{titre:"Le choix des matériaux",
+      reperes:{'5':["Choisir un matériau parmi plusieurs proposés en fonction de leurs caractéristiques"],'4':["Comparer différents matériaux pour choisir le plus adapté"],'3':["Choisir un matériau constitutif d’un objet et/ou système technique"]},
+      remobiliser:["Les modes de sollicitation des matériaux (flexion, torsion)","Les conductibilités électrique et thermique","La disponibilité, la valorisation, le recyclage des matériaux","Les différentes étapes du cycle de vie d’un OST","L’empreinte carbone"]},
+    CCRI14:{titre:"Le choix d’une source d’énergie",
+      reperes:{'5':["Choisir une source d’énergie parmi plusieurs proposées et une forme d’énergie possible"],'4':["Comparer différentes sources d’énergie pour choisir la plus adaptée"],'3':["Choisir une source d’énergie pour un OST"]},
+      remobiliser:["Les différentes formes d’énergie : électrique, cinétique, thermique, lumineuse","Les conversions d’énergie des constituants suivants : moteur électrique, lampe, radiateur, génératrice, vérin"]},
+    CCRI15:{titre:"L’assemblage de constituants",
+      reperes:{'5':["Assembler les constituants fournis pour réaliser un prototype"],'4':["Identifier les constituants manquants dans un prototype et le compléter"],'3':["Choisir les constituants et assembler un prototype"]},
+      remobiliser:["Les fonctions des constituants de la chaîne d’énergie : batterie, relais/interrupteur","Les mécanismes de transmission de mouvements (engrenages, courroies, chaînes)","Les fonctions des constituants suivants : capteurs (température, présence, distance, etc.), microcontrôleur, composants d’une interface humain-machine (boutons, afficheurs, etc.)"]},
+    CCRI16:{titre:"La modélisation et la fabrication",
+      reperes:{'5':["Mettre en œuvre les moyens pour réaliser une forme selon une procédure fournie"],'4':["Modifier une forme à l’aide d’une modélisation","Choisir les moyens et produire la forme voulue"],'3':["Modéliser une forme voulue","Choisir les moyens et produire la forme voulue"]},
+      connaissances:["Les instruments de mesure"],
+      remobiliser:["Les règles usuelles de sécurité et de mise en œuvre des moyens de réalisation au sein d’un atelier de fabrication collaboratif","Les moyens de production : découpe au laser, centre d’usinage, fabrication additive (imprimante 3D)"]},
+    CCRI17:{titre:"Les objets communicants",
+      reperes:{'5':[],'4':["Interfacer un objet technique avec un réseau"],'3':["Interfacer deux objets techniques communicants"]},
+      remobiliser:["Le rôle d’un terminal, d’une carte réseau, des liaisons (filaires ou non filaires), d’un commutateur, d’un routeur, d’un serveur","Les composants d’une interface entre l’humain et la machine (IHM) : boutons, afficheurs, etc."]},
+    CCRI21:{titre:"La validation du comportement mécanique d’un matériau",
+      reperes:{'5':["Utiliser une simulation fournie pour valider la tenue mécanique d’un matériau","Mettre en œuvre un protocole de test fourni pour valider la tenue mécanique d’un matériau"],'4':["Paramétrer une simulation fournie pour valider la tenue mécanique d’un matériau","Proposer un protocole de test pour valider la tenue mécanique d’un matériau"],'3':["Mettre en œuvre une simulation pour valider la tenue mécanique d’un matériau","Proposer un protocole de test pour valider la tenue mécanique d’un matériau"]},
+      remobiliser:["Les modes de sollicitation des matériaux (flexion, torsion)","L’indice énergétique et l’indice de réparabilité"]},
+    CCRI22:{titre:"La validation des performances d’un OST",
+      reperes:{'5':["Vérifier le comportement et les performances d’un objet technique en suivant un protocole fourni"],'4':["Proposer un protocole de test pour valider le comportement et les performances d’un objet technique"],'3':["Proposer un protocole de test pour valider le comportement et les performances d’un objet technique"]},
+      remobiliser:["Les paramètres et les grandeurs mesurées, associés à un protocole","Les exigences, les contraintes issues des normes ou d’un cahier des charges"]},
+    CCRI31:{titre:"La programmation des OST",
+      reperes:{'5':["Analyser un programme simple fourni et tester s’il répond au besoin ou au problème posé","Modifier un programme fourni pour répondre au besoin ou à un problème posé","Réaliser et mettre au point un programme simple commandant un OST"],
+        '4':["Modifier un algorithme permettant de répondre au besoin ou au problème posé","Traduire un algorithme permettant de répondre à un besoin ou à un problème simple en un programme.","Réaliser et mettre au point un programme commandant un système réel incluant éventuellement une interaction entre un humain et une machine"],
+        '3':["Élaborer ou concevoir un algorithme permettant de répondre au besoin visé, puis le traduire en un programme structuré (appel de sous-programmes ou de fonctions), le tester et le mettre au point","Réaliser et mettre au point un programme commandant un système réel incluant une interaction entre un humain et une machine"]},
+      connaissances:["La modularité : sous-programme, fonction","La structuration d’un programme (organisation, modularité, commentaires)"],
+      remobiliserTexte:"On retrouve ici les connaissances de la compétence « Comprendre et modifier le programme associé à une fonction d’un objet ou système technique » du second thème.",
+      remobiliserDe:"SFC31"}
+  }
+};
+/** Place d'un identifiant de l'appli dans le programme. Pure.
+ *  « OST12-5-3 » → {bloc:'OST12', theme:'OST', comp:'1', niv:'5', idx:2} ; « CCRI11-5 » → idx 0 ; sinon null. */
+function _progPlace(id){
+  const m=String(id||'').match(/^(OST|SFC|CCRI)(\d)(\d)-([345])(?:-(\d+))?$/);
+  if(!m) return null;
+  return {bloc:m[1]+m[2]+m[3], theme:m[1], comp:m[2], niv:m[4], idx:m[5] ? (parseInt(m[5],10)-1) : 0};
+}
+/** Identifiant de l'appli d'un repère du programme (bloc, niveau, rang). Pure. */
+function _progIdRepere(bloc, niv, idx, nb){
+  return bloc+'-'+niv+(nb>1 ? '-'+(idx+1) : '');
+}
+
+/* ════════════════════════════════════════════════════════════════════
    V11.4.42 — Référentiels en MOSAÏQUE (maquette A du 27/10) + usage (C, sur
    interrupteur) + fiche complète au clic + Couverture compétences × séquences (D)
    ──────────────────────────────────────────────────────────────────
@@ -65166,23 +65384,8 @@ function _refRendreMosaique(list, items, lv){
   list.textContent='';
   list.classList.add('ref-mosaique');
   const idx=compsRefUsage ? _refUsageDuNiveau(lv) : null;
-  // Barre d'usage (interrupteur + filtre)
-  const barre=_refEl('div', 'ref-usage-barre');
-  const sw=_refEl('label', 'ref-switch');
-  const cb=_refEl('input'); cb.type='checkbox'; cb.checked=compsRefUsage; cb.setAttribute('role','switch');
-  cb.onchange=()=>{ compsRefUsage=cb.checked; if(!compsRefUsage) compsRefUsageFiltre='tout'; renderCompsRef(); };
-  sw.appendChild(cb); sw.appendChild(_refEl('span', 'ref-switch-piste')); sw.appendChild(_refEl('span', '', 'Usage dans la progression'));
-  barre.appendChild(sw);
-  if(compsRefUsage){
-    const seg=_refEl('div', 'ref-seg');
-    [['tout','Toutes'],['nontrav','Non travaillées'],['noneval','Jamais évaluées']].forEach(([v,l])=>{
-      const b=_refEl('button', 'ref-seg-b'+(compsRefUsageFiltre===v?' on':''), l); b.type='button';
-      b.onclick=()=>{ compsRefUsageFiltre=v; renderCompsRef(); };
-      seg.appendChild(b);
-    });
-    barre.appendChild(seg);
-  }
-  list.appendChild(barre);
+  // V11.4.43 — interrupteur et filtre d'usage sur la ligne Niveau / Source, avant la recherche.
+  _refPlacerInterrupteur(list);
   const vis=idx ? _refFiltrerUsage(items, idx, compsRefUsageFiltre) : items;
   if(!vis.length){ list.appendChild(_refEl('div', 'ref-vide', 'Aucune compétence pour ce filtre.')); return; }
   _refGrouper(vis).forEach(F=>{
@@ -65202,6 +65405,32 @@ function _refRendreMosaique(list, items, lv){
     list.appendChild(sec);
   });
 }
+/** Interrupteur « Usage dans la progression » (+ filtre quand il est allumé), posé dans la
+ *  ligne des filtres, juste avant le champ Rechercher ; repli : en tête de la liste. */
+function _refPlacerInterrupteur(list){
+  let zone=document.getElementById('comps-ref-usage');
+  if(!zone){
+    zone=_refEl('span', 'ref-usage-barre'); zone.id='comps-ref-usage';
+    const rech=document.getElementById('comps-ref-search');
+    if(rech && rech.parentNode){ rech.parentNode.insertBefore(zone, rech); zone.classList.add('ref-usage-ligne'); }
+    else list.appendChild(zone);
+  }
+  zone.textContent='';
+  const sw=_refEl('label', 'ref-switch');
+  const cb=_refEl('input'); cb.type='checkbox'; cb.checked=compsRefUsage; cb.setAttribute('role','switch');
+  cb.onchange=()=>{ compsRefUsage=cb.checked; if(!compsRefUsage) compsRefUsageFiltre='tout'; renderCompsRef(); };
+  sw.appendChild(cb); sw.appendChild(_refEl('span', 'ref-switch-piste')); sw.appendChild(_refEl('span', '', 'Usage dans la progression'));
+  zone.appendChild(sw);
+  if(compsRefUsage){
+    const seg=_refEl('div', 'ref-seg');
+    [['tout','Toutes'],['nontrav','Non travaillées'],['noneval','Jamais évaluées']].forEach(([v,l])=>{
+      const b=_refEl('button', 'ref-seg-b'+(compsRefUsageFiltre===v?' on':''), l); b.type='button';
+      b.onclick=()=>{ compsRefUsageFiltre=v; renderCompsRef(); };
+      seg.appendChild(b);
+    });
+    zone.appendChild(seg);
+  }
+}
 function _refCarte(it, F, idx, lv){
   const c=_refEl('button', 'ref-carte'+(it.isGreyed?' ref-gris':'')); c.type='button';
   c.appendChild(_refEl('span', 'ref-code', it.id));
@@ -65220,12 +65449,32 @@ function _refCarte(it, F, idx, lv){
 function _refOuvrirFiche(it, F, lv){
   _refFermerFiche();
   const bg=_refEl('div', 'ref-fiche-bg'); bg.id='ref-fiche-bg';
-  const p=_refEl('div', 'ref-fiche'); p.style.setProperty('--fc', F.coul); p.style.setProperty('--ff', F.fond);
+  const pl=(typeof _progPlace==='function') ? _progPlace(it && it.id) : null;
+  const P=(typeof PROG_TECHNO_C4!=='undefined') ? PROG_TECHNO_C4 : null;
+  const bloc=(pl && P) ? P.blocs[pl.bloc] : null;
+  const p=_refEl('div', 'ref-fiche'+(bloc?' ref-fiche-prog':'')); p.style.setProperty('--fc', F.coul); p.style.setProperty('--ff', F.fond);
   p.setAttribute('role','dialog'); p.setAttribute('aria-label', it.id);
+  const x=_refEl('button', 'ref-fiche-x', '×'); x.type='button'; x.setAttribute('aria-label','Fermer'); x.onclick=_refFermerFiche;
+  if(bloc) _refFicheProgramme(p, it, F, lv, pl, bloc, P, x);
+  else _refFicheSimple(p, it, F, x);
+  const corps=p.querySelector('.ref-fiche-c') || p;
+  const u=_refUsageDuNiveau(lv)[it.id];
+  const us=_refEl('div', 'ref-fiche-usage');
+  us.appendChild(_refEl('b', '', 'Dans ma progression ('+((typeof LBL!=='undefined' && LBL[lv])||lv)+') : '));
+  us.appendChild(document.createTextNode(u && u.travail.length ? u.travail.join(' ; ') : 'non travaillée'));
+  us.appendChild(_refEl('div', '', u && u.evals ? 'Évaluée dans '+u.evals+' cours enregistré'+(u.evals>1?'s':'') : 'Jamais évaluée'));
+  corps.appendChild(us);
+  if(bloc) corps.appendChild(_refEl('div', 'ref-fiche-src', P.source));
+  bg.appendChild(p);
+  bg.addEventListener('click', (e)=>{ if(e.target===bg) _refFermerFiche(); });
+  document.addEventListener('keydown', _refEchap, true);
+  document.body.appendChild(bg);
+}
+/** Fiche d'un item hors programme de technologie (CRCN, socle, personnalisé, importé). */
+function _refFicheSimple(p, it, F, x){
   const h=_refEl('div', 'ref-fiche-h');
   h.appendChild(_refEl('span', 'ref-fam-code', F.code));
   h.appendChild(_refEl('span', 'ref-fiche-sous', _refFamille(it).sous));
-  const x=_refEl('button', 'ref-fiche-x', '×'); x.type='button'; x.setAttribute('aria-label','Fermer'); x.onclick=_refFermerFiche;
   h.appendChild(x); p.appendChild(h);
   const corps=_refEl('div', 'ref-fiche-c'); p.appendChild(corps);
   corps.appendChild(_refEl('div', 'ref-code ref-code-g', it.id));
@@ -65239,16 +65488,95 @@ function _refOuvrirFiche(it, F, lv){
   ajout('Niveaux', (it.niveaux||[]).map(n=>(typeof LBL!=='undefined' && LBL[n])||n).join(', '));
   ajout('Thèmes', (it.themes||[]).map(t=>{ const d=(typeof THEMES_DEF!=='undefined') ? THEMES_DEF.find(x=>x.id===t) : null; return d?d.label:t; }).join(', '));
   corps.appendChild(meta);
-  const u=_refUsageDuNiveau(lv)[it.id];
-  const us=_refEl('div', 'ref-fiche-usage');
-  us.appendChild(_refEl('b', '', 'Dans la progression ('+((typeof LBL!=='undefined' && LBL[lv])||lv)+') : '));
-  us.appendChild(document.createTextNode(u && u.travail.length ? u.travail.join(' ; ') : 'non travaillée'));
-  us.appendChild(_refEl('div', '', u && u.evals ? 'Évaluée dans '+u.evals+' cours enregistré'+(u.evals>1?'s':'') : 'Jamais évaluée'));
-  corps.appendChild(us);
-  bg.appendChild(p);
-  bg.addEventListener('click', (e)=>{ if(e.target===bg) _refFermerFiche(); });
-  document.addEventListener('keydown', _refEchap, true);
-  document.body.appendChild(bg);
+}
+/** Liste de connaissances du programme (une entrée tableau = intitulé + sous-items). */
+function _refListeProg(items){
+  const ul=_refEl('ul', 'ref-prog-ul');
+  (items||[]).forEach(k=>{
+    if(Array.isArray(k)){ const li=_refEl('li', '', k[0]); const sub=_refEl('ul', 'ref-prog-sub'); k.slice(1).forEach(s=>sub.appendChild(_refEl('li', '', s))); li.appendChild(sub); ul.appendChild(li); }
+    else ul.appendChild(_refEl('li', '', k));
+  });
+  return ul;
+}
+function _refRepli(titre, contenu, ouvert){
+  const d=_refEl('details', 'ref-repli'); if(ouvert) d.open=true;
+  d.appendChild(_refEl('summary', '', titre)); d.appendChild(contenu); return d;
+}
+/** Retrouve un item du référentiel (tous niveaux) et le rouvre dans la fiche. */
+function _refFicheParId(id, lvParDefaut){
+  let it=null, lvT=lvParDefaut;
+  ['5e','4e','3e'].some(l=>{ const f=(getRefItems(l)||[]).find(x=>x && x.id===id); if(f){ it=f; lvT=l; return true; } return false; });
+  if(!it) return false;
+  const code=_refFamille(it).code, d=REF_FAMILLES[code]||{};
+  _refOuvrirFiche(it, {code, nom:d.nom||'', coul:d.coul||'#475569', fond:d.fond||'#F1F5F9'}, lvT);
+  return true;
+}
+/** Fiche d'un repère du programme de technologie : thème, compétence de fin de cycle, repère,
+ *  progressivité 5e → 4e → 3e (avant / après, cliquables), connaissances, liens. */
+function _refFicheProgramme(p, it, F, lv, pl, bloc, P, x){
+  const th=P.themes[pl.theme], comp=th.competences[pl.comp];
+  const nivL={'5':'5e','4':'4e','3':'3e'}[pl.niv];
+  const h=_refEl('div', 'ref-fiche-h');
+  h.appendChild(_refEl('span', 'ref-fam-code', F.code));
+  h.appendChild(_refEl('span', 'ref-fiche-sous', th.titre));
+  h.appendChild(x); p.appendChild(h);
+  const corps=_refEl('div', 'ref-fiche-c'); p.appendChild(corps);
+  // Thème : la phrase du préambule, puis sa présentation (repliée).
+  corps.appendChild(_refEl('div', 'ref-fiche-apercu', th.apercu));
+  const intro=_refEl('div', 'ref-prog-texte'); th.intro.forEach(t=>intro.appendChild(_refEl('p', '', t)));
+  corps.appendChild(_refRepli('Présentation du thème', intro, false));
+  // Compétence de fin de cycle.
+  const cf=_refEl('div', 'ref-prog-comp');
+  cf.appendChild(_refEl('div', 'ref-prog-etq', 'Compétence de fin de cycle'));
+  cf.appendChild(_refEl('div', 'ref-prog-comp-t', comp.titre));
+  cf.appendChild(_refEl('div', 'ref-prog-texte', comp.texte));
+  corps.appendChild(cf);
+  // Le repère.
+  const rep=(bloc.reperes[pl.niv]||[])[pl.idx];
+  const r=_refEl('div', 'ref-prog-rep');
+  r.appendChild(_refEl('div', 'ref-prog-etq', bloc.titre+' · repère de '+nivL));
+  const lg=_refEl('div', 'ref-code ref-code-g', it.id); r.appendChild(lg);
+  r.appendChild(_refEl('div', 'ref-fiche-lbl', rep || it.label));
+  if(rep && String(it.label).trim()!==String(rep).trim()) r.appendChild(_refEl('div', 'ref-prog-court', 'Intitulé court dans l’application : '+it.label));
+  corps.appendChild(r);
+  // Progressivité dans le cycle.
+  const pg=_refEl('div', 'ref-prog-cycle');
+  pg.appendChild(_refEl('div', 'ref-prog-etq', 'Progressivité dans le cycle — '+bloc.titre));
+  const grille=_refEl('div', 'ref-prog-grille');
+  [['5','5e'],['4','4e'],['3','3e']].forEach(([n,lib])=>{
+    const col=_refEl('div', 'ref-prog-col'+(n===pl.niv?' ref-prog-ici':''));
+    const pos=n===pl.niv ? 'ce niveau' : ((+n)>(+pl.niv) ? 'avant' : 'après');
+    const hc=_refEl('div', 'ref-prog-col-h'); hc.appendChild(_refEl('b', '', lib)); hc.appendChild(_refEl('span', '', pos)); col.appendChild(hc);
+    const items=bloc.reperes[n]||[];
+    if(!items.length) col.appendChild(_refEl('div', 'ref-prog-vide', '—'));
+    items.forEach((t,i)=>{
+      const idR=_progIdRepere(pl.bloc, n, i, items.length);
+      const actuel=(n===pl.niv && i===pl.idx);
+      const b=_refEl('button', 'ref-prog-it'+(actuel?' ref-prog-actuel':'')); b.type='button';
+      b.appendChild(_refEl('span', 'ref-code', idR)); b.appendChild(_refEl('span', '', t));
+      if(actuel) b.disabled=true;
+      else b.onclick=()=>{ if(!_refFicheParId(idR, lib)) b.classList.add('ref-prog-absent'); };
+      col.appendChild(b);
+    });
+    grille.appendChild(col);
+  });
+  pg.appendChild(grille);
+  const pv=th.progressivite[nivL];
+  if(pv) pg.appendChild(_refRepli('Progressivité du thème en '+nivL, _refEl('div', 'ref-prog-texte', pv), false));
+  corps.appendChild(pg);
+  // Connaissances.
+  const kn=_refEl('div', 'ref-prog-conn');
+  if(bloc.connaissances && bloc.connaissances.length){ kn.appendChild(_refEl('div', 'ref-prog-etq', 'Connaissances')); kn.appendChild(_refListeProg(bloc.connaissances)); }
+  if(bloc.remobiliser && bloc.remobiliser.length){ kn.appendChild(_refEl('div', 'ref-prog-etq', 'Connaissances des deux autres thèmes à remobiliser')); kn.appendChild(_refListeProg(bloc.remobiliser)); }
+  if(bloc.remobiliserTexte){
+    kn.appendChild(_refEl('div', 'ref-prog-etq', 'Connaissances des deux autres thèmes à remobiliser'));
+    kn.appendChild(_refEl('div', 'ref-prog-texte', bloc.remobiliserTexte));
+    const src=P.blocs[bloc.remobiliserDe]; if(src && src.connaissances) kn.appendChild(_refListeProg(src.connaissances));
+  }
+  corps.appendChild(kn);
+  // Liens CRCN et autres disciplines (compétence de fin de cycle).
+  if((comp.crcn||[]).length) corps.appendChild(_refRepli('Liens avec le CRCN', _refListeProg(comp.crcn), false));
+  if((comp.disciplines||[]).length) corps.appendChild(_refRepli('Liens avec d’autres disciplines', _refListeProg(comp.disciplines), false));
 }
 function _refEchap(e){ if(e.key==='Escape'){ e.stopPropagation(); _refFermerFiche(); } }
 function _refFermerFiche(){
