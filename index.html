@@ -2827,6 +2827,82 @@ body:has(#imp-bg) #font-ctrl{display:none}
   .imp-gr{grid-template-columns:28px minmax(0,1fr) 64px}
   .imp-gr>.imp-puce{display:none}
 }
+/* V11.4.42 — Référentiels en mosaïque, fiche, couverture × séquences */
+.ref-mosaique{display:flex;flex-direction:column;gap:16px;padding-bottom:1rem}
+.ref-usage-barre{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ref-switch{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--tx);cursor:pointer;user-select:none}
+.ref-switch input{position:absolute;opacity:0;width:1px;height:1px}
+.ref-switch-piste{width:38px;height:22px;border-radius:999px;background:#C9CCC0;position:relative;transition:background .15s;flex:none}
+.ref-switch-piste::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.ref-switch input:checked+.ref-switch-piste{background:#1D4ED8}
+.ref-switch input:checked+.ref-switch-piste::after{left:19px}
+.ref-switch input:focus-visible+.ref-switch-piste{outline:2px solid #1D4ED8;outline-offset:2px}
+.ref-seg{display:inline-flex;border:1px solid var(--brd);border-radius:9px;overflow:hidden;flex:none}
+.ref-seg-b{border:0;border-left:1px solid var(--brd);background:var(--sur);color:var(--tx);font-size:13px;padding:6px 12px;cursor:pointer;font-family:inherit;min-height:32px}
+.ref-seg-b:first-child{border-left:0}
+.ref-seg-b.on{background:var(--tx);color:var(--sur);font-weight:700}
+.ref-vide{font-size:13px;color:var(--tx3);padding:1rem 0;text-align:center}
+.ref-fam{background:var(--sur);border:1px solid var(--brd);border-radius:14px;overflow:hidden}
+.ref-fam-h{display:flex;align-items:baseline;gap:12px;padding:10px 18px;background:var(--ff);border-bottom:3px solid var(--fc);flex-wrap:wrap}
+.ref-fam-code{font-size:22px;font-weight:800;color:var(--fc);letter-spacing:.02em}
+.ref-fam-nom{font-size:16px;font-weight:700;color:var(--tx)}
+.ref-fam-n{margin-left:auto;font-size:13px;font-weight:600;color:var(--tx2)}
+.ref-sous{display:grid;grid-template-columns:190px minmax(0,1fr);border-top:1px solid var(--brd)}
+.ref-sous:first-of-type{border-top:0}
+.ref-sous-nom{padding:12px 16px;font-size:13px;font-weight:700;color:var(--fc);text-transform:uppercase;letter-spacing:.04em;background:var(--sur2);border-right:1px solid var(--brd)}
+.ref-cartes{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:10px 12px}
+.ref-carte{border:1px solid var(--brd);border-top:4px solid var(--fc);border-radius:10px;padding:8px 10px;background:var(--sur);display:flex;flex-direction:column;gap:5px;min-height:64px;text-align:left;cursor:pointer;font-family:inherit;color:var(--tx);transition:box-shadow .12s,transform .12s}
+.ref-carte:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
+.ref-carte:focus-visible{outline:2px solid var(--fc);outline-offset:2px}
+.ref-gris{opacity:.5}
+.ref-code{font-family:'DM Mono',ui-monospace,monospace;font-size:11px;font-weight:600;color:var(--fc)}
+.ref-lbl{font-size:14px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ref-pied{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-top:1px dashed var(--brd);padding-top:6px;margin-top:2px;font-size:12px}
+.ref-u-ok{padding:1px 8px;border-radius:999px;background:#EEF3FF;color:#1D4ED8;font-weight:700}
+.ref-u-non{padding:1px 8px;border-radius:999px;background:#FFF1E0;color:#8A3B00;font-weight:700}
+.ref-u-ev{color:var(--tx2)}
+.ref-fiche-bg{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px}
+.ref-fiche{background:var(--sur);border-radius:14px;box-shadow:var(--sh2);width:min(640px,100%);max-height:90vh;overflow:auto;border-top:6px solid var(--fc)}
+.ref-fiche-h{display:flex;align-items:baseline;gap:10px;padding:12px 16px;background:var(--ff)}
+.ref-fiche-sous{font-size:14px;font-weight:700;color:var(--tx)}
+.ref-fiche-x{margin-left:auto;border:0;background:transparent;font-size:24px;line-height:1;cursor:pointer;color:var(--tx2);min-width:36px;min-height:36px}
+.ref-fiche-c{padding:14px 18px 18px;display:flex;flex-direction:column;gap:10px}
+.ref-code-g{font-size:14px}
+.ref-fiche-parent{font-size:13px;font-weight:600;color:var(--tx2)}
+.ref-fiche-lbl{font-size:18px;font-weight:600;line-height:1.4;color:var(--tx)}
+.ref-fiche-desc{font-size:14px;line-height:1.5;color:var(--tx)}
+.ref-fiche-meta{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--tx2);border-top:1px solid var(--brd);padding-top:10px}
+.ref-fiche-meta b{color:var(--tx)}
+.ref-fiche-usage{font-size:13px;color:var(--tx);background:var(--sur2);border-radius:9px;padding:9px 11px;line-height:1.5}
+.cov2{display:flex;flex-direction:column;gap:12px;padding:1rem 1.5rem;flex:1;min-height:0}
+.cov2-barre{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.cov2-leg{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--tx2)}
+.cov2-leg span{display:inline-flex;align-items:center;gap:6px}
+.cov2-leg i{display:inline-block;width:16px;height:14px;border-radius:4px}
+.cov2-anc{margin-left:auto;padding:.4rem .9rem;font-size:13px}
+.cov2-boite{flex:1;min-height:0;overflow:auto;background:var(--sur);border:1px solid var(--brd);border-radius:12px}
+.cov2-tab{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.cov2-tab thead th{position:sticky;top:0;background:var(--sur2);z-index:1;border-bottom:1px solid var(--brd);padding:8px 6px;font-size:12px;font-weight:700;color:var(--tx);text-align:center}
+.cov2-tab th.cov2-code,.cov2-tab th.cov2-lbl{text-align:left;padding-left:12px;color:var(--tx2)}
+.cov2-seq{min-width:78px;border-left:1px solid var(--brd)}
+.cov2-seq-t{font-size:10px;font-weight:500;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px;margin:0 auto}
+.cov2-fam td{padding:7px 12px;font-size:13px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;border-top:2px solid}
+.cov2-tab td{border-top:1px solid var(--brd)}
+td.cov2-code{padding:6px 12px;font-family:'DM Mono',ui-monospace,monospace;font-size:11px;font-weight:600;white-space:nowrap}
+td.cov2-lbl{padding:6px 12px;max-width:520px}
+td.cov2-lbl:hover{text-decoration:underline}
+td.cov2-c{text-align:center;border-left:1px solid var(--brd);padding:4px}
+td.cov2-c i{display:inline-block;width:26px;height:16px;border-radius:4px}
+i.cov2-t{background:#BFD0F5}
+i.cov2-e{background:#1D4ED8}
+.cov2-leg i.cov2-vide{border:2px dashed #B45309;width:12px;height:10px}
+.cov2-tot{text-align:center;font-weight:700;border-left:1px solid var(--brd);min-width:60px}
+.cov2-afaire{color:#B45309}
+@media (max-width:900px){
+  .ref-sous{grid-template-columns:1fr}
+  .ref-sous-nom{border-right:0;border-bottom:1px solid var(--brd);padding:8px 14px}
+  .ref-cartes{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+}
 /* V11.3.63 — Saisir mes cours */
 .sdc-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:450;display:flex;justify-content:center;align-items:stretch;padding:max(12px,env(safe-area-inset-top,0px)) 12px max(12px,env(safe-area-inset-bottom,0px))}
 .sdc-avert{position:fixed;left:50%;transform:translateX(-50%);bottom:max(16px,env(safe-area-inset-bottom,0px));z-index:490;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 280px);background:#FEF3C7;color:#78350F;border:1px solid #F59E0B;border-radius:var(--r2);box-shadow:var(--sh2);padding:8px 10px;font-size:13px;line-height:1.35}
@@ -4440,7 +4516,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.41';
+const APP_VERSION = 'v11.4.42';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -54550,6 +54626,8 @@ function progMkCoverageCount(ids, arr){ let c=0; arr.forEach(seq=>{ const set=ne
 function renderProgCoverageMock(){
   const pane=document.getElementById('prog-pane-couverturemk'); if(!pane) return; pane.innerHTML='';
   const activeLevels=LEVELS.filter(l=>S.en[l]); if(!activeLevels.length){ pane.innerHTML='<div style="padding:2rem;font-size:13px;color:var(--tx3)">Aucun niveau actif.</div>'; return; }
+  // V11.4.42 — par défaut : compétences × séquences du niveau (maquette D) ; l'ancienne vue reste accessible.
+  if(pane._mode!=='niveaux'){ pane.style.display=pane.style.display||'flex'; _covRendreSequences(pane); return; }
   if(!pane._view) pane._view='comp'; if(!pane._scope) pane._scope='all'; if(!pane._group) pane._group='item';
   const wrap=document.createElement('div'); wrap.className='progmk-cov-wrap';
   const toolbar=document.createElement('div'); toolbar.className='progmk-toolbar';
@@ -54558,6 +54636,7 @@ function renderProgCoverageMock(){
   toolbar.querySelector('#pmkc-view').onchange=e=>{ pane._view=e.target.value; pane._detail=null; renderProgCoverageMock(); };
   toolbar.querySelector('#pmkc-group').onchange=e=>{ pane._group=e.target.value; pane._detail=null; renderProgCoverageMock(); };
   toolbar.querySelector('#pmkc-scope').onchange=e=>{ pane._scope=e.target.value; pane._detail=null; renderProgCoverageMock(); };
+  { const _bs=document.createElement('button'); _bs.className='progmk-mini'; _bs.textContent='Vue par séquence'; _bs.onclick=()=>{ pane._mode='seq'; renderProgCoverageMock(); }; toolbar.appendChild(_bs); }   // V11.4.42
   wrap.appendChild(toolbar);
   const legend=document.createElement('div'); legend.className='progmk-legend'; legend.innerHTML='<span><i class="progmk-cov-none"></i> Non couvert</span><span><i class="progmk-cov-low"></i> Faible</span><span><i class="progmk-cov-mid"></i> Moyen</span><span><i class="progmk-cov-high"></i> Fort</span>';
   wrap.appendChild(legend);
@@ -64982,6 +65061,258 @@ function computeVgDateBounds(semester, customFrom, customTo){
   return {dateFrom:from, dateTo:to};
 }
 
+
+/* ════════════════════════════════════════════════════════════════════
+   V11.4.42 — Référentiels en MOSAÏQUE (maquette A du 27/10) + usage (C, sur
+   interrupteur) + fiche complète au clic + Couverture compétences × séquences (D)
+   ──────────────────────────────────────────────────────────────────
+   – Famille = préfixe littéral du domaine (« OST12 – Numérique » → OST /
+     Numérique) ; CRCN regroupé sous « CRCN » ; un référentiel importé garde
+     son propre préfixe (couleur neutre).
+   – Usage d'une compétence = où la PROGRESSION la travaille (séquence :
+     prérequis / visées / évaluations ; séance : compIds) et combien de cours
+     ENREGISTRÉS l'ont évaluée (seance.competences[uid][id] > 0, ou
+     S.evalComps du créneau), classes du niveau.
+   – Tout le DOM nouveau est en createElement (invariants de balises).
+   ════════════════════════════════════════════════════════════════════ */
+const REF_FAMILLES={
+  OST:  {nom:'Objets et systèmes techniques',          coul:'#1D4ED8', fond:'#EEF3FF'},
+  SFC:  {nom:'Structure, fonctionnement, comportement', coul:'#B45309', fond:'#FFF5EA'},
+  CCRI: {nom:'Conception, création, réalisation',       coul:'#6D28D9', fond:'#F4EFFF'},
+  Socle:{nom:'Socle commun',                            coul:'#0F766E', fond:'#E8F7F4'},
+  CRCN: {nom:'Compétences numériques (CRCN)',           coul:'#0E7490', fond:'#E6F6FA'}
+};
+const REF_ORDRE=['OST','SFC','CCRI','Socle','CRCN'];
+var compsRefUsage=false, compsRefUsageFiltre='tout';
+
+/** Famille et sous-domaine d'un item du référentiel. Pure. */
+function _refFamille(it){
+  const dom=String((it && it.domaine)||'').trim();
+  if(it && (it.source==='crcn' || /^crcn/i.test(String(it.id||'')))) return {code:'CRCN', sous:dom||'Compétences numériques'};
+  const m=dom.match(/^([^–—-]+?)\s*[–—-]\s*(.+)$/);
+  if(m){
+    const pre=m[1].trim(), lettres=(pre.match(/^[A-Za-zÀ-ÿ]+/)||[pre])[0];
+    const code=REF_FAMILLES[lettres] ? lettres : (lettres.toLowerCase()==='socle' ? 'Socle' : pre);
+    return {code, sous:m[2].trim()};
+  }
+  return {code:dom||'Autres', sous:dom||'Autres'};
+}
+/** Regroupe les items par famille puis sous-domaine, dans l'ordre d'apparition ;
+ *  familles connues dans l'ordre OST, SFC, CCRI, Socle, CRCN, puis les autres. Pure. */
+function _refGrouper(items){
+  const fam={}, ordre=[];
+  (Array.isArray(items)?items:[]).forEach(it=>{
+    if(!it) return;
+    const f=_refFamille(it);
+    if(!fam[f.code]){ fam[f.code]={code:f.code, sous:[], idx:{}, n:0}; ordre.push(f.code); }
+    const F=fam[f.code];
+    if(!(f.sous in F.idx)){ F.idx[f.sous]=F.sous.length; F.sous.push({nom:f.sous, items:[]}); }
+    F.sous[F.idx[f.sous]].items.push(it); F.n++;
+  });
+  const rang=(c)=>{ const i=REF_ORDRE.indexOf(c); return i<0 ? 100 : i; };
+  return ordre.sort((a,b)=>rang(a)-rang(b) || String(a).localeCompare(String(b),'fr'))
+    .map(c=>{ const F=fam[c], d=REF_FAMILLES[c]||{};
+      return {code:c, nom:d.nom||'', coul:d.coul||'#475569', fond:d.fond||'#F1F5F9', n:F.n, sous:F.sous}; });
+}
+/** Index d'usage. Pure. prog = progression du niveau ; seances = [{competences, evalComps}]
+ *  (séances enregistrées des classes du niveau) ; evalLive = [{uid:{id:val}}] (S.evalComps
+ *  des créneaux NON enregistrés). → {id:{travail:[libellé], evals:n}} */
+function _refUsageIndex(prog, seances, evalLive){
+  const out={};
+  const u=(id)=>out[id]||(out[id]={travail:[], evals:0});
+  (Array.isArray(prog)?prog:[]).forEach((q,qi)=>{
+    if(!q) return;
+    const sq='SEQ'+((q.num!=null && String(q.num).trim()!=='') ? String(q.num).trim() : (qi+1));
+    const auSeq=new Set([].concat(q.prereqComps||[], q.evalComps||[], q.baseComps||[], ...((q.evals||[]).map(e=>(e&&e.comps)||[]))));
+    const parSeance={};
+    (q.seances||[]).forEach((s,si)=>(s && s.compIds || []).forEach(id=>{ (parSeance[id]=parSeance[id]||[]).push('S'+(si+1)); }));
+    new Set([...auSeq, ...Object.keys(parSeance)]).forEach(id=>{
+      u(id).travail.push(parSeance[id] ? sq+' · '+parSeance[id].join(', ') : sq);
+    });
+  });
+  const compte=(map)=>{ const vus=new Set();
+    Object.keys(map||{}).forEach(uid=>{ const m=map[uid]||{}; Object.keys(m).forEach(id=>{ if(m[id]>0 || (m[id] && typeof m[id]!=='number')) vus.add(id); }); });
+    vus.forEach(id=>{ u(id).evals++; }); };
+  (Array.isArray(seances)?seances:[]).forEach(se=>{ if(se) compte(se.competences); });
+  (Array.isArray(evalLive)?evalLive:[]).forEach(compte);
+  return out;
+}
+/** Filtre d'usage (Toutes / Non travaillées / Jamais évaluées). Pure. */
+function _refFiltrerUsage(items, idx, mode){
+  if(mode!=='nontrav' && mode!=='noneval') return items.slice();
+  return items.filter(it=>{ const x=(idx||{})[it.id];
+    return mode==='nontrav' ? !(x && x.travail.length) : !(x && x.evals); });
+}
+function _refUsageDuNiveau(lv){
+  const prog=(typeof getProgression==='function') ? (getProgression(lv)||[]) : [];
+  const classes=Object.keys(S.cl||{}).filter(c=>c.replace(/[0-9]+$/,'')===lv);
+  const set=new Set(classes), seances=[], enreg=new Set();
+  Object.keys(S.seances||{}).forEach(bk=>{
+    if(/^grp:/.test(bk)) return;
+    const cls=bk.split('|')[0]; if(!set.has(cls)) return;
+    (S.seances[bk]||[]).forEach(se=>{ if(se){ seances.push(se); enreg.add(se.slotKey+'|'+cls); } });
+  });
+  const live=[];
+  Object.keys(S.evalComps||{}).forEach(k=>{
+    const p=k.split('|'); if(!set.has(p[1]) || enreg.has(p[0]+'|'+p[1])) return;
+    live.push(S.evalComps[k]);
+  });
+  return _refUsageIndex(prog, seances, live);
+}
+
+/* ── Rendu de la mosaïque ─────────────────────────────────────────── */
+function _refEl(tag, cls, txt){ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
+function _refRendreMosaique(list, items, lv){
+  list.textContent='';
+  list.classList.add('ref-mosaique');
+  const idx=compsRefUsage ? _refUsageDuNiveau(lv) : null;
+  // Barre d'usage (interrupteur + filtre)
+  const barre=_refEl('div', 'ref-usage-barre');
+  const sw=_refEl('label', 'ref-switch');
+  const cb=_refEl('input'); cb.type='checkbox'; cb.checked=compsRefUsage; cb.setAttribute('role','switch');
+  cb.onchange=()=>{ compsRefUsage=cb.checked; if(!compsRefUsage) compsRefUsageFiltre='tout'; renderCompsRef(); };
+  sw.appendChild(cb); sw.appendChild(_refEl('span', 'ref-switch-piste')); sw.appendChild(_refEl('span', '', 'Usage dans la progression'));
+  barre.appendChild(sw);
+  if(compsRefUsage){
+    const seg=_refEl('div', 'ref-seg');
+    [['tout','Toutes'],['nontrav','Non travaillées'],['noneval','Jamais évaluées']].forEach(([v,l])=>{
+      const b=_refEl('button', 'ref-seg-b'+(compsRefUsageFiltre===v?' on':''), l); b.type='button';
+      b.onclick=()=>{ compsRefUsageFiltre=v; renderCompsRef(); };
+      seg.appendChild(b);
+    });
+    barre.appendChild(seg);
+  }
+  list.appendChild(barre);
+  const vis=idx ? _refFiltrerUsage(items, idx, compsRefUsageFiltre) : items;
+  if(!vis.length){ list.appendChild(_refEl('div', 'ref-vide', 'Aucune compétence pour ce filtre.')); return; }
+  _refGrouper(vis).forEach(F=>{
+    const sec=_refEl('section', 'ref-fam'); sec.style.setProperty('--fc', F.coul); sec.style.setProperty('--ff', F.fond);
+    const h=_refEl('div', 'ref-fam-h');
+    h.appendChild(_refEl('span', 'ref-fam-code', F.code));
+    if(F.nom) h.appendChild(_refEl('span', 'ref-fam-nom', F.nom));
+    h.appendChild(_refEl('span', 'ref-fam-n', F.n+' compétence'+(F.n>1?'s':'')));
+    sec.appendChild(h);
+    F.sous.forEach(s=>{
+      const r=_refEl('div', 'ref-sous');
+      r.appendChild(_refEl('div', 'ref-sous-nom', s.nom));
+      const g=_refEl('div', 'ref-cartes');
+      s.items.forEach(it=>g.appendChild(_refCarte(it, F, idx, lv)));
+      r.appendChild(g); sec.appendChild(r);
+    });
+    list.appendChild(sec);
+  });
+}
+function _refCarte(it, F, idx, lv){
+  const c=_refEl('button', 'ref-carte'+(it.isGreyed?' ref-gris':'')); c.type='button';
+  c.appendChild(_refEl('span', 'ref-code', it.id));
+  c.appendChild(_refEl('span', 'ref-lbl', it.label));
+  if(idx){
+    const x=idx[it.id], pied=_refEl('span', 'ref-pied');
+    if(x && x.travail.length) pied.appendChild(_refEl('span', 'ref-u-ok', x.travail.slice(0,2).join(' ; ')+(x.travail.length>2?' …':'')));
+    else pied.appendChild(_refEl('span', 'ref-u-non', 'Non travaillée'));
+    pied.appendChild(_refEl('span', 'ref-u-ev', (x && x.evals) ? 'évaluée '+x.evals+'×' : 'jamais évaluée'));
+    c.appendChild(pied);
+  }
+  c.onclick=()=>_refOuvrirFiche(it, F, lv);
+  return c;
+}
+/** Fiche complète d'une compétence : se ferme au clic n'importe où ailleurs (C2) et sur Échap. */
+function _refOuvrirFiche(it, F, lv){
+  _refFermerFiche();
+  const bg=_refEl('div', 'ref-fiche-bg'); bg.id='ref-fiche-bg';
+  const p=_refEl('div', 'ref-fiche'); p.style.setProperty('--fc', F.coul); p.style.setProperty('--ff', F.fond);
+  p.setAttribute('role','dialog'); p.setAttribute('aria-label', it.id);
+  const h=_refEl('div', 'ref-fiche-h');
+  h.appendChild(_refEl('span', 'ref-fam-code', F.code));
+  h.appendChild(_refEl('span', 'ref-fiche-sous', _refFamille(it).sous));
+  const x=_refEl('button', 'ref-fiche-x', '×'); x.type='button'; x.setAttribute('aria-label','Fermer'); x.onclick=_refFermerFiche;
+  h.appendChild(x); p.appendChild(h);
+  const corps=_refEl('div', 'ref-fiche-c'); p.appendChild(corps);
+  corps.appendChild(_refEl('div', 'ref-code ref-code-g', it.id));
+  if(it.parentLabel) corps.appendChild(_refEl('div', 'ref-fiche-parent', it.parentLabel+(it.niveau?' · niveau '+it.niveau:'')));
+  corps.appendChild(_refEl('div', 'ref-fiche-lbl', it.label));
+  ['description','desc','detail','details','commentaire'].forEach(k=>{ if(it[k] && String(it[k]).trim()) corps.appendChild(_refEl('div', 'ref-fiche-desc', String(it[k]))); });
+  const meta=_refEl('div', 'ref-fiche-meta');
+  const ajout=(t,v)=>{ if(!v) return; const l=_refEl('div'); l.appendChild(_refEl('b','',t+' : ')); l.appendChild(document.createTextNode(v)); meta.appendChild(l); };
+  ajout('Domaine', it.domaine||'');
+  ajout('Source', it.source==='boizard'?'Technologie (programme)':it.source==='crcn'?'CRCN':it.source==='socle'?'Socle commun':it.source==='custom'?'Personnalisée':String(it.source||''));
+  ajout('Niveaux', (it.niveaux||[]).map(n=>(typeof LBL!=='undefined' && LBL[n])||n).join(', '));
+  ajout('Thèmes', (it.themes||[]).map(t=>{ const d=(typeof THEMES_DEF!=='undefined') ? THEMES_DEF.find(x=>x.id===t) : null; return d?d.label:t; }).join(', '));
+  corps.appendChild(meta);
+  const u=_refUsageDuNiveau(lv)[it.id];
+  const us=_refEl('div', 'ref-fiche-usage');
+  us.appendChild(_refEl('b', '', 'Dans la progression ('+((typeof LBL!=='undefined' && LBL[lv])||lv)+') : '));
+  us.appendChild(document.createTextNode(u && u.travail.length ? u.travail.join(' ; ') : 'non travaillée'));
+  us.appendChild(_refEl('div', '', u && u.evals ? 'Évaluée dans '+u.evals+' cours enregistré'+(u.evals>1?'s':'') : 'Jamais évaluée'));
+  corps.appendChild(us);
+  bg.appendChild(p);
+  bg.addEventListener('click', (e)=>{ if(e.target===bg) _refFermerFiche(); });
+  document.addEventListener('keydown', _refEchap, true);
+  document.body.appendChild(bg);
+}
+function _refEchap(e){ if(e.key==='Escape'){ e.stopPropagation(); _refFermerFiche(); } }
+function _refFermerFiche(){
+  const bg=document.getElementById('ref-fiche-bg'); if(bg) bg.remove();
+  document.removeEventListener('keydown', _refEchap, true);
+}
+
+/* ── Couverture : compétences × séquences d'un niveau (maquette D) ── */
+/** État d'une compétence dans une séquence. Pure. 'e' = prévue en évaluation
+ *  (évaluations de la séquence, compétences visées) ; 't' = travaillée
+ *  (prérequis, séances) ; '' = absente. */
+function _covEtat(seq, id){
+  if(!seq || !id) return '';
+  const ev=new Set([].concat(seq.evalComps||[], ...((seq.evals||[]).map(e=>(e&&e.comps)||[]))));
+  if(ev.has(id)) return 'e';
+  const tr=new Set([].concat(seq.prereqComps||[], seq.baseComps||[], ...((seq.seances||[]).map(s=>(s&&s.compIds)||[]))));
+  return tr.has(id) ? 't' : '';
+}
+function _covRendreSequences(pane){
+  const activeLevels=LEVELS.filter(l=>S.en[l]);
+  if(!pane._covLv || !activeLevels.includes(pane._covLv)) pane._covLv=activeLevels[0];
+  const lv=pane._covLv;
+  const wrap=_refEl('div', 'cov2');
+  const tb=_refEl('div', 'cov2-barre');
+  const seg=_refEl('div', 'ref-seg');
+  activeLevels.forEach(l=>{ const b=_refEl('button', 'ref-seg-b'+(l===lv?' on':''), (typeof LBL!=='undefined' && LBL[l])||l); b.type='button'; b.onclick=()=>{ pane._covLv=l; renderProgCoverageMock(); }; seg.appendChild(b); });
+  tb.appendChild(seg);
+  const leg=_refEl('div', 'cov2-leg');
+  [['cov2-t','travaillée'],['cov2-e','prévue en évaluation'],['cov2-vide','dans aucune séquence']].forEach(([c,t])=>{ const s=_refEl('span'); s.appendChild(_refEl('i', c)); s.appendChild(document.createTextNode(t)); leg.appendChild(s); });
+  tb.appendChild(leg);
+  const anc=_refEl('button', 'bs cov2-anc', 'Vue par niveau'); anc.type='button'; anc.title='Ancienne vue : compétences / connaissances × niveaux';
+  anc.onclick=()=>{ pane._mode='niveaux'; renderProgCoverageMock(); };
+  tb.appendChild(anc);
+  wrap.appendChild(tb);
+  const prog=getProgression(lv)||[];
+  const items=(getRefItems(lv, (typeof getMatierePrincipale==='function')?getMatierePrincipale():undefined)||[]).filter(it=>it && !it.isGreyed && (!it.niveaux || it.niveaux.includes(lv)));
+  const boite=_refEl('div', 'cov2-boite');
+  const t=_refEl('table', 'cov2-tab'); const th=_refEl('thead'); const trh=_refEl('tr');
+  trh.appendChild(_refEl('th', 'cov2-code', 'Code')); trh.appendChild(_refEl('th', 'cov2-lbl', 'Compétence'));
+  prog.forEach((q,qi)=>{ const c=_refEl('th', 'cov2-seq', 'SEQ'+((q.num!=null && String(q.num).trim()!=='')?String(q.num).trim():(qi+1))); c.appendChild(_refEl('div', 'cov2-seq-t', String(q.titre||'').slice(0,18))); c.title=q.titre||''; trh.appendChild(c); });
+  trh.appendChild(_refEl('th', 'cov2-tot', 'Total'));
+  th.appendChild(trh); t.appendChild(th);
+  const tbody=_refEl('tbody');
+  _refGrouper(items).forEach(F=>{
+    const trF=_refEl('tr', 'cov2-fam'); const td=_refEl('td', '', F.code+(F.nom?' · '+F.nom:'')); td.colSpan=prog.length+3;
+    td.style.color=F.coul; td.style.background=F.fond; td.style.borderTopColor=F.coul; trF.appendChild(td); tbody.appendChild(trF);
+    F.sous.forEach(s=>s.items.forEach(it=>{
+      const tr=_refEl('tr');
+      const cc=_refEl('td', 'cov2-code', it.id); cc.style.color=F.coul; tr.appendChild(cc);
+      const cl=_refEl('td', 'cov2-lbl', it.label); cl.title=it.label; tr.appendChild(cl);
+      let n=0;
+      prog.forEach(q=>{ const e=_covEtat(q, it.id); if(e) n++; const c=_refEl('td', 'cov2-c'); const i=_refEl('i', e==='e'?'cov2-e':e==='t'?'cov2-t':''); c.appendChild(i);
+        c.title=(q.titre||'')+(e==='e'?' · prévue en évaluation':e==='t'?' · travaillée':''); tr.appendChild(c); });
+      const tt=_refEl('td', 'cov2-tot'+(n?'':' cov2-afaire'), n?String(n):'à faire'); tr.appendChild(tt);
+      cl.onclick=()=>_refOuvrirFiche(it, F, lv); cl.style.cursor='pointer';
+      tbody.appendChild(tr);
+    }));
+  });
+  t.appendChild(tbody); boite.appendChild(t);
+  if(!prog.length) boite.appendChild(_refEl('div', 'ref-vide', 'Aucune séquence pour ce niveau.'));
+  wrap.appendChild(boite);
+  pane.appendChild(wrap);
+}
+
 function renderCompsRef(){
   // Level buttons
   const lvBtns = document.getElementById('comps-ref-lv-btns');
@@ -65048,29 +65379,8 @@ function renderCompsRef(){
     if(refSearchQ && !it.id.toLowerCase().includes(refSearchQ) && !it.label.toLowerCase().includes(refSearchQ) && !(it.domaine||'').toLowerCase().includes(refSearchQ)) return false;
     return true;
   });
-  // Group by domain
-  const byDom = {};
-  items.forEach(it=>{ if(!byDom[it.domaine]) byDom[it.domaine]=[]; byDom[it.domaine].push(it); });
-  Object.entries(byDom).forEach(([dom, its])=>{
-    const domEl = document.createElement('div');
-    domEl.style.cssText = 'font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 4px;border-bottom:2px solid var(--brd);margin-bottom:2px';
-    domEl.textContent = dom;
-    list.appendChild(domEl);
-    its.forEach(it=>{
-      const row = document.createElement('div');
-      row.className = 'comps-ref-item';
-      const code = document.createElement('div');
-      code.className = 'comps-ref-code' + (it.source==='crcn'?' src-crcn':it.source==='socle'?' src-socle':'');
-      code.textContent = it.id;
-      code.title = 'Source : ' + (it.source==='boizard'?'Technologie (BOEN)':it.source==='custom'?'Personnalisé':it.source.toUpperCase());
-      const info = document.createElement('div'); info.style.flex='1';
-      const lbl = document.createElement('div'); lbl.className='comps-ref-label'; lbl.textContent = it.label;
-      info.appendChild(lbl);
-      row.appendChild(code); row.appendChild(info);
-      list.appendChild(row);
-    });
-  });
-  if(!items.length) list.innerHTML = '<div style="font-size:12px;color:var(--tx3);padding:1rem 0;text-align:center">Aucune compétence pour ce filtre.</div>';
+  // V11.4.42 — mosaïque par famille / sous-domaine (maquette A), usage sur interrupteur (C), fiche au clic.
+  _refRendreMosaique(list, items, compsRefLv);
 }
 
 /* ---- Onglet Groupes ---- */
