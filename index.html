@@ -4548,7 +4548,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.46';
+const APP_VERSION = 'v11.4.47';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7821,13 +7821,13 @@ function buildMultiTafEditor(sean, opts={}){
         const del=document.createElement('button');
         del.style.cssText='font-size:9px;color:var(--tx3);background:none;border:none;cursor:pointer;padding:0';
         del.textContent='✕ Retirer';
-        del.onclick=()=>{ const arr=getTafArray(sean); arr.splice(idx,1); setTafArray(sean,arr); if(opts.onSave) opts.onSave(); if(opts.onRefresh) opts.onRefresh(); else rerender(); };
+        del.onclick=()=>{ const arr=getTafArray(sean); arr.splice(idx,1); _bibModifierTafs(sean,arr); if(opts.onSave) opts.onSave(); if(opts.onRefresh) opts.onRefresh(); else rerender(); };   // V11.4.47
         head.appendChild(chip); head.appendChild(del);
         const ta=document.createElement('textarea');
         ta.rows=2; ta.value=taf||'';
         ta.placeholder='Travail à faire…';
         ta.style.cssText='width:100%;padding:4px 7px;border:1px solid var(--brd);border-radius:var(--r1);font-size:11px;line-height:1.4;background:var(--sur);color:var(--tx);outline:none;resize:vertical;font-family:inherit;box-sizing:border-box';
-        ta.oninput=()=>{ const arr=getTafArray(sean); arr[idx]=ta.value; setTafArray(sean,arr); if(opts.onSave) opts.onSave(); };
+        ta.oninput=()=>{ const arr=getTafArray(sean); arr[idx]=ta.value; _bibModifierTafs(sean,arr); if(opts.onSave) opts.onSave(); };   // V11.4.47
         row.appendChild(head); row.appendChild(ta); list.appendChild(row);
       });
     }
@@ -21243,6 +21243,218 @@ function renderParamsProgression(){
    icon  : emoji
    placeholder : texte d'exemple pour chaque champ
 */
+/* ════════════════════════════════════════════════════════════════════
+   V11.4.47 — Identifiants permanents des lignes de la bibliothèque
+   (tâches, documents, ressources, TAF) et renumérotation des références.
+   Les lignes d'une séance n'ont pas d'identité propre : le reste de l'appli les
+   désigne par leur RANG (avancement des classes, coches, décisions, reports,
+   coupures, opérations isolées, lignes des cours composés…). Chaque ligne reçoit
+   donc un identifiant (sean.ligneIds[kind][rang], jamais réutilisé), et TOUTE
+   modification qui change les rangs passe par _bibModifierListe / _bibModifierTafs :
+   la correspondance ancien rang → nouveau rang n'existe qu'à cet instant (leçon
+   n°3), elle est appliquée à tous les magasins par _bibRenumeroter.
+   kind : 'mo' (modeOp), 'doc' (docs), 'res' (ressources), 'taf' (tafs).
+   ════════════════════════════════════════════════════════════════════ */
+const _BIB_CHAMPS={ mo:'modeOp', doc:'docs', res:'ressources', taf:'tafs' };
+let _bibCompteur=0;
+function _bibNouvelId(){ return 'l'+Date.now().toString(36)+(_bibCompteur++).toString(36); }
+function _bibListe(sean, kind){
+  if(!sean) return [];
+  if(kind==='taf') return (typeof getTafArray==='function') ? getTafArray(sean) : (Array.isArray(sean.tafs)?sean.tafs:[]);
+  const a=sean[_BIB_CHAMPS[kind]]; return Array.isArray(a)?a:[];
+}
+/** Identifiants de la liste `kind` d'une séance, complétés (lignes ajoutées en fin) ou
+ *  tronqués pour suivre la liste. Renvoie le tableau stocké (modifiable). */
+function _bibIds(sean, kind){
+  if(!sean) return [];
+  if(!sean.ligneIds || typeof sean.ligneIds!=='object' || Array.isArray(sean.ligneIds)) sean.ligneIds={};
+  if(!Array.isArray(sean.ligneIds[kind])) sean.ligneIds[kind]=[];
+  const ids=sean.ligneIds[kind], n=_bibListe(sean, kind).length;
+  while(ids.length<n) ids.push(_bibNouvelId());
+  if(ids.length>n) ids.length=n;
+  return ids;
+}
+/** Migration de démarrage (idempotente) : toutes les lignes reçoivent leur identifiant. */
+function _bibAssurerTout(){
+  let n=0;
+  Object.keys((S && S.progression)||{}).forEach(lv=>(S.progression[lv]||[]).forEach(q=>((q && q.seances)||[]).forEach(sn=>{
+    if(!sn) return;
+    Object.keys(_BIB_CHAMPS).forEach(k=>{ const av=(sn.ligneIds && Array.isArray(sn.ligneIds[k])) ? sn.ligneIds[k].length : -1; const ids=_bibIds(sn, k); if(ids.length!==av) n++; });
+  })));
+  if(n && typeof saveS==='function') saveS();
+  return n;
+}
+/** Correspondance par identifiants. Pure. → {map:{ancien:nouveau|-1}, identite} */
+function _bibCarteParIds(avant, apres){
+  const map={}; let identite=avant.length===apres.length;
+  avant.forEach((x,i)=>{ const j=apres.indexOf(x); map[i]=j; if(j!==i) identite=false; });
+  return { map, identite };
+}
+/** Correspondance par texte (TAF) : texte identique d'abord, puis ligne retouchée à
+ *  la même place ; le reste est supprimé. Pure. */
+function _bibCarteParTexte(avant, apres){
+  const map={}, pris=new Set();
+  avant.forEach((t,i)=>{ const j=apres.findIndex((u,k)=>u===t && !pris.has(k)); if(j>=0){ map[i]=j; pris.add(j); } });
+  avant.forEach((t,i)=>{ if(map[i]!==undefined) return; if(i<apres.length && !pris.has(i)){ map[i]=i; pris.add(i); } else map[i]=-1; });
+  const identite=avant.length===apres.length && avant.every((_,i)=>map[i]===i);
+  return { map, identite };
+}
+/** Nouvelle clé d'une référence « pfx+rang » (séance principale du cours, si `nue`)
+ *  ou « pfx+seanId_rang » (séance secondaire). Pure.
+ *  → la clé inchangée si elle ne concerne pas cette liste, null si la ligne est supprimée. */
+function _bibNouvelleCle(k, seanId, pfx, nv, nue){
+  if(typeof k!=='string') return k;
+  const pre=pfx+seanId+'_';
+  let r=null, f=null;
+  if(k.indexOf(pre)===0 && /^\d+$/.test(k.slice(pre.length))){ r=+k.slice(pre.length); f=(i)=>pre+i; }
+  else if(nue && k.indexOf(pfx)===0 && /^\d+$/.test(k.slice(pfx.length))){ r=+k.slice(pfx.length); f=(i)=>pfx+i; }
+  if(r===null) return k;
+  const ni=nv(r);
+  return ni>=0 ? f(ni) : null;
+}
+function _bibRemapObjet(o, seanId, pfx, nv, nue){
+  if(!o || typeof o!=='object') return 0;
+  const moves=[];
+  Object.keys(o).forEach(k=>{ const nk=_bibNouvelleCle(k, seanId, pfx, nv, nue); if(nk!==k) moves.push([k, nk, o[k]]); });
+  moves.forEach(([k])=>{ delete o[k]; });
+  moves.forEach(([, nk, v])=>{ if(nk!==null) o[nk]=v; });
+  return moves.length;
+}
+/** Applique la correspondance à tous les magasins qui désignent une ligne de la
+ *  séance par son rang. Impur (écrit S), sans saveS (à la charge de l'appelant).
+ *  Renvoie le nombre de références réécrites ou retirées. */
+function _bibRenumeroter(seqId, seanId, kind, map){
+  if(!S || !seanId || !map) return 0;
+  const nv=(i)=>{ const j=map[i]; return j===undefined ? i : j; };
+  const survivant=(i, sens)=>{ // rang le plus proche encore présent (bornes de coupure)
+    if(map[i]===undefined) return i;
+    const ks=Object.keys(map).map(Number).filter(k=>map[k]>=0).sort((a,b)=>a-b);
+    const k=sens>0 ? ks.find(x=>x>=i) : ks.slice().reverse().find(x=>x<=i);
+    return k===undefined ? null : map[k];
+  };
+  const pfx={ mo:'mo_', doc:'doc_', taf:'taf_', res:null }[kind];
+  let n=0;
+  // Séance principale de chaque cours : celle du cours enregistré, sinon la 1re placée.
+  const enreg=new Map();
+  Object.keys(S.seances||{}).forEach(b=>{ const cls=String(b).split('|')[0].toLowerCase();
+    (S.seances[b]||[]).forEach(se=>{ if(se && se.slotKey) enreg.set(se.slotKey+'|'+cls, se.seanId||''); }); });
+  const principale=(slot, cls)=>{
+    const c=String(cls||'').toLowerCase(), k=slot+'|'+c;
+    if(enreg.has(k) && enreg.get(k)) return enreg.get(k);
+    const M=S.edtProgMapping||{}; const e=M[k]||M[slot+'|'+String(cls||'').toUpperCase()];
+    const s0=e && Array.isArray(e.seances) && e.seances[0];
+    return (s0 && s0.seanId) || null;
+  };
+  // Clé nue (mo_3) seulement pour la séance principale ; pour les TAF, seulement si le
+  // cours n'est pas enregistré (un cours enregistré garde SA liste de TAF).
+  const nue=(slot, cls)=>principale(slot, cls)===seanId && !(kind==='taf' && enreg.has(slot+'|'+String(cls||'').toLowerCase()));
+  const RE_SLOT=/^\d{4}-\d{2}-\d{2}_\d{2}:\d{2}$/;
+  // 1. Avancement des classes (cls[|grp]|seq|sean|rang)
+  if(kind==='mo' && S.taskExecution){
+    const moves=[];
+    Object.keys(S.taskExecution).forEach(k=>{ const p=k.split('|'); if(p.length<4) return;
+      if(p[p.length-3]!==seqId || p[p.length-2]!==seanId || !/^\d+$/.test(p[p.length-1])) return;
+      const i=+p[p.length-1], ni=nv(i); if(ni===i) return;
+      moves.push([k, ni>=0 ? p.slice(0,-1).concat(String(ni)).join('|') : null, S.taskExecution[k]]); });
+    moves.forEach(([k])=>{ delete S.taskExecution[k]; });
+    moves.forEach(([, nk, v])=>{ if(nk) S.taskExecution[nk]=v; });
+    n+=moves.length;
+  }
+  // 2. Planning : coupures, opérations isolées / sautées, lignes des cours composés, reports
+  const M=S.edtProgMapping||{};
+  Object.keys(M).forEach(mk=>{
+    const e=M[mk]; if(!e || typeof e!=='object') return;
+    if(kind==='mo'){
+      (Array.isArray(e.seances)?e.seances:[]).forEach(se=>{ if(!se || se.seanId!==seanId) return;
+        if(typeof se.moIdxStart==='number'){ const a=survivant(se.moIdxStart, 1); if(a!==se.moIdxStart){ n++; if(a===null) delete se.moIdxStart; else se.moIdxStart=a; } }
+        if(typeof se.moIdxEnd==='number'){ const z=survivant(se.moIdxEnd, -1); if(z!==se.moIdxEnd){ n++; if(z===null) delete se.moIdxEnd; else se.moIdxEnd=z; } } });
+      ['isolatedOps','skippedOps'].forEach(f=>{ if(!Array.isArray(e[f])) return;
+        e[f]=e[f].filter(op=>{ if(!op || op.seanId!==seanId || typeof op.moIdx!=='number') return true;
+          const ni=nv(op.moIdx); if(ni!==op.moIdx) n++; if(ni<0) return false; op.moIdx=ni; return true; });
+        });
+    }
+    if(Array.isArray(e.lignes)){
+      const lk={ mo:'tache', doc:'doc', res:'res' }[kind];
+      e.lignes.forEach(l=>{ if(!l || l.src!=='biblio' || l.seanId!==seanId || l.kind!==lk) return;
+        const f=lk==='tache' ? 'moIdx' : 'idx'; if(typeof l[f]!=='number') return;
+        const ni=nv(l[f]); if(ni>=0 && ni!==l[f]){ l[f]=ni; n++; } });   // supprimée : _sdcReparerTout la rend propre au cours
+    }
+    if(pfx && Array.isArray(e.freeItems)) e.freeItems.forEach(fi=>{ if(!fi || typeof fi.adjustmentKey!=='string') return;
+      const nk=_bibNouvelleCle(fi.adjustmentKey, seanId, pfx, nv, false); if(nk!==fi.adjustmentKey){ n++; fi.adjustmentKey=nk===null ? 'x_'+fi.adjustmentKey : nk; } });
+  });
+  if(!pfx) return n;
+  // 3. Coches des cours (slot|cls|[grp|]date)
+  Object.keys(S.seanceCoches||{}).forEach(k=>{ const p=k.split('|'); if(!RE_SLOT.test(p[0])) return;
+    n+=_bibRemapObjet(S.seanceCoches[k], seanId, pfx, nv, nue(p[0], p[1])); });
+  // 4. Décisions en cours de saisie (cls|[grp|]slot)
+  Object.keys(S.seanceTaskStateCache||{}).forEach(k=>{ const p=k.split('|'); const slot=p.find(x=>RE_SLOT.test(x)); if(!slot) return;
+    const st=S.seanceTaskStateCache[k]; if(!st) return; const b=nue(slot, p[0]);
+    n+=_bibRemapObjet(st.tacheDecisions, seanId, pfx, nv, b)+_bibRemapObjet(st.tachePartiels, seanId, pfx, nv, b); });
+  // 5. Cours enregistrés : décisions, reliquats, lignes de compte rendu, tâches faites
+  Object.keys(S.seances||{}).forEach(bk=>{ const cls=String(bk).split('|')[0];
+    (S.seances[bk]||[]).forEach(se=>{ if(!se || !se.slotKey) return;
+      const b=nue(se.slotKey, cls);
+      n+=_bibRemapObjet(se.tacheDecisions, seanId, pfx, nv, b)+_bibRemapObjet(se.tachePartiels, seanId, pfx, nv, b);
+      if(Array.isArray(se.taskRows)) se.taskRows.forEach(r=>{ if(!r) return; const nk=_bibNouvelleCle(r.key, seanId, pfx, nv, b); if(nk!==r.key){ n++; r.key=nk===null ? 'x_'+r.key : nk; } });
+      if(kind==='mo' && b && Array.isArray(se.modeOpDone)){ const old=se.modeOpDone, nw=[]; let ch=false;
+        old.forEach((v,i)=>{ const ni=nv(i); if(ni!==i) ch=true; if(ni>=0) nw[ni]=v; });
+        if(ch){ for(let i=0;i<nw.length;i++) if(nw[i]===undefined) nw[i]=false; se.modeOpDone=nw; n++; } } }); });
+  // 6. Ajustements de planning (alertes) et rappels
+  ['planningAdjustments','pendingPlanningAlerts'].forEach(f=>{ (Array.isArray(S[f])?S[f]:[]).forEach(a=>{ if(!a || !Array.isArray(a.items)) return;
+    const b=nue(a.slotKey, a.clsCode);
+    a.items.forEach(it=>{ if(!it || typeof it.sourceTaskKey!=='string') return; const nk=_bibNouvelleCle(it.sourceTaskKey, seanId, pfx, nv, b); if(nk!==it.sourceTaskKey){ n++; it.sourceTaskKey=nk===null ? 'x_'+it.sourceTaskKey : nk; } }); }); });
+  (Array.isArray(S.rappelsTaches)?S.rappelsTaches:[]).forEach(r=>{ if(!r || typeof r.sourceKey!=='string' || !r.sourceSlot) return;
+    const nk=_bibNouvelleCle(r.sourceKey, seanId, pfx, nv, nue(r.sourceSlot, r.clsCode)); if(nk!==r.sourceKey){ n++; r.sourceKey=nk===null ? 'x_'+r.sourceKey : nk; } });
+  // 7. Vérifications de TAF d'un cours non enregistré (slot|cls|grp|rang)
+  if(kind==='taf' && S.tafVerifs){
+    const moves=[];
+    Object.keys(S.tafVerifs).forEach(k=>{ const p=k.split('|'); if(p.length!==4 || !/^\d+$/.test(p[3]) || !nue(p[0], p[1])) return;
+      const i=+p[3], ni=nv(i); if(ni!==i) moves.push([k, ni>=0 ? p.slice(0,3).concat(String(ni)).join('|') : null, S.tafVerifs[k]]); });
+    moves.forEach(([k])=>{ delete S.tafVerifs[k]; });
+    moves.forEach(([, nk, v])=>{ if(nk) S.tafVerifs[nk]=v; });
+    n+=moves.length;
+  }
+  return n;
+}
+/** La séance de la bibliothèque qui EST cet objet (identité), ou null. */
+function _bibLocaliser(sean){
+  if(!sean || !S || !S.progression) return null;
+  for(const lv of Object.keys(S.progression)) for(const q of (S.progression[lv]||[])) for(const sn of ((q && q.seances)||[])) if(sn===sean) return { lv, seq:q, sean:sn };
+  return null;
+}
+function _bibApres(n){
+  if(!n) return;
+  try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(); }catch(e){}
+  try{ if(typeof _sdcReparerTout==='function') _sdcReparerTout(); }catch(e){}
+}
+/** Point de passage unique pour réordonner / retirer des tâches, documents ou
+ *  ressources d'une séance. fn(ids) modifie la liste ET les identifiants ensemble.
+ *  Hors bibliothèque (cours, autre objet) : fn(null), rien d'autre. */
+function _bibModifierListe(sean, champ, fn){
+  const kind={ modeOp:'mo', docs:'doc', ressources:'res' }[champ];
+  const loc=kind ? _bibLocaliser(sean) : null;
+  if(!loc){ fn(null); return null; }
+  const ids=_bibIds(sean, kind), avant=ids.slice();
+  fn(ids);
+  const c=_bibCarteParIds(avant, _bibIds(sean, kind));
+  if(!c.identite){ c.n=_bibRenumeroter(loc.seq.id, sean.id, kind, c.map); _bibApres(c.n); }
+  return c;
+}
+/** Même chose pour la liste des TAF, réécrite en entier (champ texte, retrait) :
+ *  correspondance par texte. Remplace setTafArray pour une séance de la bibliothèque. */
+function _bibModifierTafs(sean, liste){
+  const loc=_bibLocaliser(sean);
+  if(!loc) return setTafArray(sean, liste);
+  const ancIds=_bibIds(sean, 'taf').slice(), avant=getTafArray(sean).slice();
+  const res=setTafArray(sean, liste);
+  const apres=getTafArray(sean), c=_bibCarteParTexte(avant, apres);
+  const nouv=apres.map(()=>null);
+  Object.keys(c.map).forEach(i=>{ const j=c.map[i]; if(j>=0) nouv[j]=ancIds[i]; });
+  sean.ligneIds.taf=nouv.map(x=>x||_bibNouvelId());
+  if(!c.identite){ const n=_bibRenumeroter(loc.seq.id, sean.id, 'taf', c.map); _bibApres(n); }
+  return res;
+}
+
 function buildCollapsibleList(obj, key, label, icon, placeholder, refresh, opts){
   if(!obj[key]) obj[key]=[];
 
@@ -21386,16 +21598,22 @@ function buildCollapsibleList(obj, key, label, icon, placeholder, refresh, opts)
       mvU2.style.cssText='flex-shrink:0;padding:3px 5px;font-size:10px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur2);color:var(--tx3);cursor:pointer;margin-top:2px';
       mvU2.textContent='↑'; mvU2.disabled=i===0; if(i===0) mvU2.style.opacity='.3';
       mvU2.onclick=()=>{
-        [obj[key][i-1],obj[key][i]]=[obj[key][i],obj[key][i-1]];
-        if(key==='modeOp'&&obj.modeOpDurees){ const tmp=obj.modeOpDurees[i-1]; obj.modeOpDurees[i-1]=obj.modeOpDurees[i]; obj.modeOpDurees[i]=tmp; }
+        _bibModifierListe(obj, key, (ids)=>{   // V11.4.47 — l'avancement, les coches… suivent la ligne
+          [obj[key][i-1],obj[key][i]]=[obj[key][i],obj[key][i-1]];
+          if(key==='modeOp'&&obj.modeOpDurees){ const tmp=obj.modeOpDurees[i-1]; obj.modeOpDurees[i-1]=obj.modeOpDurees[i]; obj.modeOpDurees[i]=tmp; }
+          if(ids){ const t=ids[i-1]; ids[i-1]=ids[i]; ids[i]=t; }
+        });
         rebuildList(); saveS();
       };
       const mvD2=document.createElement('button');
       mvD2.style.cssText='flex-shrink:0;padding:3px 5px;font-size:10px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur2);color:var(--tx3);cursor:pointer;margin-top:2px';
       mvD2.textContent='↓'; mvD2.disabled=i===obj[key].length-1; if(i===obj[key].length-1) mvD2.style.opacity='.3';
       mvD2.onclick=()=>{
-        [obj[key][i],obj[key][i+1]]=[obj[key][i+1],obj[key][i]];
-        if(key==='modeOp'&&obj.modeOpDurees){ const tmp=obj.modeOpDurees[i]; obj.modeOpDurees[i]=obj.modeOpDurees[i+1]; obj.modeOpDurees[i+1]=tmp; }
+        _bibModifierListe(obj, key, (ids)=>{   // V11.4.47
+          [obj[key][i],obj[key][i+1]]=[obj[key][i+1],obj[key][i]];
+          if(key==='modeOp'&&obj.modeOpDurees){ const tmp=obj.modeOpDurees[i]; obj.modeOpDurees[i]=obj.modeOpDurees[i+1]; obj.modeOpDurees[i+1]=tmp; }
+          if(ids){ const t=ids[i]; ids[i]=ids[i+1]; ids[i+1]=t; }
+        });
         rebuildList(); saveS();
       };
       const del=document.createElement('button');
@@ -21406,8 +21624,11 @@ function buildCollapsibleList(obj, key, label, icon, placeholder, refresh, opts)
       del.title=key==='modeOp'?'Supprimer cette tâche':'Supprimer cette ligne';
       del.textContent='×';
       del.onclick=()=>{
-        obj[key].splice(i,1);
-        if(key==='modeOp'&&obj.modeOpDurees) obj.modeOpDurees.splice(i,1);
+        _bibModifierListe(obj, key, (ids)=>{   // V11.4.47 — références de la ligne retirées, les suivantes renumérotées
+          obj[key].splice(i,1);
+          if(key==='modeOp'&&obj.modeOpDurees) obj.modeOpDurees.splice(i,1);
+          if(ids) ids.splice(i,1);
+        });
         rebuildList(); updCount(); saveS();
         // V11.3.70 — les cours composés qui prenaient cette ligne la gardent, propre à eux.
         try{ if(S.planningBascule && typeof _sdcReparerTout==='function') _sdcReparerTout(); }catch(e){}
@@ -52147,7 +52368,7 @@ function _srVerifierCodes(seq, ix){
 }
 /** V11.4.46 — Complétion : codes dont le code ou l'intitulé contient tous les mots tapés. Pure. */
 function _srSuggestions(fragment, ix, kinds, max){
-  const norm=(x)=>String(x||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const norm=(x)=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const f=norm(fragment).trim(); if(f.length<2 || !ix) return [];
   const mots=f.split(/\s+/).filter(Boolean);
   const out=[];
@@ -52315,7 +52536,7 @@ function renderProgSaisieRapide(){
 
   // Aide-mémoire repliable
   const help = document.createElement('details');
-  help.style.cssText = 'font-size:11px;color:var(--tx3);margin-top:4px;';
+  help.style.cssText = 'font-size:12.5px;color:var(--tx);margin-top:4px;';   // V11.4.47 — plus de teinte pâle
   help.innerHTML =
     '<summary style="cursor:pointer;user-select:none;">Aide-mémoire des préfixes</summary>' +
     '<div style="padding:6px 0 0 0;line-height:1.7;">' +
@@ -52325,7 +52546,7 @@ function renderProgSaisieRapide(){
     '<div>Lignes sans préfixe sous une séance → tâches du mode opératoire</div>' +
     '<div>Suffixe <code>- N min</code> sur tâches et évals → durée</div>' +
     '<div><code>/Doc</code>, <code>/Res</code>, <code>/TAF</code>, <code>/Eval inter</code>, <code>/Eval finale</code></div>' +
-    '<div style="margin-top:4px;opacity:.75;">Casse et accents libres. Préfixes non reconnus → traités comme texte.</div>' +
+    '<div style="margin-top:4px;font-weight:600;">Casse et accents libres. Préfixes non reconnus → traités comme texte.</div>' +
     '</div>';
   { // V11.4.46 — nouveaux préfixes (createElement)
     const boiteAide = help.querySelector('div');
@@ -52339,8 +52560,10 @@ function renderProgSaisieRapide(){
       d.appendChild(k); d.appendChild(document.createTextNode(' · '+t));
       if(boiteAide) boiteAide.insertBefore(d, noteFin);
     });
-    if(boiteAide){ const d = document.createElement('div'); d.style.cssText = 'margin-top:4px'; d.textContent = 'Codes : tapez quelques mots de l’intitulé après /Comp, /Conn ou /Prérequis, puis choisissez (↑ ↓ et Entrée, ou clic).'; boiteAide.insertBefore(d, noteFin); }
+    if(boiteAide){ const d = document.createElement('div'); d.style.cssText = 'margin-top:4px;font-weight:600'; d.textContent = 'Codes : tapez quelques mots de l’intitulé après /Comp, /Conn ou /Prérequis, puis choisissez (↑ ↓ et Entrée, ou clic).'; boiteAide.insertBefore(d, noteFin); }
   }
+  help.querySelectorAll('summary').forEach(x=>{ x.style.fontWeight = '700'; x.style.color = 'var(--tx)'; });   // V11.4.47
+  help.querySelectorAll('code').forEach(x=>{ x.style.cssText = 'font-weight:700;color:var(--tx);background:var(--sur2);border:1px solid var(--brd);border-radius:4px;padding:0 4px'; });
   leftCol.appendChild(help);
   const _ix = _srIndexCodes(pane._lv); // V11.4.46 — codes connus du niveau
   // V11.4.46 — complétion des codes
@@ -52354,7 +52577,7 @@ function renderProgSaisieRapide(){
     const pos = ta.selectionStart, v = ta.value;
     const deb = v.lastIndexOf('\n', pos-1) + 1, ligne = v.slice(deb, pos);
     const m = ligne.match(/^\s*\/(\S+)\s+(.*)$/); if(!m) return null;
-    const cmd = m[1].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const cmd = m[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     const kinds = /^comp/.test(cmd) ? ['comps'] : /^conn/.test(cmd) ? ['conns'] : /^prerequis/.test(cmd) ? ['comps','conns'] : null;
     if(!kinds) return null;
     const sep = Math.max(ligne.lastIndexOf(','), ligne.lastIndexOf(';'));
@@ -54564,7 +54787,7 @@ function renderProgConstructionMock(){
       _pmkSeDuree.onchange=()=>{ renderProgConstructionMock(); };
       attachDurationRingButton(p5.querySelector('#pmk-se-duree'), ()=>seance.duree||0, (minutes)=>{ seance.duree=minutes||0; const inp=p5.querySelector('#pmk-se-duree'); if(inp) inp.value=minutes||''; saveS(); });
       p5.querySelector('#pmk-se-contenu').oninput=e=>{ seance.contenu=e.target.value; saveS(); };
-      p5.querySelector('#pmk-se-taf').oninput=e=>{ setTafArray(seance, parseTafTextareaValue(e.target.value)); saveS(); };
+      p5.querySelector('#pmk-se-taf').oninput=e=>{ _bibModifierTafs(seance, parseTafTextareaValue(e.target.value)); saveS(); };   // V11.4.47
       p5.querySelector('#pmk-dup-seance').onclick=()=>{ const cp=JSON.parse(JSON.stringify(seance)); cp.id=uid(); cp.titre=(seance.titre||'Séance')+' (copie)'; setTafArray(cp, getTafArray(seance)); seq.seances.splice((seq.seances.findIndex(x=>x.id===seance.id))+1,0,cp); saveS(); pane._seanceId=cp.id; renderProgConstructionMock(); };
       p5.querySelector('#pmk-del-seance').onclick=()=>{ showModal('Supprimer cette séance ?', seance.titre||'Séance', ()=>{ deleteSeance(lv,seq.id,seance.id); pane._seanceId=seq.seances?.[0]?.id||null; renderProgConstructionMock(); }); };
       const opBlock=buildCollapsibleList(seance,'modeOp','Mode opératoire','⚙️','Décrire une opération / tâche…',()=>{},{lv});
@@ -66646,7 +66869,8 @@ _migrationProtegee('migrateCocheDates', migrateCocheDates); // V11.3.35 (Q4) —
 _migrationProtegee('_migrerContenuPrevu', _migrerContenuPrevu); // V11.3.101 — contenu = redite du prévu → vidé (copie gardée)
 _migrationProtegee('_sdcRestaurerEntreesPerdues', _sdcRestaurerEntreesPerdues); // V11.4.27 — entrées effacées par le modal sans séance → rétablies
 _migrationProtegee('_migrerExecSynthese', _migrerExecSynthese); // V11.4.12 — libellés + avance sur séances secondaires
-_migrationProtegee('_partRetirerOrphelines', _partRetirerOrphelines); // V11.4.29 — 7 ✋ du 07/09 d'élèves hors liste, retirées (datées)
+_migrationProtegee('_partRetirerOrphelines', _partRetirerOrphelines);
+_migrationProtegee('_bibAssurerTout', _bibAssurerTout); // V11.4.47 — identifiants permanents des lignes de la bibliothèque // V11.4.29 — 7 ✋ du 07/09 d'élèves hors liste, retirées (datées)
 try{ _vivCache=_vivEmpreinte(S); }catch(e){}   // V11.4.13 — référence des données vivantes (rien n'est daté au chargement)
 if(window._migrationsEchouees && window._migrationsEchouees.length){
   const _noms=window._migrationsEchouees.map(m=>m.nom).join(', ');
