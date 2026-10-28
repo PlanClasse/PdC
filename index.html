@@ -2802,6 +2802,8 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .imp-eff-r{display:grid;grid-template-columns:44px minmax(0,1fr) 54px;gap:10px;align-items:center;padding:6px 12px;border-top:1px solid var(--brd)}
 .imp-eff-r span{color:var(--tx2)}
 .imp-eff-t{text-align:right}
+.imp-eff-tot{grid-template-columns:150px minmax(0,1fr) 54px;font-size:14px;background:var(--sur2)}
+.imp-rappel .imp-doc{font-style:normal}
 .imp-pied{display:flex;justify-content:flex-end;gap:10px;padding-top:4px}
 .imp-pied .bp{background:#1D4ED8}
 .imp-pied .bp:disabled{opacity:.5;cursor:default}
@@ -4548,7 +4550,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.48';
+const APP_VERSION = 'v11.4.49';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -16151,6 +16153,45 @@ function _impStore(){
   if(!s.distrib || typeof s.distrib!=='object') s.distrib={};
   return s;
 }
+/** V11.4.49 — Élèves EBEP d'un public (classe, ou demi-groupe) : fiche « photocopies »
+ *  (quoi='photo') ou « évaluation adaptée » (quoi='eval'). → uids. */
+function _impEbep(cls, gid, quoi){
+  const base=quoi==='eval'
+    ? ((typeof _ebepWithEvalAdapteeForCls==='function') ? _ebepWithEvalAdapteeForCls(cls) : [])
+    : ((typeof _ebepWithPhotocopiesForCls==='function') ? _ebepWithPhotocopiesForCls(cls) : []);
+  if(!gid) return base;
+  const g=S.groupes && S.groupes[gid];
+  if(!g || !Array.isArray(g.students)) return base;
+  const m=new Set(g.students.map(x=>(x && typeof x==='object') ? x.uid : x));
+  return base.filter(u=>m.has(u));
+}
+/** V11.4.49 — Rappels d'un cours, SANS stock (arbitrage du 28/10) : traces écrites 📓
+ *  pour les EBEP « photocopies » du public, et évaluations (effectif, dont adaptées). */
+function _impRappels(cls, sl, gid){
+  const out={ traces:[], evals:[] };
+  if(!sl || !sl.slotKey) return out;
+  const M=S.edtProgMapping||{};
+  const e=M[sl.slotKey+'|'+cls] || M[sl.slotKey+'|'+String(cls||'').toLowerCase()] || null;
+  const ebep=_impEbep(cls, gid, 'photo');
+  if(ebep.length && typeof _isTraceTaskLabel==='function'){
+    const vus=new Set();
+    const ajouter=(lbl)=>{ if(!_isTraceTaskLabel(lbl)) return; const t=_stripTraceMarker(lbl), k=t.toLowerCase(); if(!t || vus.has(k)) return; vus.add(k); out.traces.push({ label:t, uids:ebep.slice() }); };
+    let lay=null; try{ lay=(typeof getSlotLayout==='function') ? getSlotLayout(cls, sl.slotKey) : null; }catch(er){ lay=null; }
+    ((lay && lay.items)||[]).forEach(it=>{ if(it && it.label) ajouter(it.label); });
+    ((e && e.freeItems)||[]).forEach(fi=>{ if(fi && fi.type!=='eval') ajouter(fi.label); });
+  }
+  const lv=_sdcNiveau(cls), prog=(typeof getProgression==='function') ? (getProgression(lv)||[]) : [];
+  const vusE=new Set();
+  ((e && e.freeItems)||[]).forEach(fi=>{
+    if(!fi || fi.type!=='eval') return;
+    let titre=fi.label||'';
+    if(fi.evalId){ const q=prog.find(x=>x && x.id===fi.seqId), ev=q && (q.evals||[]).find(x=>x && x.id===fi.evalId); if(ev) titre=ev.titre || (ev.isFinal ? 'Évaluation finale' : 'Évaluation'); }
+    titre=String(titre||'Évaluation').trim();
+    const k=titre.toLowerCase(); if(vusE.has(k)) return; vusE.add(k);
+    out.evals.push({ label:titre, n:_impEffectif(cls, gid), adaptees:_impEbep(cls, gid, 'eval').length });
+  });
+  return out;
+}
 function _impEffectif(cls, gid){
   if(gid){ const g=S.groupes && S.groupes[gid]; return (g && Array.isArray(g.students)) ? g.students.length : 0; }
   const c=S.cl && S.cl[cls]; return (c && Array.isArray(c.students)) ? c.students.length : 0;
@@ -16446,8 +16487,9 @@ function _impLigneGestion(d){
   const row=_impEl('div', 'imp-ligne');
   const g=_impEl('div', 'imp-g'); row.appendChild(g);
   const c1=_impEl('div'); c1.appendChild(_impEl('div', 'imp-doc', d.label));
-  const ebep=d.prevus.reduce((s,p)=>s+((typeof _ebepWithPhotocopiesForCls==='function' && !p.gid) ? _ebepWithPhotocopiesForCls(p.cls).length : 0), 0);
-  if(ebep) c1.appendChild(_impEl('div', 'imp-doc-s imp-ebep', 'dont '+ebep+' EBEP (photocopies adaptées)'));
+  const _ebP=d.prevus.map(p=>({ l:p.label, n:_impEbep(p.cls, p.gid, 'photo').length })).filter(x=>x.n);   // V11.4.49 — demi-groupes compris
+  const ebep=_ebP.reduce((t,x)=>t+x.n, 0);
+  if(ebep) c1.appendChild(_impEl('div', 'imp-doc-s imp-ebep', 'dont '+ebep+' adapté'+(ebep>1?'s':'')+' (EBEP photocopies'+(_ebP.length>1 ? ' : '+_ebP.map(x=>x.l+' '+x.n).join(' · ') : '')+')'));
   g.appendChild(c1);
   const chips=_impEl('div', 'imp-chips');
   d.servis.filter(s=>!d.prevus.some(p=>p.cle===s.cle)).forEach(s=>chips.appendChild(_impEl('span', 'imp-chip imp-vert', s.label+' ✓ '+s.effectif)));
@@ -16488,7 +16530,8 @@ function _impRendreJour(zone, corps){
     slots.filter(s=>s && s.dateStr===J).forEach(sl=>{
       if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, cls)) return;
       let ds=[]; try{ ds=_docsDistribuesAuCours(sl.slotKey, cls)||[]; }catch(e){ ds=[]; }
-      cours.push({cls, sl, gid:_numPublicDuSlot(sl), docs:ds.map(_impLibelle).filter(Boolean)});
+      const _gid=_numPublicDuSlot(sl);
+      cours.push({cls, sl, gid:_gid, docs:ds.map(_impLibelle).filter(Boolean), rappels:_impRappels(cls, sl, _gid)});   // V11.4.49
     });
   });
   cours.sort((a,b)=>String(a.sl.debut).localeCompare(String(b.sl.debut)));
@@ -16503,7 +16546,8 @@ function _impRendreJour(zone, corps){
   });
 }
 function _impCarteJour(c, col){
-  const lv=_sdcNiveau(c.cls), carte=_impEl('article', 'imp-carte'+(c.docs.length?'':' imp-carte-vide'));
+  const _rp=c.rappels||{ traces:[], evals:[] }, _nRp=_rp.traces.length+_rp.evals.length;   // V11.4.49
+  const lv=_sdcNiveau(c.cls), carte=_impEl('article', 'imp-carte'+((c.docs.length||_nRp)?'':' imp-carte-vide'));
   const rail=_impEl('div', 'imp-rail'); carte.appendChild(rail);
   rail.appendChild(_impEl('div', 'imp-rail-c', String(c.cls).toUpperCase()));
   rail.appendChild(_impEl('div', 'imp-rail-s', (c.sl.debut||'')+(c.sl.fin?'–'+c.sl.fin:'')));
@@ -16511,13 +16555,15 @@ function _impCarteJour(c, col){
   const eff=_impEffectif(c.cls, c.gid);
   rail.appendChild(_impEl('div', 'imp-rail-n', eff+' élèves'));
   const corps=_impEl('div', 'imp-carte-c'); carte.appendChild(corps);
-  if(!c.docs.length){ corps.appendChild(_impEl('div', 'imp-muet', 'Aucun document prévu pour ce cours.')); return carte; }
+  if(!c.docs.length && !_nRp){ corps.appendChild(_impEl('div', 'imp-muet', 'Aucun document prévu pour ce cours.')); return carte; }
+  const _adaptes=_impEbep(c.cls, c.gid, 'photo').length;   // V11.4.49
   const servis=c.sl.saved ? new Set(_impDocsDeSeance(c.sl.saved.taskRows).map(l=>l.toLowerCase())) : null;
   c.docs.forEach(l=>{
     const cle=_impCle(lv, l), d=col && col.docs[cle];
     const row=_impEl('div', 'imp-ligne'); corps.appendChild(row);
     const g=_impEl('div', 'imp-gj'); row.appendChild(g);
     const c1=_impEl('div'); c1.appendChild(_impEl('div', 'imp-doc', l));
+    if(_adaptes) c1.appendChild(_impEl('div', 'imp-doc-s imp-ebep', 'dont '+_adaptes+' adapté'+(_adaptes>1?'s':'')+' (EBEP photocopies)'));   // V11.4.49
     if(d){
       const b=d.bilan, autres=d.prevus.filter(p=>p.cls!==c.cls).slice().sort((x,y)=>(x.dateStr+x.debut).localeCompare(y.dateStr+y.debut)).map(p=>p.label+' '+_homeFormatDate(p.dateStr));
       const s=b.statut==='rouge' ? 'Niveau '+lv+' : '+b.reste+' à imprimer' : b.statut==='ambre' ? 'Niveau '+lv+' : manque '+b.manque : 'Niveau '+lv+' : couvert';
@@ -16540,6 +16586,17 @@ function _impCarteJour(c, col){
       if(_imp.form===c.sl.slotKey+'#'+cle) row.appendChild(_impFormImprime(d, d.bilan.manque||eff));
     } else g.appendChild(_impEl('div'));
   });
+  // V11.4.49 — rappels sans stock : traces écrites 📓 (EBEP photocopies) et évaluations
+  const rappel=(titre, sous, puce, cls)=>{
+    const row=_impEl('div', 'imp-ligne imp-rappel'); corps.appendChild(row);
+    const g=_impEl('div', 'imp-gj'); row.appendChild(g);
+    const c1=_impEl('div'); c1.appendChild(_impEl('div', 'imp-doc', titre)); if(sous) c1.appendChild(_impEl('div', 'imp-doc-s imp-ebep', sous)); g.appendChild(c1);
+    g.appendChild(_impEl('div', 'imp-puce '+cls, puce));
+    g.appendChild(_impEl('div', 'imp-n imp-muet', 'rappel'));
+    g.appendChild(_impEl('div'));
+  };
+  _rp.traces.forEach(t=>rappel('📓 Trace écrite : '+t.label, 'EBEP photocopies : '+t.uids.map(u=>(typeof _traceShortName==='function') ? _traceShortName(u) : u).join(', '), t.uids.length+' à imprimer', 'imp-ambre'));
+  _rp.evals.forEach(ev=>rappel('📝 Évaluation : '+ev.label, ev.adaptees ? 'dont '+ev.adaptees+' adaptée'+(ev.adaptees>1?'s':'')+' (EBEP)' : '', ev.n+' élèves', 'imp-neutre'));
   return carte;
 }
 function _impRendreRetour(zone, corps){
@@ -16591,7 +16648,15 @@ function _impRendreRetour(zone, corps){
 /** Tableau des effectifs par niveau (repère au photocopieur). */
 function _impTableEffectifs(classes){
   const t=_impEl('div', 'imp-eff');
-  t.appendChild(_impEl('div', 'imp-eff-h', 'EFFECTIFS PAR NIVEAU'));
+  t.appendChild(_impEl('div', 'imp-eff-h', 'EFFECTIFS — VOS CLASSES'));
+  { // V11.4.49 — total de TOUTES les classes de l'enseignant (demande du 28/10), puis le détail par niveau
+    const toutes=Object.keys(classes||{}).reduce((a,lv)=>a.concat(classes[lv]||[]), []);
+    const tot=_impEl('div', 'imp-eff-r imp-eff-tot');
+    tot.appendChild(_impEl('b', '', 'Toutes vos classes'));
+    tot.appendChild(_impEl('span', '', toutes.length+' classe'+(toutes.length>1?'s':'')+' · '+_impNiveauxTries(Object.keys(classes||{})).join(', ')));
+    tot.appendChild(_impEl('b', 'imp-eff-t', String(toutes.reduce((n,c)=>n+_impEffectif(c,''),0))));
+    t.appendChild(tot);
+  }
   _impNiveauxTries(Object.keys(classes||{})).forEach(lv=>{
     const cls=(classes[lv]||[]).slice().sort();
     const r=_impEl('div', 'imp-eff-r');
