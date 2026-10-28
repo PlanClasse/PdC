@@ -2876,7 +2876,7 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .ref-code-g{font-size:14px}
 .ref-fiche-parent{font-size:13px;font-weight:600;color:var(--tx2)}
 .ref-fiche-lbl{font-size:18px;font-weight:600;line-height:1.4;color:var(--tx)}
-.ref-fiche-desc{font-size:14px;line-height:1.5;color:var(--tx)}
+.ref-fiche-desc{font-size:14px;line-height:1.5;color:var(--tx);white-space:pre-line}
 .ref-fiche-meta{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--tx2);border-top:1px solid var(--brd);padding-top:10px}
 .ref-fiche-meta b{color:var(--tx)}
 .ref-fiche-usage{font-size:13px;color:var(--tx);background:var(--sur2);border-radius:9px;padding:9px 11px;line-height:1.5}
@@ -4548,7 +4548,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.44';
+const APP_VERSION = 'v11.4.46';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -5027,6 +5027,45 @@ const THEMES_DEF = [
   {id:'communication',label:'Communication numérique', emoji:'🌐'},
 ];
 
+/* V11.4.45 — Socle commun générique (5 domaines du socle de 2015), proposé aux matières
+   autres que la technologie à la place des items SC-…-TECH, réservés à la techno.
+   Ids nouveaux (SC-D…) : aucun id existant n'est renommé. */
+const SOCLE_GENERIQUE=[
+  {id:'SC-D1-1', label:'Comprendre, s\'exprimer en utilisant la langue française à l\'oral et à l\'écrit', domaine:'Socle – D1 Langages pour penser et communiquer', source:'socle', niveaux:['6e','5e','4e','3e'], themes:[]},
+  {id:'SC-D1-2', label:'Comprendre, s\'exprimer en utilisant une langue étrangère ou régionale', domaine:'Socle – D1 Langages pour penser et communiquer', source:'socle', niveaux:['6e','5e','4e','3e'], themes:[]},
+  {id:'SC-D1-3', label:'Comprendre, s\'exprimer en utilisant les langages mathématiques, scientifiques et informatiques', domaine:'Socle – D1 Langages pour penser et communiquer', source:'socle', niveaux:['6e','5e','4e','3e'], themes:[]},
+  {id:'SC-D1-4', label:'Comprendre, s\'exprimer en utilisant les langages des arts et du corps', domaine:'Socle – D1 Langages pour penser et communiquer', source:'socle', niveaux:['6e','5e','4e','3e'], themes:[]},
+  {id:'SC-D2', label:'Organiser son travail, coopérer, rechercher l\'information, utiliser les outils numériques', domaine:'Socle – D2 Méthodes et outils pour apprendre', source:'socle', niveaux:['6e','5e','4e','3e'], themes:[]},
+  {id:'SC-D3', label:'Exprimer sa sensibilité, respecter les règles, exercer son jugement et son esprit critique', domaine:'Socle – D3 Formation de la personne et du citoyen', source:'socle', niveaux:['6e','5e','4e','3e'], themes:[]},
+  {id:'SC-D4', label:'Mener une démarche scientifique, concevoir et réaliser, adopter un comportement responsable', domaine:'Socle – D4 Systèmes naturels et systèmes techniques', source:'socle', niveaux:['6e','5e','4e','3e'], themes:[]},
+  {id:'SC-D5', label:'Se situer dans l\'espace et le temps, comprendre les sociétés, raisonner, imaginer, produire', domaine:'Socle – D5 Représentations du monde et activité humaine', source:'socle', niveaux:['6e','5e','4e','3e'], themes:[]},
+];
+/* V11.4.45 — Thèmes proposés en filtre pour une liste d'items. Techno (ou mode techno) :
+   les thèmes de THEMES_DEF présents, comme avant. Autre matière principale : aucun thème
+   techno. En mode universel, les thèmes des référentiels importés (colonne « themes »)
+   s'ajoutent. Liste vide → la barre de thèmes est masquée par l'appelant. */
+function _refThemesListe(items){
+  const a=Array.isArray(items)?items:[];
+  const universel=!!(S&&S.reglages&&S.reglages.pdcUniversel);
+  const techno=!universel||getMatierePrincipale()===TECHNO_MAT_ID;
+  const out=[], vus=new Set();
+  if(techno) THEMES_DEF.forEach(th=>{ if(a.some(it=>(it.themes||[]).includes(th.id))){ out.push(th); vus.add(th.id); } });
+  if(universel) a.forEach(it=>{
+    if(!it||!getReferentielById(it.source)) return;
+    (it.themes||[]).forEach(t=>{ const k=String(t||'').trim(); if(!k||vus.has(k)) return; vus.add(k);
+      out.push(THEMES_DEF.find(x=>x.id===k)||{id:k, label:k, emoji:'🏷️'}); });
+  });
+  return out;
+}
+/* V11.4.45 — Item socle retrouvé par son id, quelle que soit la matière (évaluations déjà
+   saisies sur un SC-…-TECH ou un SC-D… restent lisibles). */
+function _socleParId(id){
+  if(!id) return null;
+  const g=SOCLE_GENERIQUE.find(it=>it.id===id); if(g) return g;
+  for(const k of Object.keys(REFERENTIELS_DEFAULT||{})){ const t=(REFERENTIELS_DEFAULT[k]||[]).find(it=>it.id===id&&it.source==='socle'); if(t) return t; }
+  return null;
+}
+
 /* ════════════════════════════════════════════════════════════════════
    S27 patch 16 — Référentiel CRCN enrichi avec descripteurs niveaux 1-5
    Source : Document d'accompagnement officiel Eduscol (CRCN)
@@ -5300,7 +5339,8 @@ function _refItemsForMatiere(niveau, matiereId, kind){
   });
   if(kind==='comps'){
     if(refIds.includes('__socle__')){
-      (REFERENTIELS_DEFAULT[niveau]||[]).forEach(it=>{ if(it.source==='socle') push(it); });
+      if(matiereId===TECHNO_MAT_ID) (REFERENTIELS_DEFAULT[niveau]||[]).forEach(it=>{ if(it.source==='socle') push(it); });
+      else SOCLE_GENERIQUE.forEach(it=>{ if(it.niveaux.includes(niveau)) push(it); }); // V11.4.45 — socle générique hors techno
     }
     if(refIds.includes('__crcn__')){
       _CRCN_DESCRIPTOR_ITEMS.forEach(it=>{ if(!it.niveaux||!it.niveaux.length||it.niveaux.includes(niveau)) push(it); });
@@ -5394,7 +5434,8 @@ function _refParseRows(rows, matiereId){
   const kType=findKey(['type']), kDom=findKey(['domaine','domain']),
         kLab=findKey(['label','libelle','intitule']),
         kNiv=findKey(['niveaux','niveau','levels']), kId=findKey(['id']),
-        kTh=findKey(['themes','theme']);
+        kTh=findKey(['themes','theme']),
+        kDesc=findKey(['description','desc','detail','details','commentaire','explication']); // V11.4.45
   const missing=[]; if(!kType)missing.push('type'); if(!kDom)missing.push('domaine'); if(!kLab)missing.push('label');
   if(missing.length){
     res.errors.push('Colonne(s) obligatoire(s) manquante(s) : '+missing.join(', ')+'. Colonnes trouvées : '+(keys.filter(Boolean).join(', ')||'aucune')+'.');
@@ -5419,6 +5460,7 @@ function _refParseRows(rows, matiereId){
     seenIds.add(id);
     const item={ id, label, domaine:dom, niveaux:nv.niveaux };
     if(kind==='comps') item.themes=kTh?String(r[kTh]||'').split(/[,;]+/).map(x=>x.trim()).filter(Boolean):[];
+    { const d=kDesc?String(r[kDesc]||'').trim():''; if(d) item.description=d; } // V11.4.45 — texte de la fiche
     res[kind].push(item);
   });
   if(!res.comps.length&&!res.conns.length&&!res.errors.length) res.errors.push('Aucun item exploitable dans le fichier.');
@@ -5474,19 +5516,20 @@ function _refAiPromptText(matLabel){
 '',
 'FORMAT EXIG\u00c9 (strict) :',
 '- CSV, s\u00e9parateur \u00ab ; \u00bb, encodage UTF-8, premi\u00e8re ligne = ent\u00eates.',
-'- Colonnes : type;domaine;label;niveaux;id;themes',
+'- Colonnes : type;domaine;label;niveaux;id;themes;description',
 '- type (obligatoire) : \u00ab competence \u00bb ou \u00ab connaissance \u00bb.',
 '- domaine (obligatoire) : l\u2019unit\u00e9 de regroupement des bilans \u2014 3 \u00e0 8 domaines courts et stables pour toute la discipline (ex. \u00ab Nombres et calculs \u00bb).',
 '- label (obligatoire) : l\u2019intitul\u00e9 de l\u2019item, une phrase courte \u00e0 l\u2019infinitif.',
 '- niveaux (optionnel) : parmi 6e, 5e, 4e, 3e, s\u00e9par\u00e9s par des virgules (ex. \u00ab 5e,4e \u00bb) ; vide = tous les niveaux.',
 '- id (optionnel) : identifiant COURT, STABLE et UNIQUE (ex. M-NUM-1). Si fourni, jamais deux fois le m\u00eame. Si omis, il sera g\u00e9n\u00e9r\u00e9 automatiquement.',
-'- themes (optionnel, comp\u00e9tences seulement) : mots-cl\u00e9s s\u00e9par\u00e9s par des virgules.',
+'- themes (optionnel, comp\u00e9tences seulement) : mots-cl\u00e9s s\u00e9par\u00e9s par des virgules ; ils deviennent les filtres par th\u00e8me.',
+'- description (optionnel) : ce que recouvre l\u2019item (attendus, exemples, rep\u00e8res du programme), affich\u00e9 dans sa fiche. Entre guillemets s\u2019il contient un \u00ab ; \u00bb.',
 '- Aucune autre colonne, aucun texte hors du CSV, pas de ligne vide au milieu.',
 '',
 'EXEMPLE (3 lignes) :',
-'type;domaine;label;niveaux;id;themes',
-'competence;Nombres et calculs;Calculer avec des nombres relatifs;5e,4e;M-NUM-1;calcul',
-'connaissance;Nombres et calculs;Priorit\u00e9s op\u00e9ratoires;5e;M-K-NUM-1;',
+'type;domaine;label;niveaux;id;themes;description',
+'competence;Nombres et calculs;Calculer avec des nombres relatifs;5e,4e;M-NUM-1;calcul;Additionner, soustraire et multiplier des relatifs, mentalement et par \u00e9crit.',
+'connaissance;Nombres et calculs;Priorit\u00e9s op\u00e9ratoires;5e;M-K-NUM-1;;',
 '',
 'R\u00e9ponds UNIQUEMENT par le contenu CSV final, dans un bloc de code.'
   ].join('\n');
@@ -19274,11 +19317,12 @@ function _refDocPanel(){
   p('• label — obligatoire : l\u2019intitulé de l\u2019item (alias acceptés : libelle, intitule).');
   p('• niveaux — optionnel : parmi 6e, 5e, 4e, 3e, séparés par , ; ou espace (« 5e,4e », « 5;4 », « 5ème » acceptés). Vide = tous les niveaux.');
   p('• id — optionnel : identifiant court, stable et UNIQUE. Si omis, généré automatiquement. Un id en double = ligne ignorée (avertissement à l\u2019analyse).');
-  p('• themes — optionnel, compétences seulement : mots-clés séparés par , ou ;.');
+  p('• themes — optionnel, compétences seulement : mots-clés séparés par , ou ;. Ils deviennent les filtres par thème de la page Référentiels.');
+  p('• description — optionnel : ce que recouvre l\u2019item (attendus, exemples, repères du programme), affiché dans sa fiche.');
   p('L\u2019analyse du fichier affiche un rapport (erreurs avec numéro de ligne) AVANT de valider : rien n\u2019est écrit tant que le rapport contient une erreur.');
   const pre=document.createElement('pre');
   pre.style.cssText='margin:6px 0 0;padding:7px 9px;background:var(--sur2);border:1px solid var(--brd);border-radius:var(--r1);font-size:10.5px;overflow-x:auto';
-  pre.textContent='type;domaine;label;niveaux;id;themes\ncompetence;Nombres et calculs;Calculer avec des nombres relatifs;5e,4e;M-NUM-1;calcul\nconnaissance;Nombres et calculs;Priorités opératoires;5e;M-K-NUM-1;';
+  pre.textContent='type;domaine;label;niveaux;id;themes;description\ncompetence;Nombres et calculs;Calculer avec des nombres relatifs;5e,4e;M-NUM-1;calcul;Additionner, soustraire et multiplier des relatifs.\nconnaissance;Nombres et calculs;Priorités opératoires;5e;M-K-NUM-1;;';
   box.appendChild(pre);
   return box;
 }
@@ -21747,9 +21791,8 @@ function renderSeanceCompPickerV2(lv, sean, mode, refresh){
     const themeRow=mkFilterRow('Thème');
     const allThBtn=mkToggleBtn('Tous', null, activeThemes.size===0, ()=>{ activeThemes.clear(); rebuildFilterBtns(); rebuildGrid(); });
     themeRow.appendChild(allThBtn);
-    THEMES_DEF.forEach(th=>{
-      const hasItems=_refItemsUniverse(lv).some(it=>it.source==='boizard'&&it.niveaux.includes(lv)&&(it.themes||[]).includes(th.id)); // V035-V11.2.5 (v-b2) — thèmes = techno seul (rangée auto-masquée si techno masquée)
-      if(!hasItems) return;
+    const _thListe=_refThemesListe(_refItemsUniverse(lv).filter(it=>it.niveaux.includes(lv)&&(it.source==='boizard'||getReferentielById(it.source)))); // V035-V11.2.5 (v-b2) ; V11.4.45 — techno + thèmes importés
+    _thListe.forEach(th=>{
       const b=mkToggleBtn(th.emoji+' '+th.label, null, activeThemes.has(th.id), ()=>{
         if(activeThemes.has(th.id)) activeThemes.delete(th.id); else activeThemes.add(th.id);
         rebuildFilterBtns(); rebuildGrid();
@@ -21757,7 +21800,7 @@ function renderSeanceCompPickerV2(lv, sean, mode, refresh){
       b.dataset.theme=th.id;
       themeRow.appendChild(b);
     });
-    filterBar.appendChild(themeRow);
+    if(_thListe.length) filterBar.appendChild(themeRow); // V11.4.45
 
   } else {
     // Connaissances : ligne filtres par groupe K-
@@ -27051,7 +27094,7 @@ function getCompItemById(compId, clsCode){
     const legacy = _resolveLegacyCrcnId(compId);
     if(legacy) return legacy;
   }
-  return null;
+  return _socleParId(compId); // V11.4.45
 }
 function getCompLabelForCourse(compId, clsCode){
   const it=getCompItemById(compId, clsCode);
@@ -51721,8 +51764,10 @@ function _srParseDur(t){
 
 function _srParseProgressionText(text){
   const lines=String(text||'').split('\n');
-  const out={ sequences:[], errors:[] };
+  const out={ sequences:[], errors:[], alertes:[] };
   let curSeq=null, curSean=null, inIntent=false;
+  let curEval=null; // V11.4.46 — dernier bloc /Eval ouvert : /Comp /Conn /Contenu s'y rattachent
+  const codesDe=(x)=>String(x||'').split(/[\s,;]+/).map(c=>c.trim()).filter(Boolean);
 
   function fallbackText(lineIdx, raw){
     if(curSean){
@@ -51752,9 +51797,9 @@ function _srParseProgressionText(text){
           const nm = rest.match(/^(\d+)\s+(.*)$/);
           if(nm){ num = nm[1]; titre = nm[2]; }
         }
-        curSeq = { num, titre: titre || '(sans titre)', intention: '', seances: [], evalFinal: null };
+        curSeq = { num, titre: titre || '(sans titre)', intention: '', seances: [], evalFinal: null, prereq: [] };
         out.sequences.push(curSeq);
-        curSean = null; inIntent = true;
+        curSean = null; inIntent = true; curEval = null;
         return;
       }
       // /Seance ou /Séance (déjà normalisé en 'seance')
@@ -51763,9 +51808,9 @@ function _srParseProgressionText(text){
         const sm = rest.match(/^(\d+)?\s*[:\-–]?\s*(.*)$/);
         const num = (sm && sm[1]) || '';
         const titre = (sm && sm[2]) || '';
-        curSean = { num, titre: titre || '(sans titre)', taches: [], docs: [], ressources: [], tafs: [], evals: [] };
+        curSean = { num, titre: titre || '(sans titre)', taches: [], docs: [], ressources: [], tafs: [], evals: [], contenu: '', comps: [], conns: [], groupe: false };
         curSeq.seances.push(curSean);
-        inIntent = false;
+        inIntent = false; curEval = null;
         return;
       }
       // /Eval (inter par défaut, ou /Eval finale, /Eval F)
@@ -51780,11 +51825,12 @@ function _srParseProgressionText(text){
         }
         const d = _srParseDur(titrePart);
         if(isFinal){
-          curSeq.evalFinal = { titre: d.label || 'Évaluation finale', duree: d.duree };
-          inIntent = false;
+          curSeq.evalFinal = { titre: d.label || 'Évaluation finale', duree: d.duree, contenu: '', comps: [], conns: [] };
+          inIntent = false; curEval = curSeq.evalFinal;
         } else {
           if(!curSean){ fallbackText(i, t); return; }
-          curSean.evals.push({ titre: d.label || '(éval sans titre)', duree: d.duree });
+          curEval = { titre: d.label || '(éval sans titre)', duree: d.duree, contenu: '', comps: [], conns: [] };
+          curSean.evals.push(curEval);
         }
         return;
       }
@@ -51806,6 +51852,33 @@ function _srParseProgressionText(text){
         curSean.tafs.push(rest);
         return;
       }
+      // V11.4.46 — /Comp, /Conn : codes de la séance, ou de l'éval si une /Eval vient d'être ouverte
+      if(/^comp/.test(cmd) || /^conn/.test(cmd)){
+        const kind = /^comp/.test(cmd) ? 'comps' : 'conns';
+        const cible = curEval || curSean;
+        if(!cible){ out.alertes.push({ line: i, msg: kind==='comps' ? '/Comp hors séance' : '/Conn hors séance', text: t }); return; }
+        codesDe(rest).forEach(c=>{ if(!cible[kind].includes(c)) cible[kind].push(c); });
+        return;
+      }
+      // V11.4.46 — /Contenu : contenu de la séance ou de l'éval (plusieurs lignes possibles)
+      if(cmd === 'contenu'){
+        const cible = curEval || curSean;
+        if(!cible){ out.alertes.push({ line: i, msg: '/Contenu hors séance', text: t }); return; }
+        if(rest) cible.contenu += (cible.contenu ? '\n' : '') + rest;
+        return;
+      }
+      // V11.4.46 — /Prérequis : codes (compétences ou connaissances) de la séquence
+      if(/^prerequis/.test(cmd)){
+        if(!curSeq){ fallbackText(i, t); return; }
+        codesDe(rest).forEach(c=>{ if(!curSeq.prereq.includes(c)) curSeq.prereq.push(c); });
+        return;
+      }
+      // V11.4.46 — /Groupe : séance en demi-groupe
+      if(cmd === 'groupe' || /^demi/.test(cmd)){
+        if(!curSean){ out.alertes.push({ line: i, msg: '/Groupe hors séance', text: t }); return; }
+        curSean.groupe = true;
+        return;
+      }
       // Préfixe non reconnu : traité comme texte (la ligne entière, slash inclus)
       fallbackText(i, t);
       return;
@@ -51824,7 +51897,7 @@ function _srFmtDur(min){
   return h ? (m ? h+'h'+(m<10?'0':'')+m : h+'h') : m+' min';
 }
 
-function _srRenderPreview(parsed, prevEl, statsEl){
+function _srRenderPreview(parsed, prevEl, statsEl, ix){
   const seq = parsed.sequences[0];
   let html = '';
 
@@ -51836,7 +51909,7 @@ function _srRenderPreview(parsed, prevEl, statsEl){
   }
 
   // En-tête séquence
-  html += '<div style="border-left:3px solid #BA7517;padding:6px 0 6px 10px;margin-bottom:12px;">';
+  html += '<div data-sr-seq="1" style="border-left:3px solid #BA7517;padding:6px 0 6px 10px;margin-bottom:12px;">';
   html += '<div style="font-size:11px;color:#854F0B;font-weight:600;letter-spacing:.04em;">SÉQUENCE'+(seq.num?' '+escapeHtml(seq.num):'')+'</div>';
   html += '<div style="font-size:14px;font-weight:600;color:var(--tx);margin-top:2px;">'+escapeHtml(seq.titre)+'</div>';
   if(seq.intention){
@@ -51847,7 +51920,7 @@ function _srRenderPreview(parsed, prevEl, statsEl){
   // Séances
   seq.seances.forEach((s, idx)=>{
     const sd = s.taches.reduce((a,t)=>a+(t.duree||0),0) + s.evals.reduce((a,e)=>a+(e.duree||0),0);
-    html += '<div style="border:1px solid var(--brd);border-radius:6px;padding:8px 10px;margin-bottom:8px;background:var(--sur);">';
+    html += '<div data-sr-sean="'+idx+'" style="border:1px solid var(--brd);border-radius:6px;padding:8px 10px;margin-bottom:8px;background:var(--sur);">';
     html += '<div style="font-size:12px;font-weight:600;color:var(--tx);margin-bottom:6px;display:flex;align-items:center;gap:6px;">';
     html += '<span style="display:inline-block;min-width:18px;height:18px;line-height:18px;text-align:center;background:var(--sur2);border-radius:50%;font-size:10px;font-weight:600;">'+escapeHtml(s.num||(idx+1))+'</span>';
     html += '<span style="flex:1;">'+escapeHtml(s.titre)+'</span>';
@@ -51886,7 +51959,7 @@ function _srRenderPreview(parsed, prevEl, statsEl){
 
   // Éval finale
   if(seq.evalFinal){
-    html += '<div style="border:1px solid #E24B4A;background:#FCEBEB;border-radius:6px;padding:8px 10px;margin-bottom:8px;">';
+    html += '<div data-sr-final="1" style="border:1px solid #E24B4A;background:#FCEBEB;border-radius:6px;padding:8px 10px;margin-bottom:8px;">';
     html += '<div style="font-size:11px;color:#791F1F;font-weight:600;letter-spacing:.04em;margin-bottom:2px;">ÉVAL FINALE</div>';
     html += '<div style="font-size:12px;color:#501313;display:flex;justify-content:space-between;gap:8px;">';
     html += '<span>'+escapeHtml(seq.evalFinal.titre)+'</span>';
@@ -51906,6 +51979,7 @@ function _srRenderPreview(parsed, prevEl, statsEl){
   }
 
   prevEl.innerHTML = html;
+  if(ix) _srPreviewCodes(prevEl, seq, ix, parsed.alertes||[]); // V11.4.46
 
   // Stats
   if(statsEl){
@@ -51936,6 +52010,18 @@ function _srCreateSequenceFromParsed(parsedSeq, niveau){
   if(parsedSeq.titre) seq.titre = parsedSeq.titre;
   if(parsedSeq.num) seq.num = parsedSeq.num;
   if(parsedSeq.intention) seq.intention = parsedSeq.intention;
+  // V11.4.46 — prérequis : chaque code rangé en compétence ou en connaissance
+  const _ix = _srIndexCodes(niveau);
+  if(!Array.isArray(seq.prereqComps)) seq.prereqComps = [];
+  if(!Array.isArray(seq.prereqConns)) seq.prereqConns = [];
+  (parsedSeq.prereq||[]).forEach(c=>{
+    if(_ix.comps[c]!==undefined){ if(!seq.prereqComps.includes(c)) seq.prereqComps.push(c); }
+    else if(_ix.conns[c]!==undefined){ if(!seq.prereqConns.includes(c)) seq.prereqConns.push(c); }
+  });
+  const _codesEval = (ev, src)=>{ if(!ev||!src) return;
+    if((src.comps||[]).length) ev.comps = src.comps.slice();
+    if((src.conns||[]).length) ev.conns = src.conns.slice();
+    if(src.contenu) ev.contenu = src.contenu; };
 
   // Mise à jour de l'éval finale (créée par addSequence)
   if(parsedSeq.evalFinal){
@@ -51943,6 +52029,7 @@ function _srCreateSequenceFromParsed(parsedSeq, niveau){
     if(finalEv){
       finalEv.titre = parsedSeq.evalFinal.titre || finalEv.titre;
       finalEv.duree = parsedSeq.evalFinal.duree || 0;
+      _codesEval(finalEv, parsedSeq.evalFinal); // V11.4.46
     }
   }
 
@@ -51960,6 +52047,11 @@ function _srCreateSequenceFromParsed(parsedSeq, niveau){
     if(parsedSean.docs.length) sean.docs = parsedSean.docs.slice();
     if(parsedSean.ressources.length) sean.ressources = parsedSean.ressources.slice();
     if(parsedSean.tafs.length) sean.tafs = parsedSean.tafs.slice();
+    // V11.4.46 — contenu, compétences, connaissances, demi-groupe
+    if(parsedSean.contenu) sean.contenu = parsedSean.contenu;
+    if((parsedSean.comps||[]).length) sean.compIds = parsedSean.comps.slice();
+    if((parsedSean.conns||[]).length) sean.connIds = parsedSean.conns.slice();
+    if(parsedSean.groupe) sean.type = 'Gr';
 
     // 1 éval intermédiaire max par séance (cohérent avec addIntermEval)
     if(parsedSean.evals.length){
@@ -51967,6 +52059,7 @@ function _srCreateSequenceFromParsed(parsedSeq, niveau){
       if(ev){
         ev.titre = parsedSean.evals[0].titre || ev.titre;
         ev.duree = parsedSean.evals[0].duree || 0;
+        _codesEval(ev, parsedSean.evals[0]); // V11.4.46
       }
     }
   });
@@ -51992,10 +52085,23 @@ function _srSerialiserSequence(seq){
   const net=(x)=>String(x==null?'':x).replace(/\s*\n\s*/g,' ').trim();
   L.push('/SEQ'+(seq.num!=null && String(seq.num).trim()!=='' ? String(seq.num).trim() : '')+' '+(net(seq.titre)||'(sans titre)'));
   String(seq.intention||'').split('\n').map(t=>t.trim()).filter(Boolean).forEach(t=>L.push(t));
+  // V11.4.46 — compétences, connaissances, contenu, demi-groupe
+  const codes=(a)=>(Array.isArray(a)?a:[]).map(x=>String(x==null?'':x).trim()).filter(Boolean);
+  const lignesContenu=(x)=>String(x||'').split('\n').map(t=>t.trim()).filter(Boolean).map(t=>'/Contenu '+t);
+  const pre=codes(seq.prereqComps).concat(codes(seq.prereqConns));
+  if(pre.length) L.push('/Prérequis '+pre.join(', '));
+  const blocEval=(e)=>{ const c=codes(e.comps), k=codes(e.conns);
+    if(c.length) L.push('/Comp '+c.join(', '));
+    if(k.length) L.push('/Conn '+k.join(', '));
+    if(net(e.titre)) lignesContenu(e.contenu).forEach(t=>L.push(t)); };
   const evals=Array.isArray(seq.evals)?seq.evals.filter(Boolean):[];
   (Array.isArray(seq.seances)?seq.seances:[]).forEach((sn,k)=>{
     if(!sn) return;
     L.push('/Séance '+(k+1)+' '+(net(sn.titre)||'(sans titre)'));
+    if(sn.type==='Gr') L.push('/Groupe');
+    lignesContenu(sn.contenu).forEach(t=>L.push(t));
+    if(codes(sn.compIds).length) L.push('/Comp '+codes(sn.compIds).join(', '));
+    if(codes(sn.connIds).length) L.push('/Conn '+codes(sn.connIds).join(', '));
     (Array.isArray(sn.modeOp)?sn.modeOp:[]).forEach((t,i)=>{
       const lbl=net(t); if(!lbl) return;
       let d=0; try{ d=(typeof getMoDuree==='function') ? getMoDuree(sn,i) : ((sn.modeOpDurees||[])[i]||0); }catch(e){ d=(sn.modeOpDurees||[])[i]||0; }
@@ -52005,10 +52111,110 @@ function _srSerialiserSequence(seq){
     (Array.isArray(sn.ressources)?sn.ressources:[]).map(net).filter(Boolean).forEach(d=>L.push('/Res '+d));
     const tafs=Array.isArray(sn.tafs)?sn.tafs:(sn.taf?[sn.taf]:[]);
     tafs.map(net).filter(Boolean).forEach(d=>L.push('/TAF '+d));
-    evals.filter(e=>!e.isFinal && e.afterSeanceId===sn.id).forEach(e=>L.push('/Eval inter '+(net(e.titre||e.contenu)||'Évaluation')+dur(e.duree)));
+    evals.filter(e=>!e.isFinal && e.afterSeanceId===sn.id).forEach(e=>{ L.push('/Eval inter '+(net(e.titre||e.contenu)||'Évaluation')+dur(e.duree)); blocEval(e); });
   });
-  evals.filter(e=>e.isFinal).forEach(e=>L.push('/Eval finale '+(net(e.titre||e.contenu)||'Évaluation finale')+dur(e.duree)));
+  evals.filter(e=>e.isFinal).forEach(e=>{ L.push('/Eval finale '+(net(e.titre||e.contenu)||'Évaluation finale')+dur(e.duree)); blocEval(e); });
   return L.join('\n');
+}
+/** V11.4.46 — Codes connus d'un niveau : {comps:{id:libellé}, conns:{id:libellé}}. */
+function _srIndexCodes(niveau){
+  const ix={ comps:{}, conns:{} };
+  try{ (_refItemsUniverse(niveau)||[]).forEach(it=>{ if(it && it.id) ix.comps[it.id]=it.label||it.id; }); }catch(e){}
+  try{ (_refItemsUniverse(niveau,'conns')||[]).forEach(it=>{ if(it && it.id) ix.conns[it.id]=it.label||it.id; }); }catch(e){}
+  return ix;
+}
+/** V11.4.46 — Contrôle des codes d'une séquence lue. Pure.
+ *  inconnus : codes absents du niveau (bloquent la création) ;
+ *  horsEval : compétences de séance qu'aucune éval de la séquence n'évalue (simple signal). */
+function _srVerifierCodes(seq, ix){
+  const inconnus=[], horsEval=[];
+  if(!seq || !ix) return { inconnus, horsEval };
+  const a=(x)=>Array.isArray(x)?x:[];
+  const connu=(c, kinds)=>kinds.some(k=>ix[k] && Object.prototype.hasOwnProperty.call(ix[k], c));
+  const chk=(codes, kinds, ou)=>a(codes).forEach(c=>{ if(!connu(c, kinds)) inconnus.push({ code:c, ou }); });
+  chk(seq.prereq, ['comps','conns'], 'Prérequis');
+  const evalues=new Set();
+  a(seq.seances).forEach(s=>a(s.evals).forEach(e=>a(e.comps).forEach(c=>evalues.add(c))));
+  if(seq.evalFinal) a(seq.evalFinal.comps).forEach(c=>evalues.add(c));
+  a(seq.seances).forEach((s,k)=>{
+    const ou='Séance '+(s.num||(k+1));
+    chk(s.comps, ['comps'], ou); chk(s.conns, ['conns'], ou);
+    a(s.evals).forEach(e=>{ chk(e.comps, ['comps'], ou+' · éval'); chk(e.conns, ['conns'], ou+' · éval'); });
+    if(evalues.size) a(s.comps).forEach(c=>{ if(connu(c,['comps']) && !evalues.has(c)) horsEval.push({ code:c, ou }); });
+  });
+  if(seq.evalFinal){ chk(seq.evalFinal.comps, ['comps'], 'Éval finale'); chk(seq.evalFinal.conns, ['conns'], 'Éval finale'); }
+  return { inconnus, horsEval };
+}
+/** V11.4.46 — Complétion : codes dont le code ou l'intitulé contient tous les mots tapés. Pure. */
+function _srSuggestions(fragment, ix, kinds, max){
+  const norm=(x)=>String(x||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const f=norm(fragment).trim(); if(f.length<2 || !ix) return [];
+  const mots=f.split(/\s+/).filter(Boolean);
+  const out=[];
+  (kinds||['comps']).forEach(k=>Object.keys(ix[k]||{}).forEach(id=>{
+    const h=norm(id+' '+ix[k][id]);
+    if(mots.every(m=>h.indexOf(m)>=0)) out.push({ id, label:ix[k][id], kind:k, debut:norm(id).indexOf(f)===0 ? 1 : 0 });
+  }));
+  out.sort((x,y)=>(y.debut-x.debut) || (x.id<y.id?-1:x.id>y.id?1:0));
+  return out.slice(0, max||8).map(o=>({ id:o.id, label:o.label, kind:o.kind }));
+}
+/** V11.4.46 — Aperçu : contenu, demi-groupe, codes avec leur intitulé (inconnus en rouge),
+ *  signaux. createElement uniquement, posé sur les cartes repérées par data-sr-*. */
+function _srPreviewCodes(prevEl, seq, ix, alertes){
+  if(!prevEl || !seq || !ix) return;
+  const el=(tag, css, txt)=>{ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; };
+  const libelle=(c, kinds)=>{ for(const k of kinds){ if(ix[k] && Object.prototype.hasOwnProperty.call(ix[k], c)) return ix[k][c]; } return null; };
+  const puces=(titre, codes, kinds)=>{
+    if(!Array.isArray(codes) || !codes.length) return null;
+    const w=el('div', 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:4px;font-size:11px');
+    w.appendChild(el('span', 'color:var(--tx3);font-weight:600', titre));
+    codes.forEach(c=>{
+      const l=libelle(c, kinds);
+      const p=el('span', l!==null ? 'border:1px solid var(--brd);border-radius:10px;padding:1px 7px;background:var(--sur2);color:var(--tx2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+                                  : 'border:1px solid #B91C1C;border-radius:10px;padding:1px 7px;background:#FEE2E2;color:#991B1B;font-weight:600');
+      p.className='sr-code'+(l===null?' sr-code-inconnu':'');
+      p.appendChild(el('b', '', c));
+      p.appendChild(document.createTextNode(l!==null ? ' '+(l.length>60 ? l.slice(0,59)+'…' : l) : ' ? code inconnu'));
+      p.title=l!==null ? c+' — '+l : 'Code inconnu pour ce niveau';
+      w.appendChild(p);
+    });
+    return w;
+  };
+  const contenu=(t)=>t ? el('div', 'font-size:11.5px;color:var(--tx2);font-style:italic;white-space:pre-line;margin:2px 0 4px', t) : null;
+  const ajouter=(parent, n, avant)=>{ if(!n) return; if(avant) parent.insertBefore(n, avant); else parent.appendChild(n); };
+  const tete=prevEl.querySelector('[data-sr-seq]');
+  if(tete) ajouter(tete, puces('Prérequis', seq.prereq, ['comps','conns']));
+  (seq.seances||[]).forEach((s,k)=>{
+    const card=prevEl.querySelector('[data-sr-sean="'+k+'"]'); if(!card) return;
+    const titre=card.firstElementChild, suite=titre ? titre.nextSibling : null;
+    if(s.groupe && titre) titre.appendChild(el('span', 'font-size:10px;font-weight:700;color:#7C3AED;border:1px solid #7C3AED;border-radius:8px;padding:0 6px', 'Demi-groupe'));
+    ajouter(card, contenu(s.contenu), suite);
+    ajouter(card, puces('Comp.', s.comps, ['comps']), suite);
+    ajouter(card, puces('Conn.', s.conns, ['conns']), suite);
+    (s.evals||[]).slice(0,1).forEach(e=>{
+      ajouter(card, contenu(e.contenu));
+      ajouter(card, puces('📝 Évaluées', e.comps, ['comps']));
+      ajouter(card, puces('📝 Conn.', e.conns, ['conns']));
+    });
+  });
+  const fin=prevEl.querySelector('[data-sr-final]');
+  if(fin && seq.evalFinal){
+    ajouter(fin, contenu(seq.evalFinal.contenu));
+    ajouter(fin, puces('Évaluées', seq.evalFinal.comps, ['comps']));
+    ajouter(fin, puces('Conn.', seq.evalFinal.conns, ['conns']));
+  }
+  const v=_srVerifierCodes(seq, ix);
+  const boite=(fond, bord, coul, titre, lignes)=>{
+    const b=el('div', 'margin-top:8px;padding:8px 10px;border-radius:6px;font-size:11px;background:'+fond+';border:1px solid '+bord+';color:'+coul);
+    b.className='sr-signal';
+    b.appendChild(el('div', 'font-weight:700;margin-bottom:3px', titre));
+    lignes.slice(0,6).forEach(t=>b.appendChild(el('div', '', t)));
+    if(lignes.length>6) b.appendChild(el('div', 'opacity:.7', '… et '+(lignes.length-6)+' autre(s)'));
+    prevEl.appendChild(b);
+  };
+  if(v.inconnus.length) boite('#FEE2E2', '#B91C1C', '#991B1B', '⛔ '+v.inconnus.length+' code'+(v.inconnus.length>1?'s':'')+' inconnu'+(v.inconnus.length>1?'s':'')+' pour ce niveau : à corriger avant de créer', v.inconnus.map(x=>x.code+' · '+x.ou));
+  if(alertes && alertes.length) boite('#FEF3C7', '#D97706', '#92400E', '⚠ Ligne'+(alertes.length>1?'s':'')+' ignorée'+(alertes.length>1?'s':''), alertes.map(x=>'L'+(x.line+1)+' · '+x.msg+' : '+x.text));
+  if(v.horsEval.length) boite('#EFF6FF', '#93C5FD', '#1E40AF', 'ℹ Compétence'+(v.horsEval.length>1?'s':'')+' travaillée'+(v.horsEval.length>1?'s':'')+' mais évaluée nulle part dans la séquence', v.horsEval.map(x=>x.code+' · '+x.ou));
 }
 /** V11.4.41 — Libellé d'une séquence dans le sélecteur de consultation. Pure. */
 function _srLibelleSequence(seq, rang){
@@ -52103,7 +52309,7 @@ function renderProgSaisieRapide(){
     tag.style.cssText = 'font-weight:700;color:#1D4ED8';
     tag.textContent = '🔒 Lecture seule — '+_srLibelleSequence(_seqConsult, _progLv.indexOf(_seqConsult));
     leftLabel.appendChild(tag);
-    leftLabel.appendChild(document.createTextNode(' · compétences, connaissances et contenu détaillé non affichés · pour modifier : onglet Construction'));
+    leftLabel.appendChild(document.createTextNode(' · pour modifier : onglet Construction, ou « Partir de ce texte » pour une nouvelle séquence'));
   }
   leftCol.appendChild(ta);
 
@@ -52121,7 +52327,78 @@ function renderProgSaisieRapide(){
     '<div><code>/Doc</code>, <code>/Res</code>, <code>/TAF</code>, <code>/Eval inter</code>, <code>/Eval finale</code></div>' +
     '<div style="margin-top:4px;opacity:.75;">Casse et accents libres. Préfixes non reconnus → traités comme texte.</div>' +
     '</div>';
+  { // V11.4.46 — nouveaux préfixes (createElement)
+    const boiteAide = help.querySelector('div');
+    const noteFin = boiteAide ? boiteAide.lastElementChild : null;
+    [['/Comp codes', 'compétences de la séance ; sous une /Eval : compétences évaluées'],
+     ['/Conn codes', 'connaissances (même règle)'],
+     ['/Contenu texte', 'contenu de la séance, ou de l’éval qui précède'],
+     ['/Prérequis codes', 'prérequis de la séquence (avant la 1re séance)'],
+     ['/Groupe', 'séance en demi-groupe']].forEach(([c, t])=>{
+      const d = document.createElement('div'); const k = document.createElement('code'); k.textContent = c;
+      d.appendChild(k); d.appendChild(document.createTextNode(' · '+t));
+      if(boiteAide) boiteAide.insertBefore(d, noteFin);
+    });
+    if(boiteAide){ const d = document.createElement('div'); d.style.cssText = 'margin-top:4px'; d.textContent = 'Codes : tapez quelques mots de l’intitulé après /Comp, /Conn ou /Prérequis, puis choisissez (↑ ↓ et Entrée, ou clic).'; boiteAide.insertBefore(d, noteFin); }
+  }
   leftCol.appendChild(help);
+  const _ix = _srIndexCodes(pane._lv); // V11.4.46 — codes connus du niveau
+  // V11.4.46 — complétion des codes
+  const sug = document.createElement('div');
+  sug.id = 'sr-suggest';
+  sug.style.cssText = 'display:none;border:1px solid var(--brd);border-radius:6px;background:var(--sur);box-shadow:0 4px 14px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;font-size:12px';
+  leftCol.insertBefore(sug, help);
+  let sugItems = [], sugSel = 0;
+  const cacherSug = ()=>{ sug.style.display = 'none'; sugItems = []; };
+  const contexteSug = ()=>{
+    const pos = ta.selectionStart, v = ta.value;
+    const deb = v.lastIndexOf('\n', pos-1) + 1, ligne = v.slice(deb, pos);
+    const m = ligne.match(/^\s*\/(\S+)\s+(.*)$/); if(!m) return null;
+    const cmd = m[1].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const kinds = /^comp/.test(cmd) ? ['comps'] : /^conn/.test(cmd) ? ['conns'] : /^prerequis/.test(cmd) ? ['comps','conns'] : null;
+    if(!kinds) return null;
+    const sep = Math.max(ligne.lastIndexOf(','), ligne.lastIndexOf(';'));
+    const debFrag = sep >= 0 ? deb+sep+1 : deb+ligne.length-m[2].length;
+    return { kinds, frag: v.slice(debFrag, pos), debFrag, pos, sep };
+  };
+  const dessinerSug = ()=>{
+    while(sug.firstChild) sug.removeChild(sug.firstChild);
+    sugItems.forEach((it, i)=>{
+      const b = document.createElement('div');
+      b.className = 'sr-sug-item';
+      b.style.cssText = 'padding:5px 9px;cursor:pointer;display:flex;gap:8px;align-items:baseline'+(i===sugSel?';background:var(--sur2)':'');
+      const c = document.createElement('b'); c.textContent = it.id; c.style.cssText = 'flex-shrink:0;color:'+(it.kind==='conns'?'#0F6E56':'#1D4ED8');
+      const l = document.createElement('span'); l.textContent = it.label; l.style.cssText = 'color:var(--tx2)';
+      b.appendChild(c); b.appendChild(l);
+      b.onmousedown = (e)=>{ e.preventDefault(); };
+      b.onclick = ()=>insererSug(i);
+      sug.appendChild(b);
+    });
+    sug.style.display = sugItems.length ? 'block' : 'none';
+  };
+  const majSug = ()=>{
+    if(ta.readOnly) return cacherSug();
+    const cx = contexteSug(); if(!cx) return cacherSug();
+    const f = cx.frag.trim();
+    if(f.length < 2 || _ix.comps[f]!==undefined || _ix.conns[f]!==undefined) return cacherSug();
+    sugItems = _srSuggestions(f, _ix, cx.kinds, 8); sugSel = 0; dessinerSug();
+  };
+  const insererSug = (i)=>{
+    const it = sugItems[i]; const cx = contexteSug(); if(!it || !cx) return cacherSug();
+    const v = ta.value, ins = (cx.sep >= 0 ? ' ' : '') + it.id + ', ';
+    ta.value = v.slice(0, cx.debFrag) + ins + v.slice(cx.pos);
+    const p = cx.debFrag + ins.length; ta.focus(); ta.setSelectionRange(p, p);
+    cacherSug(); ta.dispatchEvent(new Event('input'));
+  };
+  ta.addEventListener('keydown', (e)=>{
+    if(sug.style.display === 'none' || !sugItems.length) return;
+    if(e.key === 'ArrowDown'){ e.preventDefault(); sugSel = (sugSel+1) % sugItems.length; dessinerSug(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); sugSel = (sugSel-1+sugItems.length) % sugItems.length; dessinerSug(); }
+    else if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); insererSug(sugSel); }
+    else if(e.key === 'Escape'){ e.preventDefault(); cacherSug(); }
+  });
+  ta.addEventListener('click', ()=>majSug());
+  ta.addEventListener('blur', ()=>setTimeout(cacherSug, 150));
 
   main.appendChild(leftCol);
 
@@ -52159,6 +52436,8 @@ function renderProgSaisieRapide(){
     const parsed = _srParseProgressionText(ta.value);
     const seq = parsed.sequences[0];
     if(!seq){ alert('Aucune séquence à créer. Commence par /SEQ<n> titre.'); return; }
+    const _inc = _srVerifierCodes(seq, _ix).inconnus; // V11.4.46
+    if(_inc.length){ alert('Codes inconnus pour ce niveau, à corriger avant de créer :\n'+_inc.slice(0,8).map(x=>'• '+x.code+' ('+x.ou+')').join('\n')); return; }
     if(!seq.seances.length){
       if(!confirm('Cette séquence n\'a aucune séance. Créer quand même ?')) return;
     }
@@ -52187,7 +52466,16 @@ function renderProgSaisieRapide(){
       catch(e){ ta.select(); try{ document.execCommand('copy'); fin(); }catch(e2){} } };
     const ret = document.createElement('button'); ret.className='bp'; ret.style.cssText='padding:8px 16px;font-size:13px'; ret.textContent='✏ Revenir à ma saisie';
     ret.onclick = ()=>{ pane._consult = null; renderProgSaisieRapide(); };
-    acts.appendChild(cop); acts.appendChild(ret);
+    // V11.4.46 — le texte consulté devient le brouillon, pour créer une NOUVELLE séquence
+    const dup = document.createElement('button'); dup.className='bs'; dup.style.cssText='padding:8px 14px;font-size:13px'; dup.textContent='⧉ Partir de ce texte';
+    dup.title = 'Copie ce texte dans votre brouillon pour créer une nouvelle séquence (celle-ci reste intacte)';
+    dup.onclick = ()=>{
+      const t = _srSerialiserSequence(_seqConsult);
+      const br = String(pane._draftText||'');
+      if(br.trim() && br !== t && !confirm('Remplacer votre brouillon actuel par ce texte ?')) return;
+      pane._draftText = t; pane._consult = null; renderProgSaisieRapide();
+    };
+    acts.appendChild(cop); acts.appendChild(dup); acts.appendChild(ret);
     footer.appendChild(acts);
   }
 
@@ -52196,14 +52484,16 @@ function renderProgSaisieRapide(){
   // ── Render initial + binding input ──
   const refresh = ()=>{
     const parsed = _srParseProgressionText(ta.value);
-    _srRenderPreview(parsed, prev, stats);
+    _srRenderPreview(parsed, prev, stats, _ix);
     if(!ta.readOnly) pane._draftText = ta.value;
     const seq = parsed.sequences[0];
-    createBtn.disabled = !seq;
-    createBtn.style.opacity = seq ? '' : '.5';
-    createBtn.style.cursor = seq ? '' : 'not-allowed';
+    const _bloque = !!seq && _srVerifierCodes(seq, _ix).inconnus.length > 0; // V11.4.46
+    createBtn.disabled = !seq || _bloque;
+    createBtn.style.opacity = (seq && !_bloque) ? '' : '.5';
+    createBtn.style.cursor = (seq && !_bloque) ? '' : 'not-allowed';
+    createBtn.title = _bloque ? 'Des codes sont inconnus pour ce niveau (voir l’aperçu)' : '';
   };
-  ta.addEventListener('input', refresh);
+  ta.addEventListener('input', ()=>{ refresh(); majSug(); });
   refresh();
 }
 
@@ -65512,7 +65802,7 @@ function _refFicheSimple(p, it, F, x){
   corps.appendChild(_refEl('div', 'ref-code ref-code-g', it.id));
   if(it.parentLabel) corps.appendChild(_refEl('div', 'ref-fiche-parent', it.parentLabel+(it.niveau?' · niveau '+it.niveau:'')));
   corps.appendChild(_refEl('div', 'ref-fiche-lbl', it.label));
-  ['description','desc','detail','details','commentaire'].forEach(k=>{ if(it[k] && String(it[k]).trim()) corps.appendChild(_refEl('div', 'ref-fiche-desc', String(it[k]))); });
+  { const k=['description','desc','detail','details','commentaire'].find(k=>it[k] && String(it[k]).trim()); if(k) corps.appendChild(_refEl('div', 'ref-fiche-desc', String(it[k]).trim())); } // V11.4.45 — un seul texte
   const meta=_refEl('div', 'ref-fiche-meta');
   const ajout=(t,v)=>{ if(!v) return; const l=_refEl('div'); l.appendChild(_refEl('b','',t+' : ')); l.appendChild(document.createTextNode(v)); meta.appendChild(l); };
   ajout('Domaine', it.domaine||'');
@@ -65711,13 +66001,10 @@ function renderCompsRef(){
   allThemeBtn.textContent='Toutes';
   allThemeBtn.onclick=()=>{ compsRefThemes.clear(); renderCompsRef(); };
   themeBtns.appendChild(allThemeBtn);
-  THEMES_DEF.forEach(th=>{
-    const hasItems = getRefItems(compsRefLv).some(it=>
-      it.niveaux.includes(compsRefLv) &&
-      (compsRefSrc==='all'||it.source===compsRefSrc) &&
-      (it.themes||[]).includes(th.id)
-    );
-    if(!hasItems) return;
+  const _thListe=_refThemesListe(_refItemsUniverse(compsRefLv).filter(it=>it.niveaux.includes(compsRefLv)&&(compsRefSrc==='all'||it.source===compsRefSrc))); // V11.4.45
+  [...compsRefThemes].forEach(t=>{ if(!_thListe.some(th=>th.id===t)) compsRefThemes.delete(t); });
+  themeBtns.style.display=_thListe.length?'flex':'none';
+  _thListe.forEach(th=>{
     const active=compsRefThemes.has(th.id);
     const b=document.createElement('button');
     b.className='fp-tab theme-btn'+(active?' act':'');
@@ -65886,9 +66173,8 @@ function renderCompsGroupeCard(container, g){
       allTh.textContent='Toutes';
       allTh.onclick=()=>{ card._themeFilters=new Set(); renderCard(); };
       themeRow.appendChild(allTh);
-      THEMES_DEF.forEach(th=>{
-        const hasItems=items.some(it=>(it.themes||[]).includes(th.id));
-        if(!hasItems) return;
+      const _thListe=_refThemesListe(items); // V11.4.45
+      _thListe.forEach(th=>{
         const active=grpThemeFilters.has(th.id);
         const tb=document.createElement('button');
         tb.className='fp-tab theme-btn'+(active?' act':'');
@@ -65901,7 +66187,7 @@ function renderCompsGroupeCard(container, g){
         };
         themeRow.appendChild(tb);
       });
-      card.appendChild(themeRow);
+      if(_thListe.length) card.appendChild(themeRow); // V11.4.45
 
       // Search bar in edit mode
       const searchInp=document.createElement('input');
@@ -70276,7 +70562,7 @@ function fmtDate(dateStr){
 }
 
 function compLabel(cid, lv){
-  const it=_refItemsUniverse(lv||'5e').find(x=>x.id===cid); // V035-V11.1.3 — libellés des items importés
+  const it=_refItemsUniverse(lv||'5e').find(x=>x.id===cid)||_socleParId(cid); // V035-V11.1.3 — libellés des items importés ; V11.4.45 socle
   return it?it.label:cid;
 }
 
