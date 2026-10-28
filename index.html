@@ -4548,7 +4548,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.47';
+const APP_VERSION = 'v11.4.48';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -21415,6 +21415,25 @@ function _bibRenumeroter(seqId, seanId, kind, map){
     n+=moves.length;
   }
   return n;
+}
+/** V11.4.48 — Remplace TOUTE une liste d'une séance par une nouvelle (texte de la saisie
+ *  rapide) : appariement par texte (identique, puis retouché à la même place), identifiants
+ *  et références suivent. Une ligne identique garde son texte d'origine (sauts de ligne). */
+function _bibRemplacerListe(seqId, sean, kind, nouv, durees){
+  if(!sean) return null;
+  const plat=(x)=>String(x==null?'':x).replace(/\s*\n\s*/g,' ').trim();
+  let liste=(Array.isArray(nouv)?nouv:[]).map(x=>String(x==null?'':x));
+  if(kind==='taf') liste=normalizeTafList(liste);
+  const brut=_bibListe(sean, kind).slice(), avant=brut.map(plat), ids=_bibIds(sean, kind).slice();
+  const c=_bibCarteParTexte(avant, liste);
+  const inv={}; Object.keys(c.map).forEach(i=>{ if(c.map[i]>=0) inv[c.map[i]]=+i; });
+  const res=liste.map((t,j)=>{ const i=inv[j]; return (i!==undefined && avant[i]===t) ? brut[i] : t; });
+  if(kind==='taf') setTafArray(sean, res); else sean[_BIB_CHAMPS[kind]]=res;
+  if(kind==='mo') sean.modeOpDurees=liste.map((_,j)=>{ const d=Array.isArray(durees) ? durees[j] : 0; return d>0 ? d : 0; });
+  if(!sean.ligneIds || typeof sean.ligneIds!=='object') sean.ligneIds={};
+  sean.ligneIds[kind]=res.map((_,j)=>inv[j]!==undefined ? ids[inv[j]] : _bibNouvelId());
+  const n=c.identite ? 0 : _bibRenumeroter(seqId, sean.id, kind, c.map);
+  return { carte:c, n };
 }
 /** La séance de la bibliothèque qui EST cet objet (identité), ou null. */
 function _bibLocaliser(sean){
@@ -52028,8 +52047,12 @@ function _srParseProgressionText(text){
         if(!curSeq){ fallbackText(i, t); return; }
         const sm = rest.match(/^(\d+)?\s*[:\-–]?\s*(.*)$/);
         const num = (sm && sm[1]) || '';
-        const titre = (sm && sm[2]) || '';
-        curSean = { num, titre: titre || '(sans titre)', taches: [], docs: [], ressources: [], tafs: [], evals: [], contenu: '', comps: [], conns: [], groupe: false };
+        let titre = (sm && sm[2]) || '';
+        // V11.4.48 — repère [#a] : relie la séance du texte à une séance existante (modification)
+        let repere = null;
+        const rm = titre.match(/\s*\[#([A-Za-z0-9]+)\]\s*$/);
+        if(rm){ repere = rm[1].toLowerCase(); titre = titre.slice(0, rm.index).trim(); }
+        curSean = { num, titre: titre || '(sans titre)', taches: [], docs: [], ressources: [], tafs: [], evals: [], contenu: '', comps: [], conns: [], groupe: false, repere };
         curSeq.seances.push(curSean);
         inIntent = false; curEval = null;
         return;
@@ -52299,7 +52322,7 @@ function _srCreateSequenceFromParsed(parsedSeq, niveau){
  *  présent). N'a pas de syntaxe, donc absent : compétences, connaissances, contenu
  *  détaillé des séances. Ce texte n'est jamais réinterprété : la saisie rapide crée
  *  toujours une séquence NEUVE (§5.20), d'où la lecture seule. */
-function _srSerialiserSequence(seq){
+function _srSerialiserSequence(seq, opts){
   if(!seq) return '';
   const L=[];
   const dur=(d)=>{ const n=parseInt(d,10); return n>0 ? ' - '+n+' min' : ''; };
@@ -52318,7 +52341,8 @@ function _srSerialiserSequence(seq){
   const evals=Array.isArray(seq.evals)?seq.evals.filter(Boolean):[];
   (Array.isArray(seq.seances)?seq.seances:[]).forEach((sn,k)=>{
     if(!sn) return;
-    L.push('/Séance '+(k+1)+' '+(net(sn.titre)||'(sans titre)'));
+    const _rep=(opts && opts.reperes && opts.reperes[sn.id]) ? ' [#'+opts.reperes[sn.id]+']' : '';   // V11.4.48
+    L.push('/Séance '+(k+1)+' '+(net(sn.titre)||'(sans titre)')+_rep);
     if(sn.type==='Gr') L.push('/Groupe');
     lignesContenu(sn.contenu).forEach(t=>L.push(t));
     if(codes(sn.compIds).length) L.push('/Comp '+codes(sn.compIds).join(', '));
@@ -52437,6 +52461,267 @@ function _srPreviewCodes(prevEl, seq, ix, alertes){
   if(alertes && alertes.length) boite('#FEF3C7', '#D97706', '#92400E', '⚠ Ligne'+(alertes.length>1?'s':'')+' ignorée'+(alertes.length>1?'s':''), alertes.map(x=>'L'+(x.line+1)+' · '+x.msg+' : '+x.text));
   if(v.horsEval.length) boite('#EFF6FF', '#93C5FD', '#1E40AF', 'ℹ Compétence'+(v.horsEval.length>1?'s':'')+' travaillée'+(v.horsEval.length>1?'s':'')+' mais évaluée nulle part dans la séquence', v.horsEval.map(x=>x.code+' · '+x.ou));
 }
+/* ════════════════════════════════════════════════════════════════════
+   V11.4.48 — Modifier une séquence EXISTANTE depuis la saisie rapide (point 2).
+   Le texte porte un repère [#a] par séance : l'identité d'une séance est son repère,
+   jamais son rang ni son titre. Sans repère = nouvelle séance ; bloc retiré = séance
+   supprimée (confirmation nominative). Tâches, documents, ressources, TAF : appariés
+   par leur texte (_bibRemplacerListe), avancement et coches suivent. Récapitulatif
+   avant d'appliquer, application en un bloc, un seul « Annuler », refus si la
+   séquence a changé ailleurs depuis l'ouverture du texte.
+   ════════════════════════════════════════════════════════════════════ */
+function _srAlias(k){ let t='', n=k; do{ t=String.fromCharCode(97+(n%26))+t; n=Math.floor(n/26)-1; }while(n>=0); return t; }
+/** {seanId: 'a', …} dans l'ordre des séances. Pure. */
+function _srAliasSeances(seq){ const m={}; ((seq && seq.seances)||[]).forEach((sn,k)=>{ if(sn && sn.id) m[sn.id]=_srAlias(k); }); return m; }
+/** Appariement des séances du texte avec les séances existantes. Pure. */
+function _srPlanModif(seq, pq, alias){
+  const a=(x)=>Array.isArray(x)?x:[];
+  const parAlias={}; Object.keys(alias||{}).forEach(id=>{ parAlias[alias[id]]=id; });
+  const anciennes=a(seq && seq.seances).filter(Boolean);
+  const pris=new Set(), alertes=[], seances=[];
+  a(pq && pq.seances).forEach((ps,k)=>{
+    let id=null;
+    if(ps.repere){
+      const cand=parAlias[ps.repere];
+      if(!cand || !anciennes.some(s=>s.id===cand)) alertes.push('Repère [#'+ps.repere+'] inconnu : « '+ps.titre+' » sera une NOUVELLE séance');
+      else if(pris.has(cand)) alertes.push('Repère [#'+ps.repere+'] en double : la seconde « '+ps.titre+' » sera une NOUVELLE séance');
+      else { id=cand; pris.add(id); }
+    }
+    const old=id ? anciennes.find(s=>s.id===id) : null;
+    seances.push({ parsed:ps, seanId:id, rangAvant: old ? anciennes.indexOf(old) : -1, rangApres:k });
+  });
+  const supprimees=anciennes.filter(s=>!pris.has(s.id)).map(s=>({ seanId:s.id, titre:s.titre||'', rang:anciennes.indexOf(s) }));
+  const gardees=seances.filter(x=>x.seanId).map(x=>x.rangAvant);
+  const deplacees=gardees.some((r,i)=>i>0 && r<gardees[i-1]);
+  return { seances, supprimees, alertes, deplacees };
+}
+function _srPlat(x){ return String(x==null?'':x).replace(/\s*\n\s*/g,' ').trim(); }
+function _srLignesTexte(x){ return String(x||'').split('\n').map(t=>t.trim()).filter(Boolean).join('\n'); }
+function _srMemesCodes(a, b){ const A=(Array.isArray(a)?a:[]).slice().sort(), B=(Array.isArray(b)?b:[]).slice().sort(); return A.length===B.length && A.every((x,i)=>x===B[i]); }
+/** Titre à écrire : « (sans titre) » ne remplace pas un titre vide. */
+function _srTitreRetenu(ancien, lu){ return (lu==='(sans titre)' && !_srPlat(ancien)) ? (ancien||'') : lu; }
+/** Changements d'une séance gardée (libellés du récapitulatif). execDe(rang) = nombre
+ *  d'états d'avancement de la tâche (classes). Pure si execDe l'est. */
+function _srDiffSeance(seq, sn, ps, execDe){
+  const a=(x)=>Array.isArray(x)?x:[], out=[];
+  if(_srPlat(sn.titre)!==_srPlat(_srTitreRetenu(sn.titre, ps.titre))) out.push('titre');
+  const avant=a(sn.modeOp).map(_srPlat), apres=a(ps.taches).map(t=>t.label);
+  const c=_bibCarteParTexte(avant, apres), inv={};
+  Object.keys(c.map).forEach(i=>{ if(c.map[i]>=0) inv[c.map[i]]=+i; });
+  const ajout=apres.filter((_,j)=>inv[j]===undefined).length;
+  let retouche=0, retoucheExec=0, retire=0, perdu=0, ordre=false, duree=false, prec=-1;
+  apres.forEach((t,j)=>{ const i=inv[j]; if(i===undefined) return;
+    if(avant[i]!==t){ retouche++; if(execDe) retoucheExec+=execDe(i); }
+    if(i<prec) ordre=true; prec=i;
+    const d0=(a(sn.modeOpDurees)[i]>0) ? sn.modeOpDurees[i] : 15, d1=(a(ps.taches)[j].duree>0) ? ps.taches[j].duree : 15;
+    if(d0!==d1) duree=true; });
+  Object.keys(c.map).forEach(i=>{ if(c.map[i]<0 && avant[i]){ retire++; if(execDe) perdu+=execDe(+i); } });
+  if(ajout) out.push(ajout+' tâche'+(ajout>1?'s':'')+' ajoutée'+(ajout>1?'s':''));
+  if(retouche) out.push(retouche+' tâche'+(retouche>1?'s':'')+' retouchée'+(retouche>1?'s':'')+(retoucheExec ? ' (avancement conservé)' : ''));
+  if(retire) out.push(retire+' tâche'+(retire>1?'s':'')+' retirée'+(retire>1?'s':'')+(perdu ? ' — avancement perdu ('+perdu+')' : ''));
+  if(ordre) out.push('ordre des tâches');
+  if(duree) out.push('durées');
+  if(_srLignesTexte(sn.contenu)!==_srLignesTexte(ps.contenu)) out.push('contenu');
+  if(!_srMemesCodes(sn.compIds, ps.comps)) out.push('compétences');
+  if(!_srMemesCodes(sn.connIds, ps.conns)) out.push('connaissances');
+  if(!!ps.groupe!==(sn.type==='Gr')) out.push(ps.groupe ? 'passe en demi-groupe' : 'passe en classe entière');
+  const memeListe=(x, y)=>{ const X=a(x).map(_srPlat).filter(Boolean), Y=a(y).map(_srPlat).filter(Boolean); return X.length===Y.length && X.every((v,i)=>v===Y[i]); };
+  if(!memeListe(sn.docs, ps.docs)) out.push('documents');
+  if(!memeListe(sn.ressources, ps.ressources)) out.push('ressources');
+  const tafs=(typeof getTafArray==='function') ? getTafArray(sn) : a(sn.tafs);
+  if(!memeListe(tafs, ps.tafs)) out.push('TAF');
+  const ev=(typeof getIntermEvalForSeance==='function') ? getIntermEvalForSeance(seq, sn.id) : null, pe=a(ps.evals)[0];
+  if(pe && !ev) out.push('éval intermédiaire ajoutée');
+  else if(!pe && ev) out.push('éval intermédiaire retirée');
+  else if(pe && ev && _srEvalChange(ev, pe, 'Évaluation')) out.push('éval intermédiaire');
+  return out;
+}
+function _srEvalChange(ev, pe, defaut){
+  const t=_srPlat(ev.titre), titreLu=(!t && (pe.titre===_srPlat(ev.contenu) || pe.titre===defaut)) ? '' : pe.titre;
+  if(t!==_srPlat(titreLu)) return true;
+  if((ev.duree||0)!==(pe.duree||0)) return true;
+  if(!_srMemesCodes(ev.comps, pe.comps) || !_srMemesCodes(ev.conns, pe.conns)) return true;
+  if(t && _srLignesTexte(ev.contenu)!==_srLignesTexte(pe.contenu)) return true;
+  return false;
+}
+function _srMajEval(ev, pe, defaut){
+  const t=_srPlat(ev.titre);
+  if(!(!t && (pe.titre===_srPlat(ev.contenu) || pe.titre===defaut))) ev.titre=pe.titre;
+  ev.duree=pe.duree||0;
+  ev.comps=(pe.comps||[]).slice(); ev.conns=(pe.conns||[]).slice();
+  if(_srPlat(ev.titre)) ev.contenu=pe.contenu||'';
+}
+/** Ce que la suppression d'une séance emporte (planning, cours enregistrés). */
+function _srImpactSeance(seqId, seanId){
+  const M=S.edtProgMapping||{}, cls=new Set(); let places=0, faits=0;
+  Object.keys(M).forEach(k=>{ const e=M[k]; if(e && Array.isArray(e.seances) && e.seances.some(x=>x && x.seqId===seqId && x.seanId===seanId)){ places++; cls.add(String(k.split('|')[1]||'').toUpperCase()); } });
+  Object.keys(S.seances||{}).forEach(b=>(S.seances[b]||[]).forEach(se=>{ if(se && se.seanId===seanId) faits++; }));
+  const parts=[];
+  if(places) parts.push('placée dans '+places+' cours ('+[...cls].sort().join(', ')+')');
+  if(faits) parts.push('déjà faite dans '+faits+' cours enregistré'+(faits>1?'s':''));
+  return { places, faits, texte:parts.join(', ') };
+}
+/** Récapitulatif avant d'appliquer. → {lignes:[{ic, t, sup?}], vide} */
+function _srRecap(lv, seq, pq, plan){
+  const L=[], a=(x)=>Array.isArray(x)?x:[];
+  const execDe=(sn)=>(i)=>Object.keys(S.taskExecution||{}).filter(k=>{ const p=k.split('|'); return p.length>=4 && p[p.length-3]===seq.id && p[p.length-2]===sn.id && p[p.length-1]===String(i); }).length;
+  const ch=[];
+  if(_srPlat(seq.titre)!==_srPlat(_srTitreRetenu(seq.titre, pq.titre))) ch.push('titre');
+  if(String(seq.num==null?'':seq.num).trim()!==String(pq.num||'').trim()) ch.push('numéro');
+  if(_srLignesTexte(seq.intention)!==_srLignesTexte(pq.intention)) ch.push('intention');
+  if(!_srMemesCodes(a(seq.prereqComps).concat(a(seq.prereqConns)), pq.prereq)) ch.push('prérequis');
+  if(ch.length) L.push({ ic:'✏️', t:'Séquence : '+ch.join(', ') });
+  plan.seances.forEach((x,k)=>{
+    if(!x.seanId){ L.push({ ic:'➕', t:'Nouvelle séance '+(k+1)+' « '+x.parsed.titre+' »' }); return; }
+    const sn=a(seq.seances).find(s=>s && s.id===x.seanId); if(!sn) return;
+    const d=_srDiffSeance(seq, sn, x.parsed, execDe(sn));
+    if(d.length) L.push({ ic:'✏️', t:'Séance '+(k+1)+' « '+(_srPlat(sn.titre)||x.parsed.titre)+' » : '+d.join(', ') });
+  });
+  if(plan.deplacees) L.push({ ic:'↕️', t:'Ordre des séances modifié' });
+  const fin=(typeof getFinalEval==='function') ? getFinalEval(seq) : null;
+  if(fin && pq.evalFinal && _srEvalChange(fin, pq.evalFinal, 'Évaluation finale')) L.push({ ic:'✏️', t:'Évaluation finale modifiée' });
+  plan.supprimees.forEach(x=>{ const im=_srImpactSeance(seq.id, x.seanId);
+    L.push({ ic:'🗑️', t:'Séance '+(x.rang+1)+' « '+(x.titre||'sans titre')+' » supprimée'+(im.texte ? ' — '+im.texte : ''), sup:x.seanId }); });
+  // Stock d'impressions : clé = texte normalisé du document
+  if(typeof _impCle==='function' && S.impressions && S.impressions.docs){
+    const nouv=new Set(); plan.seances.forEach(x=>a(x.parsed.docs).forEach(d=>nouv.add(_impCle(lv, d))));
+    const vus=new Set();
+    a(seq.seances).forEach(sn=>a(sn && sn.docs).forEach(d=>{ const k=_impCle(lv, d); if(!k || vus.has(k) || nouv.has(k) || !S.impressions.docs[k]) return; vus.add(k);
+      L.push({ ic:'⚠️', t:'Document « '+_srPlat(d)+' » retiré ou renommé : son stock d’impressions ne suivra pas' }); }));
+  }
+  plan.alertes.forEach(t=>L.push({ ic:'⚠️', t }));
+  return { lignes:L, vide:!L.some(l=>l.ic!=='⚠️') && !plan.seances.some(x=>!x.seanId) };
+}
+function _srRetirerEval(seq, evId){
+  Object.keys(S.edtProgMapping||{}).forEach(k=>{ const e=S.edtProgMapping[k]; if(!e || !Array.isArray(e.freeItems)) return;
+    e.freeItems=e.freeItems.filter(fi=>!(fi && fi.type==='eval' && fi.evalId===evId)); });
+  removeEval(seq, evId);
+}
+/** Suppression d'une séance sans boîte de dialogue (même cascade que deleteSeance). */
+function _srSupprimerSeance(seq, seanId){
+  const M=S.edtProgMapping||{};
+  Object.keys(M).forEach(k=>{ const e=M[k]; if(e && Array.isArray(e.seances) && e.seances.some(x=>x && x.seqId===seq.id && x.seanId===seanId)) removeSeanceFromMap(k, seq.id, seanId); });
+  if(Array.isArray(seq.evals)){
+    seq.evals.filter(e=>e && !e.isFinal && e.afterSeanceId===seanId).map(e=>e.id).forEach(evId=>_srRetirerEval(seq, evId));
+    const fin=seq.evals.find(e=>e && e.isFinal);
+    if(fin && fin.afterSeanceId===seanId){ const r=(seq.seances||[]).filter(s=>s && s.id!==seanId); fin.afterSeanceId=r.length ? r[r.length-1].id : null; }
+  }
+  seq.seances=(seq.seances||[]).filter(s=>s && s.id!==seanId);
+  _cleanupTaskExecutionForSeance(seq.id, seanId);
+}
+/** Applique le texte à la séquence. Impur ; saveS à la charge de l'appelant. */
+function _srAppliquerModif(lv, seq, pq, plan){
+  const a=(x)=>Array.isArray(x)?x:[];
+  seq.titre=_srTitreRetenu(seq.titre, pq.titre);
+  seq.num=String(pq.num||'');
+  seq.intention=pq.intention||'';
+  const ix=_srIndexCodes(lv);
+  seq.prereqComps=[]; seq.prereqConns=[];
+  a(pq.prereq).forEach(c=>{ if(ix.comps[c]!==undefined){ if(!seq.prereqComps.includes(c)) seq.prereqComps.push(c); }
+    else if(ix.conns[c]!==undefined){ if(!seq.prereqConns.includes(c)) seq.prereqConns.push(c); } });
+  plan.supprimees.forEach(x=>_srSupprimerSeance(seq, x.seanId));
+  const nouv=plan.seances.map((x,k)=>{
+    const ps=x.parsed;
+    let sn=x.seanId ? a(seq.seances).find(s=>s && s.id===x.seanId) : null;
+    if(!sn) sn=_sdcNouvelleSeance(ps.titre==='(sans titre)' ? '' : ps.titre, k+1);
+    else sn.titre=_srTitreRetenu(sn.titre, ps.titre);
+    sn.contenu=ps.contenu||'';
+    sn.compIds=a(ps.comps).slice(); sn.connIds=a(ps.conns).slice();
+    if(ps.groupe) sn.type='Gr'; else if(sn.type==='Gr') sn.type='CE';
+    sn.ordre=k;
+    return { sn, ps };
+  });
+  seq.seances=nouv.map(o=>o.sn);
+  let n=0;
+  nouv.forEach(({sn, ps})=>{
+    n+=(_bibRemplacerListe(seq.id, sn, 'mo', a(ps.taches).map(t=>t.label), a(ps.taches).map(t=>t.duree||0))||{}).n||0;
+    n+=(_bibRemplacerListe(seq.id, sn, 'doc', a(ps.docs))||{}).n||0;
+    n+=(_bibRemplacerListe(seq.id, sn, 'res', a(ps.ressources))||{}).n||0;
+    n+=(_bibRemplacerListe(seq.id, sn, 'taf', a(ps.tafs))||{}).n||0;
+    const pe=a(ps.evals)[0]; let ev=getIntermEvalForSeance(seq, sn.id);
+    if(pe){ if(!ev) ev=addIntermEval(seq, sn.id); if(ev) _srMajEval(ev, pe, 'Évaluation'); }
+    else if(ev) _srRetirerEval(seq, ev.id);
+  });
+  const fin=getFinalEval(seq);
+  if(fin){ if(pq.evalFinal) _srMajEval(fin, pq.evalFinal, 'Évaluation finale'); fin.afterSeanceId=seq.seances.length ? seq.seances[seq.seances.length-1].id : null; }
+  _bibApres(1);
+  if(typeof cleanupOrphanEvalDecisions==='function'){
+    const cl=Object.keys(S.edtProgMapping||{}).map(k=>k.split('|')[1]).filter((c,i,arr)=>c && arr.indexOf(c)===i);
+    cl.forEach(c=>{ try{ cleanupOrphanEvalDecisions(c); }catch(e){} });
+  }
+  return n;
+}
+/** Quitter le mode modification (confirmation si le texte a changé). */
+function _srQuitterEdition(pane){
+  if(!pane || !pane._edit) return true;
+  const ta=pane.querySelector('#sr-textarea');
+  const t=(ta && ta.dataset.mode==='edit') ? ta.value : pane._edit.texte;
+  if(t!==pane._edit.sig && !confirm('Abandonner les modifications en cours de cette séquence ?')) return false;
+  pane._edit=null; return true;
+}
+function _srAnnulerModif(pane){
+  const an=pane && pane._annulation; if(!an) return;
+  if(!confirm('Revenir à la séquence telle qu’elle était avant la modification ?')) return;
+  const o=JSON.parse(an.etat);
+  Object.keys(S).forEach(k=>{ delete S[k]; }); Object.assign(S, o);
+  pane._annulation=null;
+  try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(); }catch(e){}
+  saveS();
+  try{ showDropToast('Modification annulée'); }catch(e){}
+  renderProgSaisieRapide();
+}
+/** Récapitulatif (createElement) puis application. */
+function _srOuvrirRecap(pane, seq, texte){
+  const lv=pane._lv;
+  const parsed=_srParseProgressionText(texte), pq=parsed.sequences[0];
+  if(!pq){ alert('Le texte doit commencer par /SEQ.'); return; }
+  if(parsed.sequences.length>1){ alert('Une seule séquence à la fois : retirez les autres lignes /SEQ.'); return; }
+  const actuel=_srSerialiserSequence(seq, { reperes:pane._edit.alias });
+  if(actuel!==pane._edit.sig){
+    if(confirm('Cette séquence a été modifiée ailleurs depuis l’ouverture du texte (autre écran ou autre appareil).\n\nRecharger son texte actuel ? Vos changements en cours seront perdus.')){
+      pane._edit.alias=_srAliasSeances(seq); const t=_srSerialiserSequence(seq, { reperes:pane._edit.alias }); pane._edit.sig=t; pane._edit.texte=t; renderProgSaisieRapide(); }
+    return;
+  }
+  const plan=_srPlanModif(seq, pq, pane._edit.alias), R=_srRecap(lv, seq, pq, plan);
+  const el=(tag, css, txt)=>{ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; };
+  const fermer=()=>{ bg.remove(); };
+  const bg=el('div', 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:650;display:flex;align-items:center;justify-content:center;padding:16px');
+  bg.id='sr-recap-bg';
+  const box=el('div', 'background:var(--sur);color:var(--tx);border-radius:10px;max-width:680px;width:100%;max-height:82vh;overflow:auto;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.3)');
+  box.appendChild(el('div', 'font-size:16px;font-weight:700;margin-bottom:10px', 'Appliquer à '+_srLibelleSequence(seq, (getProgression(lv)||[]).indexOf(seq))+' ?'));
+  const coches=[];
+  if(R.vide) box.appendChild(el('div', 'font-size:13.5px;padding:8px 0', 'Aucune modification.'));
+  R.lignes.forEach(l=>{
+    const row=el('div', 'display:flex;gap:8px;align-items:flex-start;font-size:13.5px;line-height:1.45;padding:6px 0;border-bottom:1px solid var(--brd)'+(l.ic==='🗑️' ? ';color:#991B1B' : ''));
+    row.appendChild(el('span', 'flex-shrink:0', l.ic));
+    const txt=el('div', 'flex:1'); txt.appendChild(el('div', '', l.t));
+    if(l.sup){
+      const lab=el('label', 'display:flex;gap:6px;align-items:center;margin-top:4px;font-weight:700;cursor:pointer');
+      const cb=el('input'); cb.type='checkbox'; cb.className='sr-recap-sup'; lab.appendChild(cb); lab.appendChild(document.createTextNode('Je confirme la suppression'));
+      cb.onchange=()=>maj(); coches.push(cb); txt.appendChild(lab);
+    }
+    row.appendChild(txt); box.appendChild(row);
+  });
+  const pied=el('div', 'display:flex;justify-content:flex-end;gap:8px;margin-top:14px');
+  const ann=el('button', 'padding:8px 14px;font-size:13px', R.vide ? 'Fermer' : 'Revenir au texte'); ann.className='bs'; ann.onclick=fermer;
+  const ok=el('button', 'padding:8px 16px;font-size:13px', 'Appliquer'); ok.className='bp'; ok.id='sr-recap-ok';
+  const maj=()=>{ const tout=coches.every(c=>c.checked); ok.disabled=!tout; ok.style.opacity=tout ? '' : '.5'; ok.title=tout ? '' : 'Cochez chaque suppression pour confirmer'; };
+  ok.onclick=()=>{
+    if(ok.disabled) return;
+    pane._annulation={ seqId:seq.id, etat:JSON.stringify(S) };
+    try{ _srAppliquerModif(lv, seq, pq, plan); }
+    catch(e){ console.error('[saisie rapide] modification', e); const o=JSON.parse(pane._annulation.etat); Object.keys(S).forEach(k=>{ delete S[k]; }); Object.assign(S, o); pane._annulation=null; alert('La modification n’a pas pu être appliquée ; rien n’a été changé.\n'+e.message); fermer(); return; }
+    saveS(); fermer();
+    pane._edit=null; pane._consult=seq.id;
+    try{ showDropToast('Séquence modifiée — « ↶ Annuler la modification » pour revenir en arrière'); }catch(e){}
+    renderProgSaisieRapide();
+  };
+  pied.appendChild(ann); if(!R.vide) pied.appendChild(ok);
+  box.appendChild(pied); bg.appendChild(box);
+  bg.addEventListener('click', (e)=>{ if(e.target===bg) fermer(); });
+  document.body.appendChild(bg);
+  maj();
+}
 /** V11.4.41 — Libellé d'une séquence dans le sélecteur de consultation. Pure. */
 function _srLibelleSequence(seq, rang){
   const n=(seq && seq.num!=null && String(seq.num).trim()!=='') ? String(seq.num).trim() : String(rang+1);
@@ -52450,7 +52735,8 @@ function renderProgSaisieRapide(){
   // Capturer le draft AVANT de vider (sinon on perd la saisie au re-render)
   const _prevTa = pane.querySelector('#sr-textarea');
   // V11.4.41 — un texte de CONSULTATION n'est pas un brouillon : on ne l'écrase pas avec.
-  if(_prevTa && !_prevTa.readOnly) pane._draftText = _prevTa.value;
+  if(_prevTa && _prevTa.dataset.mode==='edit'){ if(pane._edit) pane._edit.texte = _prevTa.value; }   // V11.4.48 — le texte modifié n'est pas le brouillon
+  else if(_prevTa && !_prevTa.readOnly) pane._draftText = _prevTa.value;
 
   pane.innerHTML = '';
   const activeLevels = LEVELS.filter(l=>S.en[l]);
@@ -52471,13 +52757,17 @@ function renderProgSaisieRapide(){
     const b = document.createElement('button');
     b.className = 'fp-tab' + (pane._lv===lv?' act':'');
     b.textContent = LBL[lv]||lv;
-    b.onclick = ()=>{ pane._lv = lv; pane._consult = null; renderProgSaisieRapide(); };
+    b.onclick = ()=>{ if(!_srQuitterEdition(pane)) return; pane._lv = lv; pane._consult = null; renderProgSaisieRapide(); };
     lvBar.appendChild(b);
   });
   // V11.4.41 — Consulter une séquence déjà saisie (lecture seule).
   const _progLv = (typeof getProgression==='function') ? (getProgression(pane._lv)||[]) : [];
   const _seqConsult = pane._consult ? _progLv.find(q=>q && q.id===pane._consult) : null;
   if(!_seqConsult) pane._consult = null;
+  // V11.4.48 — mode modification
+  const _seqEdit = (pane._edit && pane._edit.lv===pane._lv) ? _progLv.find(q=>q && q.id===pane._edit.seqId) : null;
+  if(!_seqEdit) pane._edit = null;
+  if(pane._annulation && (!_seqConsult || _seqConsult.id!==pane._annulation.seqId)) pane._annulation = null;
   if(_progLv.length){
     const sel = document.createElement('select');
     sel.id = 'sr-consult';
@@ -52486,7 +52776,7 @@ function renderProgSaisieRapide(){
     const o0 = document.createElement('option'); o0.value=''; o0.textContent='📖 Consulter une séquence…'; sel.appendChild(o0);
     _progLv.forEach((q,i)=>{ if(!q) return; const o=document.createElement('option'); o.value=q.id; o.textContent=_srLibelleSequence(q,i); sel.appendChild(o); });
     sel.value = pane._consult || '';
-    sel.onchange = ()=>{ pane._consult = sel.value || null; renderProgSaisieRapide(); };
+    sel.onchange = ()=>{ if(!_srQuitterEdition(pane)){ sel.value = ''; return; } pane._consult = sel.value || null; renderProgSaisieRapide(); };
     lvBar.appendChild(sel);
   }
   pane.appendChild(lvBar);
@@ -52530,7 +52820,20 @@ function renderProgSaisieRapide(){
     tag.style.cssText = 'font-weight:700;color:#1D4ED8';
     tag.textContent = '🔒 Lecture seule — '+_srLibelleSequence(_seqConsult, _progLv.indexOf(_seqConsult));
     leftLabel.appendChild(tag);
-    leftLabel.appendChild(document.createTextNode(' · pour modifier : onglet Construction, ou « Partir de ce texte » pour une nouvelle séquence'));
+    leftLabel.appendChild(document.createTextNode(' · « Modifier cette séquence » pour la retoucher ici, ou « Partir de ce texte » pour en créer une nouvelle'));
+  }
+  if(_seqEdit){   // V11.4.48
+    ta.value = pane._edit.texte;
+    ta.dataset.mode = 'edit';
+    ta.style.borderColor = '#B45309';
+    ta.style.borderWidth = '2px';
+    leftLabel.textContent = '';
+    leftLabel.style.color = 'var(--tx)';
+    const tag = document.createElement('span');
+    tag.style.cssText = 'font-weight:700;color:#B45309';
+    tag.textContent = '✏ Modification — '+_srLibelleSequence(_seqEdit, _progLv.indexOf(_seqEdit));
+    leftLabel.appendChild(tag);
+    leftLabel.appendChild(document.createTextNode(' · chaque [#a] relie une séance à l’existante : gardez-le ; retirez tout le bloc pour supprimer la séance ; une /Séance sans repère est une nouvelle séance'));
   }
   leftCol.appendChild(ta);
 
@@ -52698,7 +53001,28 @@ function renderProgSaisieRapide(){
       if(br.trim() && br !== t && !confirm('Remplacer votre brouillon actuel par ce texte ?')) return;
       pane._draftText = t; pane._consult = null; renderProgSaisieRapide();
     };
-    acts.appendChild(cop); acts.appendChild(dup); acts.appendChild(ret);
+    // V11.4.48 — modifier la séquence elle-même
+    const mod = document.createElement('button'); mod.className='bp'; mod.id='sr-modifier'; mod.style.cssText='padding:8px 16px;font-size:13px;background:#B45309;border-color:#B45309'; mod.textContent='✏ Modifier cette séquence';
+    mod.onclick = ()=>{ const al=_srAliasSeances(_seqConsult); const t=_srSerialiserSequence(_seqConsult, { reperes:al }); pane._edit={ seqId:_seqConsult.id, lv:pane._lv, alias:al, sig:t, texte:t }; pane._consult=null; pane._annulation=null; renderProgSaisieRapide(); };
+    acts.appendChild(cop); acts.appendChild(dup); acts.appendChild(mod); acts.appendChild(ret);
+    if(pane._annulation && pane._annulation.seqId===_seqConsult.id){
+      const un = document.createElement('button'); un.className='bs'; un.id='sr-annuler-modif'; un.style.cssText='padding:8px 14px;font-size:13px;font-weight:700;color:#991B1B;border-color:#991B1B'; un.textContent='↶ Annuler la modification';
+      un.title = 'Remet la séquence (et ce qui en dépend) dans l’état d’avant la modification';
+      un.onclick = ()=>_srAnnulerModif(pane);
+      acts.insertBefore(un, acts.firstChild);
+    }
+    footer.appendChild(acts);
+  }
+  let _appBtn = null;
+  if(_seqEdit){   // V11.4.48
+    createBtn.style.display = 'none';
+    const acts = document.createElement('div');
+    acts.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
+    const ab = document.createElement('button'); ab.className='bs'; ab.style.cssText='padding:8px 14px;font-size:13px'; ab.textContent='Abandonner';
+    ab.onclick = ()=>{ const id=_seqEdit.id; if(_srQuitterEdition(pane)){ pane._consult=id; renderProgSaisieRapide(); } };
+    _appBtn = document.createElement('button'); _appBtn.className='bp'; _appBtn.id='sr-appliquer'; _appBtn.style.cssText='padding:8px 16px;font-size:13px;background:#B45309;border-color:#B45309'; _appBtn.textContent='Vérifier et appliquer…';
+    _appBtn.onclick = ()=>_srOuvrirRecap(pane, _seqEdit, ta.value);
+    acts.appendChild(ab); acts.appendChild(_appBtn);
     footer.appendChild(acts);
   }
 
@@ -52708,13 +53032,15 @@ function renderProgSaisieRapide(){
   const refresh = ()=>{
     const parsed = _srParseProgressionText(ta.value);
     _srRenderPreview(parsed, prev, stats, _ix);
-    if(!ta.readOnly) pane._draftText = ta.value;
+    if(ta.dataset.mode==='edit'){ if(pane._edit) pane._edit.texte = ta.value; }   // V11.4.48
+    else if(!ta.readOnly) pane._draftText = ta.value;
     const seq = parsed.sequences[0];
     const _bloque = !!seq && _srVerifierCodes(seq, _ix).inconnus.length > 0; // V11.4.46
     createBtn.disabled = !seq || _bloque;
     createBtn.style.opacity = (seq && !_bloque) ? '' : '.5';
     createBtn.style.cursor = (seq && !_bloque) ? '' : 'not-allowed';
     createBtn.title = _bloque ? 'Des codes sont inconnus pour ce niveau (voir l’aperçu)' : '';
+    if(_appBtn){ _appBtn.disabled = !seq || _bloque; _appBtn.style.opacity = (seq && !_bloque) ? '' : '.5'; _appBtn.title = createBtn.title; }
   };
   ta.addEventListener('input', ()=>{ refresh(); majSug(); });
   refresh();
