@@ -2882,6 +2882,8 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .ref-sous.ref-sous-seul{grid-template-columns:minmax(0,1fr)}
 .ref-sous{display:grid;grid-template-columns:190px minmax(0,1fr);border-top:1px solid var(--brd)}
 .ref-sous:first-of-type{border-top:0}
+.ref-sous-nom.ref-sous-orig{text-transform:none;letter-spacing:0;font-size:13.5px;line-height:1.35}
+.ref-sous-t{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .ref-sous-nom{padding:12px 16px;font-size:13px;font-weight:700;color:var(--fc);text-transform:uppercase;letter-spacing:.04em;background:var(--sur2);border-right:1px solid var(--brd)}
 .ref-cartes{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:10px 12px}
 .ref-carte{border:1px solid var(--brd);border-top:4px solid var(--fc);border-radius:10px;padding:8px 10px;background:var(--sur);display:flex;flex-direction:column;gap:5px;min-height:64px;text-align:left;cursor:pointer;font-family:inherit;color:var(--tx);transition:box-shadow .12s,transform .12s}
@@ -4576,7 +4578,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.51';
+const APP_VERSION = 'v11.4.52';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -66284,6 +66286,15 @@ function _refTexteOrigine(it){
   const rep=bloc ? ((bloc.reperes||{})[pl.niv]||[])[pl.idx] : '';
   return String(rep || it.label || '').trim();
 }
+/** V11.4.52 — Intitulé d'ORIGINE d'un sous-domaine de la page Référentiels : le titre du
+ *  bloc du programme (« Usages et impacts sociétaux du numérique ») d'après ses compétences,
+ *  sinon le nom court. Pure (PROG_TECHNO_C4). */
+function _refSousTitreOrigine(sous){
+  const its=(sous && Array.isArray(sous.items)) ? sous.items : [];
+  const P=(typeof PROG_TECHNO_C4!=='undefined') ? PROG_TECHNO_C4 : null;
+  for(const it of its){ const pl=_progPlace(it && it.id); const b=(pl && P && P.blocs) ? P.blocs[pl.bloc] : null; if(b && b.titre) return String(b.titre).trim(); }
+  return String((sous && sous.nom) || '').trim();
+}
 function _progPlace(id){
   const m=String(id||'').match(/^(OST|SFC|CCRI)(\d)(\d)-([345])(?:-(\d+))?$/);
   if(!m) return null;
@@ -66441,7 +66452,11 @@ function _refRendreMosaique(list, items, lv){
     F.sous.forEach(s=>{
       const seul=(F.sous.length===1 && s.nom===F.code);   // V11.4.44 — domaine sans sous-domaine : pas de libellé répété
       const r=_refEl('div', 'ref-sous'+(seul?' ref-sous-seul':''));
-      if(!seul) r.appendChild(_refEl('div', 'ref-sous-nom', s.nom));
+      if(!seul){   // V11.4.52 — intitulé d'origine du programme, tronqué, complet au survol
+        const _t=_refSousTitreOrigine(s), _o=_t!==String(s.nom||'').trim();
+        const sn=_refEl('div', 'ref-sous-nom'+(_o?' ref-sous-orig':'')); sn.appendChild(_refEl('span', 'ref-sous-t', _t)); sn.title=_t;
+        r.appendChild(sn);
+      }
       const g=_refEl('div', 'ref-cartes');
       s.items.forEach(it=>g.appendChild(_refCarte(it, F, idx, lv)));
       r.appendChild(g); sec.appendChild(r);
