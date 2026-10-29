@@ -4581,7 +4581,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.54';
+const APP_VERSION = 'v11.4.55';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -14118,7 +14118,7 @@ const _PROF_LAUNCHER_ITEMS = [
   {ic:'📊', tx:'Synt.', full:'Synthèse · Bilan d\'une séance',           fn:()=>{ openProgression(); showProgTab('synthese'); }},
   {ic:'📡', tx:'Suivi', full:'Suivi des cours · Statuts & participation',fn:()=>{ openSuivi(); showRupnTab('seances'); }},
   {ic:'📋', tx:'PdC',   full:'Plans de classe · Gestion des placements', fn:()=>{ openApp(); }},
-  {ic:'🧩', tx:'EBEP',  full:'EBEP · Profils et adaptations',            fn:()=>{ openEbepPage(); }},
+  {ic:'🧩', tx:'EBEP',  full:'EBEP · Profils et adaptations',            fn:()=>{ openEbepPage(); }, kw:'ebep besoins adaptations notes datées à préparer pap pps'},
   {ic:'🔐', tx:'RRUPN', full:'Suivi RRUPN · Accès numériques',           fn:()=>{ openSuivi(); showRupnTab('acces'); }},
   {ic:'📊', tx:'Pix',   full:'Suivi Pix · Niveaux et bilan',             fn:()=>{ pixOpenViewer(); }},
   {ic:'📋', tx:'Bilan', full:'Bilans & Export · Élève, classe, compétence', fn:()=>{ openAnalyse(); }},
@@ -18219,7 +18219,7 @@ const _PARAMS_INDEX = [
    kw:'contrainte association séparation placement éloigner rapprocher voisin binôme côte'},
   {tab:'placement', anchor:'psec-besoins', icon:'🧩', title:'Besoins particuliers',
    sub:'Repères et aménagements élève par élève',
-   kw:'besoin aménagement repère PPS PAP PAI PPRE ULIS handicap accompagnement'},
+   kw:'besoin aménagement repère PPS PAP PAI PPRE ULIS handicap accompagnement ebep adaptations adaptation photocopies tiers temps évaluation adaptée observations'},
   // Onglet Groupes & matières (V035-V11.1.9 — Horizon 3 B : ces deux sections
   // n'avaient JAMAIS été indexées → invisibles à la recherche, au fil d'Ariane
   // nommé et aux menus survolés ; friction corrigée par le déménagement).
@@ -18426,6 +18426,16 @@ const _PAL_ECRANS_EXTRA = [
   {ic:'📋', full:'Suivi › Gestion des demandes · Réinitialisations d\'accès',
    kw:'demandes réinitialisation réinit accès mot de passe rrupn',
    fn:()=>{ openSuivi(); showRupnTab('demandes'); }},
+  // V11.4.55 — écrans arrivés depuis la v11.4.34
+  {ic:'🖨️', full:'Gestion des impressions · Stock, photocopies du jour',
+   kw:'impressions imprimer photocopies photocopieur stock documents copies effectifs ebep adaptés',
+   fn:()=>{ openImpressions(); }},
+  {ic:'✏️', full:'Progression › Saisie rapide · Texte d\'une séquence',
+   kw:'saisie rapide texte séquence créer modifier consulter syntaxe comp conn contenu prérequis groupe',
+   fn:()=>{ openProgression(); showProgTab('saisie'); }},
+  {ic:'🟩', full:'Progression › Couverture · Compétences × séquences',
+   kw:'couverture compétences séquences programme repères travaillées évaluées',
+   fn:()=>{ openProgression(); showProgTab('couverturemk'); }},
   {ic:'❓', full:'Aide · Questions fréquentes',
    kw:'aide faq questions help comment',
    fn:()=>{ openParams(); showParamsTab('aide'); }},
@@ -18465,7 +18475,7 @@ function _palIndex(){
   // 1) Écrans — lanceur réutilisé tel quel (fn() incluses).
   (typeof _PROF_LAUNCHER_ITEMS!=='undefined'?_PROF_LAUNCHER_ITEMS:[]).forEach(l=>{
     const label=(l.tx==='Sett.')?'Paramètres · Hub d\'accueil':l.full;
-    out.push({type:'screen', icon:l.ic, label:label, sub:'', kw:l.tx+' '+l.full, run:l.fn, tx:l.tx});
+    out.push({type:'screen', icon:l.ic, label:label, sub:'', kw:l.tx+' '+l.full+' '+(l.kw||''), run:l.fn, tx:l.tx});
   });
   (typeof _PAL_ECRANS_EXTRA!=='undefined'?_PAL_ECRANS_EXTRA:[]).forEach(l=>{
     out.push({type:'screen', icon:l.ic, label:l.full, sub:'', kw:l.kw||'', run:l.fn});
@@ -49141,24 +49151,24 @@ function showAboutModal(){
   root.appendChild(_aboutRubriques([
     ['🗓️ Saisir mes cours', 'octobre 2026',
      'Composer chaque cours en piochant dans la bibliothèque, la progression ou dans les cours déjà faits d’autres classes du niveau ; ce qui reste du cours précédent est proposé, la complétion suggère pendant la frappe, l’étoile ☆ enrichit la bibliothèque. Le réalisé du cours précédent reste visible. Le planning d’affectation devient une vue d’ensemble. Un cours peut mêler plusieurs séances, ou un chapitre seul ; votre titre de séance est repris partout.'],
+    ['📖 Progression', 'octobre 2026',
+     'La saisie rapide lit et écrit compétences, connaissances, contenus et groupes ; elle ouvre une séquence existante et la modifie par le texte. Couverture : compétences × séquences.'],
+    ['🖨️ Impressions', 'octobre 2026',
+     'Stock de chaque document par niveau, décompté à chaque séance faite ; liste du jour pour le photocopieur, copies EBEP comprises.'],
+    ['🧩 EBEP', 'octobre 2026',
+     'Tableau élèves × adaptations, détail au clic (besoin, à préparer, notes datées) ; vos propres adaptations s’ajoutent.'],
     ['📋 Cahier de texte du jour', 'octobre 2026',
      'Tous les cours d’une journée sur une page, prêts à copier dans Pronote. Le contenu s’y corrige directement et ne répète plus le prévu. Un en-tête par séance.'],
-    ['🎲 Tirage et évaluations', 'septembre 2026',
-     'Le tirage au sort accepte vos propres types ; « Choisir » désigne les élèves. Une fiche note chaque élève dans l’observation du cours, maintenant ou plus tard.'],
-    ['📝 Suivi des élèves', 'septembre 2026',
-     'Suivi › Observations : les observations de chaque élève, ou tout son suivi (statuts, participation, TAF non faits). Délégués et responsabilités s’affichent sur le plan.'],
     ['👩‍🏫 En classe', 'octobre 2026',
      'Des avertissements à deux ou trois niveaux, statut rapide ⚡. Une observation vierge à chaque cours, l’historique à portée de main. Un numéro de cours dans l’emploi du temps, commun aux deux demi-groupes. Nouvel emploi du temps à une date d’effet : les cours préparés suivent.'],
     ['🖥️ Écran classe', 'octobre 2026',
      'Quatre écrans projetés (accueil, séance, fin, évaluation), réglables par classe.'],
-    ['⏱️ Compte à rebours', 'septembre 2026',
-     'Chaque alerte (5, 3, 2, 1 min, fin) se coupe, se règle en volume et peut jouer votre propre son.'],
     ['🔄 Synchronisation et sécurité des données', 'octobre 2026',
-     'Dropbox ou Google Drive. Une barre de synchro sur le plan de classe, grande sur iPad, compacte sur ordinateur. Une copie de sécurité de ce qui va être remplacé, alerte si la mémoire du navigateur est pleine ; une donnée abîmée n’empêche plus le démarrage. Appuis fusionnés entre appareils.'],
+     'Dropbox ou Google Drive. Une barre de synchro sur le plan de classe, grande sur iPad, compacte sur ordinateur. Une copie de sécurité de ce qui va être remplacé, alerte si la mémoire du navigateur est pleine ; une donnée abîmée n’empêche plus le démarrage.'],
     ['🪑 Plan de classe', 'octobre 2026',
      'Impression PDF, une classe par page. Dispositions réutilisables d’une classe à l’autre. Placement mixte en îlots. Le PAI n’apparaît plus dans les vues EBEP. Le nombre de présents s’affiche en bas.'],
-    ['📚 Référentiels et disciplines', 'juillet 2026',
-     'Votre discipline et son référentiel importé deviennent le socle de la progression. L’import des classes est plus tolérant.'],
+    ['📚 Référentiels et disciplines', 'octobre 2026',
+     'Votre discipline et son référentiel importé deviennent le socle de la progression. L’import des classes est plus tolérant. Technologie : programme 2024 en mosaïque, aligné sur le Boizard, une fiche par compétence.'],
     ['⌨️ Prise en main', 'octobre 2026',
      'Palette d’actions (Ctrl+K), démarrage guidé. Un clic à côté ferme les fenêtres ; ce qui supprime est en rouge.']
   ]));
