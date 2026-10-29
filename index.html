@@ -409,6 +409,31 @@ body.mode-prof #prof-act-col-right{display:flex;flex-direction:column;gap:10px;m
 .ebep-empty{padding:2rem;text-align:center;color:var(--tx3);font-style:italic;font-size:12px}
 .ebep-stats-bar{display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--tx2);font-weight:500}
 .ebep-stats-chip{background:var(--sur2);padding:3px 10px;border-radius:10px;border:1px solid var(--brd)}
+.ebep-tab-boite{background:var(--sur);border:1px solid var(--brd);border-radius:var(--r2);overflow:auto}
+.ebep-tab{width:100%;border-collapse:collapse;font-size:13px;color:var(--tx)}
+.ebep-tab th{font-size:11px;font-weight:700;color:var(--tx2);background:var(--sur2);padding:7px 8px;border-bottom:1px solid var(--brd);text-align:center;white-space:nowrap}
+.ebep-tab td{padding:6px 8px;border-bottom:1px solid var(--brd);text-align:center;vertical-align:middle}
+.ebep-tab .ebep-tab-g{text-align:left}
+.ebep-tab input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--acc)}
+.ebep-tab-l.ouvert td{background:var(--acc-l)}
+.ebep-nom{background:none;border:none;padding:0;font:inherit;font-weight:700;color:var(--tx);cursor:pointer;text-align:left}
+.ebep-cat{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:10px;background:var(--acc);color:#fff}
+.ebep-besoin-b{background:var(--sur2);border:1px solid var(--brd);border-radius:6px;cursor:pointer;padding:1px 6px}
+.ebep-apr{font-weight:700;color:#92400E}
+.ebep-muet{color:var(--tx3)}
+.ebep-tab-tot td{font-weight:700;background:var(--sur2)}
+.ebep-det-l>td{background:var(--bg);text-align:left;padding:10px 12px}
+.ebep-det{display:flex;flex-direction:column;gap:8px}
+.ebep-det-bb{align-self:flex-start;background:var(--sur);border:1px solid var(--brd);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit;font-size:12.5px;font-weight:700;color:var(--tx)}
+.ebep-det-desc{white-space:pre-line;background:var(--sur);border:1px solid var(--brd);border-left:3px solid var(--acc);padding:8px 10px;font-size:13px}
+.ebep-det-g{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.ebep-det-h{font-size:11px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.ebep-det-it{font-size:13px;padding:2px 0}
+.ebep-det-d{color:var(--tx2);font-size:12px;margin-right:4px}
+.ebep-note-aj{display:flex;gap:6px;margin-bottom:6px}
+.ebep-note-in{flex:1;padding:4px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur);color:var(--tx);font:inherit;font-size:12.5px}
+.ebep-note-x{background:none;border:none;color:#B91C1C;font-weight:700;cursor:pointer}
+@media (max-width:760px){ .ebep-det-g{grid-template-columns:1fr} }
 .ebep-stats-chip strong{color:var(--tx);font-weight:700}
 
 /* Bloc note "À faire cette semaine" */
@@ -4551,7 +4576,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.50';
+const APP_VERSION = 'v11.4.51';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -23626,6 +23651,83 @@ function checkPlanChangeReminder(clsCode){
 }
 
 const BESOINS_CATS=['ULIS','PPS','PPRE','PAP','PAI','EBEP','Autre'];
+/* V11.4.51 — Adaptations EBEP : les 3 intégrées + celles créées par l'enseignant
+   (S.reglages.ebepAdapts = [{key:'ad_…', label, icon}]), communes à tous les élèves.
+   Une fiche porte fiche[key]=true pour chaque adaptation cochée. */
+const EBEP_ADAPTS_BASE=[
+  {key:'photocopies', label:'Photocopies à fournir', short:'Photocopies',  icon:'📄', builtin:true},
+  {key:'evalAdaptee', label:'Évaluation adaptée',    short:'Éval. adaptée', icon:'📝', builtin:true},
+  {key:'tiersTps',    label:'Tiers temps',           short:'Tiers temps',   icon:'⏱', builtin:true},
+];
+function getEbepAdaptations(){
+  const perso=(S && S.reglages && Array.isArray(S.reglages.ebepAdapts)) ? S.reglages.ebepAdapts : [];
+  return EBEP_ADAPTS_BASE.concat(perso.filter(a=>a && a.key && String(a.label||'').trim())
+    .map(a=>({ key:a.key, label:String(a.label).trim(), short:String(a.label).trim(), icon:a.icon||'✳️', builtin:false })));
+}
+function _ebepAUneAdaptation(f){ return !!f && getEbepAdaptations().some(a=>!!f[a.key]); }
+function _ebepAdaptAjouter(label, icon){
+  const l=String(label||'').trim(); if(!l) return null;
+  if(!S.reglages) S.reglages={};
+  if(!Array.isArray(S.reglages.ebepAdapts)) S.reglages.ebepAdapts=[];
+  if(getEbepAdaptations().some(a=>a.label.toLowerCase()===l.toLowerCase())) return null;
+  const key='ad_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  S.reglages.ebepAdapts.push({ key, label:l, icon:String(icon||'').trim()||'✳️' });
+  return key;
+}
+function _ebepAdaptModifier(key, label, icon){
+  const a=((S.reglages && S.reglages.ebepAdapts)||[]).find(x=>x && x.key===key); if(!a) return false;
+  if(label!=null && String(label).trim()) a.label=String(label).trim();
+  if(icon!=null) a.icon=String(icon).trim()||'✳️';
+  return true;
+}
+/** Retire une adaptation créée, et la décoche de toutes les fiches. → nombre de fiches touchées. */
+function _ebepAdaptSupprimer(key){
+  if(!S.reglages || !Array.isArray(S.reglages.ebepAdapts)) return 0;
+  const i=S.reglages.ebepAdapts.findIndex(x=>x && x.key===key); if(i<0) return 0;
+  S.reglages.ebepAdapts.splice(i,1);
+  let n=0;
+  Object.keys(S.besoinsEleves||{}).forEach(c=>Object.keys(S.besoinsEleves[c]||{}).forEach(u=>{ const f=S.besoinsEleves[c][u]; if(f && key in f){ if(f[key]) n++; delete f[key]; } }));
+  return n;
+}
+function _ebepNbFichesAvec(key){
+  let n=0; Object.keys(S.besoinsEleves||{}).forEach(c=>Object.keys(S.besoinsEleves[c]||{}).forEach(u=>{ const f=S.besoinsEleves[c][u]; if(f && f[key]) n++; })); return n;
+}
+/** Paramètres › EBEP : gestion des adaptations (repliable). */
+function _ebepAdaptsGestion(rafraichir){
+  const el=(tag, css, txt)=>{ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; };
+  const box=el('div', 'border:1px solid var(--brd);border-radius:var(--r2);margin-bottom:.75rem;background:var(--sur)');
+  box.id='ebep-adapts-gestion';
+  const ads=getEbepAdaptations();
+  const h=el('button', 'width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center;padding:.5rem .8rem;background:var(--sur2);border:none;border-radius:var(--r2);cursor:pointer;font-family:inherit;font-size:12.5px;color:var(--tx);font-weight:700');
+  h.type='button';
+  h.appendChild(document.createTextNode('Adaptations à cocher ('+ads.length+') — communes à tous les élèves'));
+  const chev=el('span', '', _ebepAdaptsGestion._ouvert ? '▴' : '▾'); h.appendChild(chev);
+  const corps=el('div', 'padding:.6rem .8rem;display:'+(_ebepAdaptsGestion._ouvert ? 'flex' : 'none')+';flex-direction:column;gap:6px;font-size:12.5px');
+  h.onclick=()=>{ _ebepAdaptsGestion._ouvert=!_ebepAdaptsGestion._ouvert; corps.style.display=_ebepAdaptsGestion._ouvert ? 'flex' : 'none'; chev.textContent=_ebepAdaptsGestion._ouvert ? '▴' : '▾'; };
+  ads.forEach(a=>{
+    const r=el('div', 'display:flex;align-items:center;gap:8px');
+    if(a.builtin){ r.appendChild(el('span', 'width:34px;text-align:center', a.icon)); r.appendChild(el('span', 'flex:1;color:var(--tx)', a.label)); r.appendChild(el('span', 'font-size:11px;color:var(--tx2)', 'intégrée')); }
+    else {
+      const ic=el('input', 'width:34px;text-align:center;padding:2px;border:1px solid var(--brd);border-radius:4px;background:var(--bg);color:var(--tx);font-family:inherit'); ic.value=a.icon; ic.title='Icône (un caractère ou un émoji)';
+      const lb=el('input', 'flex:1;padding:3px 7px;border:1px solid var(--brd);border-radius:4px;background:var(--bg);color:var(--tx);font-family:inherit;font-size:12.5px'); lb.value=a.label;
+      const enr=()=>{ if(_ebepAdaptModifier(a.key, lb.value, ic.value)){ saveS(); } };
+      ic.onchange=enr; lb.onchange=enr;
+      const del=el('button', 'padding:2px 8px;border:1px solid #B91C1C;border-radius:4px;background:#DC2626;color:#fff;font-weight:700;cursor:pointer', '×'); del.type='button'; del.title='Supprimer cette adaptation';
+      del.onclick=()=>{ const n=_ebepNbFichesAvec(a.key); if(!confirm('Supprimer l’adaptation « '+a.label+' » ?'+(n ? '\nElle sera décochée dans '+n+' fiche'+(n>1?'s':'')+'.' : ''))) return; _ebepAdaptSupprimer(a.key); saveS(); rafraichir(); };
+      r.appendChild(ic); r.appendChild(lb); r.appendChild(del);
+    }
+    corps.appendChild(r);
+  });
+  const aj=el('div', 'display:flex;align-items:center;gap:8px;margin-top:4px');
+  const ic=el('input', 'width:34px;text-align:center;padding:2px;border:1px solid var(--brd);border-radius:4px;background:var(--bg);color:var(--tx);font-family:inherit'); ic.placeholder='✳️'; ic.title='Icône (facultatif)';
+  const lb=el('input', 'flex:1;padding:3px 7px;border:1px solid var(--brd);border-radius:4px;background:var(--bg);color:var(--tx);font-family:inherit;font-size:12.5px'); lb.placeholder='Nouvelle adaptation (ex. police agrandie, place devant…)'; lb.id='ebep-adapt-nouvelle';
+  const ok=el('button', 'padding:3px 10px;font-size:12px', '＋ Ajouter'); ok.className='bp'; ok.type='button';
+  const go=()=>{ const k=_ebepAdaptAjouter(lb.value, ic.value); if(!k){ if(String(lb.value).trim()) alert('Cette adaptation existe déjà.'); return; } _ebepAdaptsGestion._ouvert=true; saveS(); rafraichir(); };
+  ok.onclick=go; lb.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } };
+  aj.appendChild(ic); aj.appendChild(lb); aj.appendChild(ok); corps.appendChild(aj);
+  box.appendChild(h); box.appendChild(corps);
+  return box;
+}
 
 function renderParamsBesoins(targetPane){
   const pane=targetPane||document.getElementById('params-pane-besoins');
@@ -23655,6 +23757,7 @@ function renderParamsBesoins(targetPane){
   searchInp.addEventListener('blur',()=>searchInp.style.borderColor='var(--brd)');
   searchInp.addEventListener('input',()=>{ searchQ=searchInp.value.trim(); renderBesoinsBody(); });
   const contentZone=document.createElement('div');
+  pane.appendChild(_ebepAdaptsGestion(()=>renderParamsBesoins(targetPane)));   // V11.4.51
   pane.appendChild(selWrap); pane.appendChild(contentZone);
 
   function renderLvBtns(){
@@ -23732,7 +23835,7 @@ function renderParamsBesoins(targetPane){
       const clsB=S.besoinsEleves[cls];
       const fiche=clsB[id]||null;
       const ficheCats=getFicheCategories(fiche);
-      const hasFiche=!!(fiche&&(ficheCats.length||fiche.photocopies||fiche.evalAdaptee||fiche.tiersTps||fiche.notes));
+      const hasFiche=!!(fiche&&(ficheCats.length||_ebepAUneAdaptation(fiche)||fiche.notes));   // V11.4.51
       const card=document.createElement('div');
       card.style.cssText='border:1px solid var(--brd);border-radius:var(--r2);margin-bottom:.45rem;overflow:hidden';
       const hdr=document.createElement('div');
@@ -23746,9 +23849,10 @@ function renderParamsBesoins(targetPane){
           catSp.style.cssText='font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;background:var(--acc);color:#fff';
           catSp.textContent=cat; hdr.appendChild(catSp);
         });
-        ['photocopies','evalAdaptee','tiersTps'].forEach(k=>{
+        getEbepAdaptations().forEach(a=>{   // V11.4.51 — adaptations créées comprises
+          const k=a.key;
           if(!fiche[k]) return;
-          const lbl={'photocopies':'📄','evalAdaptee':'📝','tiersTps':'⏱'}[k];
+          const lbl=a.icon;
           const sp=document.createElement('span');
           sp.style.cssText='font-size:9px;padding:1px 5px;border-radius:3px;background:var(--sur);border:1px solid var(--brd);color:var(--tx2)';
           sp.textContent=lbl; hdr.appendChild(sp);
@@ -23790,7 +23894,7 @@ function renderParamsBesoins(targetPane){
       body.appendChild(catRow);
       const ckRow=document.createElement('div');
       ckRow.style.cssText='display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center';
-      [['photocopies','📄 Photocopies à fournir'],['evalAdaptee','📝 Évaluation adaptée'],['tiersTps','⏱ Tiers temps']].forEach(([key,lbl])=>{
+      getEbepAdaptations().map(a=>[a.key, a.icon+' '+a.label]).forEach(([key,lbl])=>{   // V11.4.51
         const label=document.createElement('label');
         label.style.cssText='display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;user-select:none';
         const cb=document.createElement('input'); cb.type='checkbox';
@@ -36418,7 +36522,7 @@ function _besoinEnsureFiche(uid){
 function _besoinHasContent(uid){
   const f=_besoinRawFiche(uid); if(!f) return false;
   const cats=(typeof getFicheCategories==='function')?getFicheCategories(f):(f.categories||[]);
-  return !!(cats.length||f.photocopies||f.evalAdaptee||f.tiersTps||(f.notes&&f.notes.trim()));
+  return !!(cats.length||_ebepAUneAdaptation(f)||(f.notes&&f.notes.trim()));   // V11.4.51
 }
 
 function _refreshStBesoinIcon(){
@@ -36542,7 +36646,7 @@ function _renderStBesoinPanel(){
   body.appendChild(chipWrap);
   // Aménagements
   const secAd=document.createElement('div'); secAd.className='stbp-sec'; secAd.textContent='Aménagements'; body.appendChild(secAd);
-  [['photocopies','📄 Photocopies à fournir'],['evalAdaptee','📝 Évaluation adaptée'],['tiersTps','⏱ Tiers temps']].forEach(pair=>{
+  getEbepAdaptations().map(a=>[a.key, a.icon+' '+a.label]).forEach(pair=>{   // V11.4.51
     const key=pair[0], lbl=pair[1];
     const row=document.createElement('label'); row.className='stbp-ck';
     const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!f[key];
@@ -37002,7 +37106,7 @@ function _ebepFicheAffichable(fiche){
              ? fiche.categories
              : (fiche.categorie?[fiche.categorie]:[]);
   if(_ebepCatsAffichables(brut).length) return true;
-  return !!(fiche.photocopies || fiche.evalAdaptee || fiche.tiersTps);
+  return _ebepAUneAdaptation(fiche);   // V11.4.51 — adaptations créées comprises
 }
 
 /** Le texte affiché à côté d'un élève dans la liste 🧩. Les catégories y sont
@@ -37017,6 +37121,7 @@ function getEbepInfoParts(uid, clsCode){
   if(fiche.photocopies) parts.push('Fournir les photocopies');
   if(fiche.evalAdaptee) parts.push('Évaluation adaptée');
   if(fiche.tiersTps) parts.push('Tiers temps');
+  getEbepAdaptations().filter(a=>!a.builtin && fiche[a.key]).forEach(a=>parts.push(a.label));   // V11.4.51
   return parts;
 }
 
@@ -37387,213 +37492,206 @@ function _ebepFiltersMatch(fiche){
   return true;
 }
 
+/* V11.4.51 — Page EBEP refaite (demande du 29/10) : tableau des élèves × adaptations
+   (cases cochables), « cette semaine » ; clic sur un élève → détail : description du
+   besoin (champ Observations de Paramètres, sur bouton), à préparer, notes datées. */
+/** Cours des `jours` prochains jours d'une classe (non enregistrés, non annulés). */
+function _ebepCoursAVenir(cls, jours){
+  const out=[]; const du=_appToday(); const au=(typeof _impDateDecalee==='function') ? _impDateDecalee(du, (jours||7)-1) : du;
+  let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ slots=[]; }
+  slots.forEach(sl=>{
+    if(!sl || !sl.slotKey || !sl.dateStr || sl.dateStr<du || sl.dateStr>au || sl.saved) return;
+    if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, cls)) return;
+    const gid=(typeof _numPublicDuSlot==='function') ? (_numPublicDuSlot(sl)||'') : '';
+    const g=gid && S.groupes && S.groupes[gid];
+    const membres=(g && Array.isArray(g.students)) ? new Set(g.students.map(x=>(x && typeof x==='object') ? x.uid : x)) : null;
+    let docs=[]; try{ docs=(_docsDistribuesAuCours(sl.slotKey, cls)||[]).map(x=>String(x||'').trim()).filter(Boolean); }catch(e){ docs=[]; }
+    let rp={ traces:[], evals:[] }; try{ rp=_impRappels(cls, sl, gid); }catch(e){}
+    out.push({ dateStr:sl.dateStr, debut:sl.debut||'', gid, membres, docs, traces:rp.traces.map(t=>t.label), evals:rp.evals.map(x=>x.label) });
+  });
+  out.sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut));
+  return out;
+}
+/** Ce qu'il faut préparer pour un élève, d'après sa fiche et les cours à venir. Pure. */
+function _ebepAPreparer(fiche, uid, cours){
+  const out=[]; if(!fiche) return out;
+  (Array.isArray(cours)?cours:[]).forEach(c=>{
+    if(c.membres && typeof c.membres.has==='function' && !c.membres.has(uid)) return;
+    const base={ dateStr:c.dateStr, debut:c.debut };
+    if(fiche.photocopies){
+      (c.docs||[]).forEach(dd=>out.push(Object.assign({ type:'doc', texte:dd+' (adapté)' }, base)));
+      (c.traces||[]).forEach(t=>out.push(Object.assign({ type:'trace', texte:'Trace écrite : '+t }, base)));
+    }
+    if(fiche.evalAdaptee || fiche.tiersTps) (c.evals||[]).forEach(ev=>out.push(Object.assign({ type:'eval', texte:'Évaluation : '+ev+(fiche.evalAdaptee ? ' (adaptée)' : '')+(fiche.tiersTps ? ' — tiers temps' : '') }, base)));
+  });
+  return out;
+}
+/** Notes datées d'un élève (fiche.journal, la plus récente d'abord). */
+function _ebepNoteAjouter(cls, uid, texte, date){
+  const t=String(texte||'').trim(); if(!t || !cls || !uid) return null;
+  if(!S.besoinsEleves) S.besoinsEleves={};
+  const b=S.besoinsEleves[cls]||(S.besoinsEleves[cls]={});
+  const f=b[uid]||(b[uid]={});
+  if(!Array.isArray(f.journal)) f.journal=[];
+  const n={ id:'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), d:date||_appToday(), t };
+  f.journal.unshift(n);
+  return n;
+}
+function _ebepNoteRetirer(cls, uid, id){
+  const f=S.besoinsEleves && S.besoinsEleves[cls] && S.besoinsEleves[cls][uid];
+  if(!f || !Array.isArray(f.journal)) return false;
+  const i=f.journal.findIndex(x=>x && x.id===id); if(i<0) return false;
+  f.journal.splice(i,1); return true;
+}
+/** Élèves affichés : fiche affichable (catégorie visible ou adaptation), dans la classe, filtres. */
+function _ebepLignes(classes){
+  const out=[];
+  (classes||[]).forEach(cls=>{
+    const clsB=(S.besoinsEleves && S.besoinsEleves[cls]) || {};
+    const st=(S.cl[cls] && Array.isArray(S.cl[cls].students)) ? S.cl[cls].students : [];
+    Object.keys(clsB).forEach(uid=>{
+      const f=clsB[uid]; if(!f) return;
+      if(!st.some(x=>x && (x.uid===uid || x===uid))) return;
+      if(!_ebepFicheAffichable(f)) return;
+      if(!_ebepFiltersMatch(f)) return;
+      out.push({ uid, cls, fiche:f, cats:_ebepCatsAffichables(getFicheCategories(f)), nom:getFullName(uid) });
+    });
+  });
+  out.sort((a,b)=>a.cls.localeCompare(b.cls) || (typeof getSortKey==='function' ? getSortKey(a.uid).localeCompare(getSortKey(b.uid),'fr') : a.nom.localeCompare(b.nom,'fr')));
+  return out;
+}
 function renderEbepPage(){
-  // ── Toolbar : filtres ──
-  const tb = document.getElementById('ebep-toolbar');
-  tb.innerHTML = '';
-
-  // Ligne 1 : Niveaux + Classes + Typologie + Adaptations
-  // (en plusieurs lignes pour ne pas saturer)
-  const row1 = document.createElement('div'); row1.className='ebep-filter-row';
-  const lblLv = document.createElement('span'); lblLv.className='ebep-filter-lbl'; lblLv.textContent='Niveaux';
-  row1.appendChild(lblLv);
+  const el=(tag, cls, txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
+  const adapts=getEbepAdaptations();
+  // ── Barre de filtres ──
+  const tb=document.getElementById('ebep-toolbar');
+  tb.innerHTML='';
+  const row1=el('div', 'ebep-filter-row');
+  row1.appendChild(el('span', 'ebep-filter-lbl', 'Niveaux'));
   LEVELS.filter(l=>S.en[l]).forEach(lv=>{
-    const c = document.createElement('button'); c.className='ebep-chip'+(_ebepPageState.niveaux.has(lv)?' act':'');
-    c.textContent = lv;
+    const c=el('button', 'ebep-chip'+(_ebepPageState.niveaux.has(lv)?' act':''), lv);
     c.onclick=()=>{
-      if(_ebepPageState.niveaux.has(lv)) _ebepPageState.niveaux.delete(lv);
-      else _ebepPageState.niveaux.add(lv);
-      // Quand on touche aux niveaux : retirer les classes qui ne sont plus éligibles
-      const elig = new Set(_ebepGetEligibleClasses());
-      Array.from(_ebepPageState.classes).forEach(cls=>{ if(!elig.has(cls)) _ebepPageState.classes.delete(cls); });
+      if(_ebepPageState.niveaux.has(lv)) _ebepPageState.niveaux.delete(lv); else _ebepPageState.niveaux.add(lv);
+      const elg=new Set(_ebepGetEligibleClasses());
+      Array.from(_ebepPageState.classes).forEach(c2=>{ if(!elg.has(c2)) _ebepPageState.classes.delete(c2); });
       renderEbepPage();
     };
     row1.appendChild(c);
   });
-
-  // Sep
-  const sep1 = document.createElement('span'); sep1.className='ebep-sep'; row1.appendChild(sep1);
-
-  const lblCls = document.createElement('span'); lblCls.className='ebep-filter-lbl'; lblCls.textContent='Classes';
-  row1.appendChild(lblCls);
-  const elig = _ebepGetEligibleClasses();
-  if(!elig.length){
-    const none = document.createElement('span');
-    none.style.cssText='font-size:11px;color:var(--tx3);font-style:italic';
-    none.textContent='(sélectionnez un niveau)';
-    row1.appendChild(none);
-  } else {
-    elig.forEach(cls=>{
-      const c = document.createElement('button'); c.className='ebep-chip'+(_ebepPageState.classes.has(cls)?' act':'');
-      c.textContent = cls.toUpperCase();
-      c.onclick=()=>{
-        if(_ebepPageState.classes.has(cls)) _ebepPageState.classes.delete(cls);
-        else _ebepPageState.classes.add(cls);
-        renderEbepPage();
-      };
-      row1.appendChild(c);
-    });
-  }
+  row1.appendChild(el('span', 'ebep-sep'));
+  row1.appendChild(el('span', 'ebep-filter-lbl', 'Classes'));
+  const elig=_ebepGetEligibleClasses();
+  if(!elig.length){ const none=el('span', '', '(sélectionnez un niveau)'); none.style.cssText='font-size:11px;color:var(--tx3);font-style:italic'; row1.appendChild(none); }
+  elig.forEach(cls=>{
+    const c=el('button', 'ebep-chip'+(_ebepPageState.classes.has(cls)?' act':''), cls.toUpperCase());
+    c.onclick=()=>{ if(_ebepPageState.classes.has(cls)) _ebepPageState.classes.delete(cls); else _ebepPageState.classes.add(cls); renderEbepPage(); };
+    row1.appendChild(c);
+  });
   tb.appendChild(row1);
-
-  // Ligne 2 : Typologie + Adaptations
-  const row2 = document.createElement('div'); row2.className='ebep-filter-row';
-  const lblTy = document.createElement('span'); lblTy.className='ebep-filter-lbl'; lblTy.textContent='Typologie';
-  row2.appendChild(lblTy);
+  const row2=el('div', 'ebep-filter-row');
+  row2.appendChild(el('span', 'ebep-filter-lbl', 'Typologie'));
   EBEP_PAGE_CATS.forEach(cat=>{
-    const c = document.createElement('button');
-    c.className='ebep-chip cat-'+cat.toLowerCase()+(_ebepPageState.cats.has(cat)?' act':'');
-    c.textContent = cat;
-    c.onclick=()=>{
-      if(_ebepPageState.cats.has(cat)) _ebepPageState.cats.delete(cat);
-      else _ebepPageState.cats.add(cat);
-      renderEbepPage();
-    };
+    const c=el('button', 'ebep-chip cat-'+cat.toLowerCase()+(_ebepPageState.cats.has(cat)?' act':''), cat);
+    c.onclick=()=>{ if(_ebepPageState.cats.has(cat)) _ebepPageState.cats.delete(cat); else _ebepPageState.cats.add(cat); renderEbepPage(); };
     row2.appendChild(c);
   });
-
-  const sep2 = document.createElement('span'); sep2.className='ebep-sep'; row2.appendChild(sep2);
-
-  const lblAd = document.createElement('span'); lblAd.className='ebep-filter-lbl'; lblAd.textContent='Adaptations';
-  row2.appendChild(lblAd);
-  EBEP_PAGE_ADAPTS.forEach(a=>{
-    const c = document.createElement('button');
-    c.className='ebep-chip'+(_ebepPageState.adapts.has(a.key)?' act':'');
-    c.textContent = a.short;
-    c.onclick=()=>{
-      if(_ebepPageState.adapts.has(a.key)) _ebepPageState.adapts.delete(a.key);
-      else _ebepPageState.adapts.add(a.key);
-      renderEbepPage();
-    };
+  row2.appendChild(el('span', 'ebep-sep'));
+  row2.appendChild(el('span', 'ebep-filter-lbl', 'Adaptations'));
+  adapts.forEach(a=>{
+    const c=el('button', 'ebep-chip'+(_ebepPageState.adapts.has(a.key)?' act':''), a.short);
+    c.onclick=()=>{ if(_ebepPageState.adapts.has(a.key)) _ebepPageState.adapts.delete(a.key); else _ebepPageState.adapts.add(a.key); renderEbepPage(); };
     row2.appendChild(c);
   });
   tb.appendChild(row2);
-
-  // ── Body : grille des classes ──
-  const body = document.getElementById('ebep-body');
+  // ── Tableau ──
+  const body=document.getElementById('ebep-body');
   body.innerHTML='';
-
-  // Classes affichées : si filtre classes vide, on prend toutes les éligibles
-  const displayedClasses = _ebepPageState.classes.size
-    ? Array.from(_ebepPageState.classes).sort()
-    : elig;
-
-  if(!displayedClasses.length){
-    body.innerHTML='<div class="ebep-empty">Aucune classe à afficher. Sélectionnez au moins un niveau actif.</div>';
-    return;
-  }
-
-  // Pour chaque classe, calculer la liste filtrée des élèves EBEP et leurs adaptations
-  let totalElevesAffiches = 0;
-  let totalAdaptations = {photocopies:0, evalAdaptee:0, tiersTps:0};
-
-  const colsData = displayedClasses.map(cls=>{
-    const clsB = (S.besoinsEleves && S.besoinsEleves[cls]) || {};
-    const elevesParAdapt = {photocopies:[], evalAdaptee:[], tiersTps:[], _aucune:[]};
-    const studentsArr = (S.cl[cls] && Array.isArray(S.cl[cls].students)) ? S.cl[cls].students : [];
-    // Pour chaque élève qui a une fiche
-    Object.keys(clsB).forEach(uid=>{
-      const fiche = clsB[uid];
-      if(!fiche) return;
-      // L'élève doit appartenir à la classe (sécurité)
-      const stillInClass = studentsArr.some(s=>s && (s.uid===uid || s===uid));
-      if(!stillInClass) return;
-      // L'élève doit avoir une fiche avec catégorie OU adaptation cochée pour être considéré EBEP
-      const cats = getFicheCategories(fiche);
-      const hasAdapt = !!(fiche.photocopies || fiche.evalAdaptee || fiche.tiersTps);
-      if(!cats.length && !hasAdapt) return;
-      if(!_ebepFiltersMatch(fiche)) return;
-      // Classer par adaptation cochée
-      let placed=false;
-      EBEP_PAGE_ADAPTS.forEach(a=>{
-        if(fiche[a.key]){
-          elevesParAdapt[a.key].push({uid, fiche, name:getFullName(uid), cats});
-          totalAdaptations[a.key]++;
-          placed=true;
-        }
-      });
-      if(!placed) elevesParAdapt._aucune.push({uid, fiche, name:getFullName(uid), cats});
-      totalElevesAffiches++;
-    });
-    return {cls, elevesParAdapt};
-  });
-
-  // Stats
-  const stats = document.createElement('div'); stats.className='ebep-stats-bar';
-  stats.style.cssText += ';margin-bottom:14px';
-  stats.innerHTML =
-    '<span class="ebep-stats-chip"><strong>'+totalElevesAffiches+'</strong> élève'+(totalElevesAffiches>1?'s':'')+' affiché'+(totalElevesAffiches>1?'s':'')+'</span>'+
-    '<span class="ebep-stats-chip">📄 <strong>'+totalAdaptations.photocopies+'</strong> photocopies</span>'+
-    '<span class="ebep-stats-chip">📝 <strong>'+totalAdaptations.evalAdaptee+'</strong> éval. adaptée</span>'+
-    '<span class="ebep-stats-chip">⏱ <strong>'+totalAdaptations.tiersTps+'</strong> tiers temps</span>';
+  const classes=_ebepPageState.classes.size ? Array.from(_ebepPageState.classes).sort() : elig;
+  if(!classes.length){ body.appendChild(el('div', 'ebep-empty', 'Aucune classe à afficher. Sélectionnez au moins un niveau actif.')); return; }
+  const lignes=_ebepLignes(classes);
+  const cours={}; const coursDe=(cls)=>cours[cls]||(cours[cls]=_ebepCoursAVenir(cls, 7));
+  const stats=el('div', 'ebep-stats-bar'); stats.style.marginBottom='12px';
+  const chip=(t)=>{ const c=el('span', 'ebep-stats-chip'); c.textContent=t; stats.appendChild(c); };
+  chip(lignes.length+' élève'+(lignes.length>1?'s':''));
+  adapts.forEach(a=>{ const n=lignes.filter(l=>l.fiche[a.key]).length; if(n) chip(a.icon+' '+n+' '+a.short.toLowerCase()); });
   body.appendChild(stats);
-
-  // Grille
-  const grid = document.createElement('div'); grid.className='ebep-cls-grid';
-  body.appendChild(grid);
-
-  colsData.forEach(({cls, elevesParAdapt})=>{
-    const col = document.createElement('div'); col.className='ebep-cls-col';
-
-    const totalCol = elevesParAdapt.photocopies.length + elevesParAdapt.evalAdaptee.length +
-                     elevesParAdapt.tiersTps.length + elevesParAdapt._aucune.length;
-
-    const h = document.createElement('div'); h.className='ebep-cls-h';
-    h.innerHTML = '<span>'+cls.toUpperCase()+'</span><span class="ebep-cls-h-cnt">'+totalCol+' élève'+(totalCol>1?'s':'')+'</span>';
-    col.appendChild(h);
-
-    const cb = document.createElement('div'); cb.className='ebep-cls-body';
-
-    const renderGrp = (groupLabel, eleves)=>{
-      if(!eleves.length) return null;
-      const grp = document.createElement('div'); grp.className='ebep-grp';
-      const gh = document.createElement('div'); gh.className='ebep-grp-h';
-      gh.innerHTML = groupLabel + ' <span style="opacity:.6;font-weight:600">('+eleves.length+')</span>';
-      grp.appendChild(gh);
-      eleves.forEach(e=>{
-        const row = document.createElement('div'); row.className='ebep-stu';
-        const catsTxt = e.cats.length ? '<span class="ebep-stu-cats">— '+e.cats.join(', ')+'</span>' : '';
-        row.innerHTML = '<span style="font-weight:600">'+escapeHtml(String(e.name||e.uid))+'</span>'+catsTxt;
-        grp.appendChild(row);
-      });
-      return grp;
-    };
-
-    EBEP_PAGE_ADAPTS.forEach(a=>{
-      const grp = renderGrp(a.label, elevesParAdapt[a.key]);
-      if(grp) cb.appendChild(grp);
+  if(!lignes.length){ body.appendChild(el('div', 'ebep-empty', 'Aucun élève EBEP pour cette sélection. Les fiches se déclarent dans Paramètres › EBEP.')); return; }
+  const t=el('table', 'ebep-tab');
+  const th=el('tr');
+  ['Élève','Classe'].forEach(x=>th.appendChild(el('th', 'ebep-tab-g', x)));
+  adapts.forEach(a=>{ const c=el('th', 'ebep-tab-a', a.icon+' '+a.short); c.title=a.label; th.appendChild(c); });
+  th.appendChild(el('th', '', 'Besoin')); th.appendChild(el('th', '', 'Cette semaine'));
+  const thead=el('thead'); thead.appendChild(th); t.appendChild(thead);
+  const tbody=el('tbody'); t.appendChild(tbody);
+  const ouvert=_ebepPageState.ouvert || null;
+  lignes.forEach(l=>{
+    const cle=l.cls+'|'+l.uid, estOuvert=ouvert===cle;
+    const ap=_ebepAPreparer(l.fiche, l.uid, coursDe(l.cls));
+    const tr=el('tr', 'ebep-tab-l'+(estOuvert?' ouvert':''));
+    const tdN=el('td', 'ebep-tab-g');
+    const bn=el('button', 'ebep-nom', (estOuvert?'▾ ':'▸ ')+l.nom); bn.type='button'; bn.title='Afficher le détail';
+    bn.onclick=()=>{ _ebepPageState.ouvert=estOuvert ? null : cle; _ebepPageState.besoin=false; renderEbepPage(); };
+    tdN.appendChild(bn);
+    l.cats.forEach(c=>tdN.appendChild(el('span', 'ebep-cat', c)));
+    tr.appendChild(tdN);
+    tr.appendChild(el('td', 'ebep-tab-g', l.cls.toUpperCase()));
+    adapts.forEach(a=>{
+      const td=el('td', 'ebep-tab-a');
+      const cb=el('input'); cb.type='checkbox'; cb.checked=!!l.fiche[a.key]; cb.title=a.label+' — '+l.nom;
+      cb.onchange=()=>{ l.fiche[a.key]=cb.checked; saveS(); renderEbepPage(); };
+      td.appendChild(cb); tr.appendChild(td);
     });
-    const grpAucune = renderGrp('— Sans adaptation cochée', elevesParAdapt._aucune);
-    if(grpAucune) cb.appendChild(grpAucune);
-
-    if(!totalCol){
-      const empty = document.createElement('div');
-      empty.style.cssText='font-size:11px;color:var(--tx3);font-style:italic;text-align:center;padding:12px 6px';
-      empty.textContent='Aucun élève EBEP correspondant aux filtres.';
-      cb.appendChild(empty);
-    }
-
-    col.appendChild(cb);
-    grid.appendChild(col);
+    const tdB=el('td', 'ebep-tab-a');
+    const desc=String(l.fiche.notes||'').trim();
+    if(desc){ const bb=el('button', 'ebep-besoin-b', '📋'); bb.type='button'; bb.title='Description du besoin';
+      bb.onclick=()=>{ const deja=estOuvert && _ebepPageState.besoin; _ebepPageState.ouvert=deja ? null : cle; _ebepPageState.besoin=!deja; renderEbepPage(); }; tdB.appendChild(bb); }
+    else tdB.appendChild(el('span', 'ebep-muet', '—'));
+    tr.appendChild(tdB);
+    tr.appendChild(el('td', 'ebep-tab-a'+(ap.length?' ebep-apr':' ebep-muet'), ap.length ? ap.length+' à préparer' : '—'));
+    tbody.appendChild(tr);
+    if(estOuvert) tbody.appendChild(_ebepDetail(l, ap, desc, adapts.length+4));
   });
-
-  // Footer : bouton "Réinitialiser les filtres"
-  if(_ebepPageState.cats.size || _ebepPageState.adapts.size || _ebepPageState.classes.size){
-    const resetWrap = document.createElement('div');
-    resetWrap.style.cssText='margin-top:1rem;text-align:center';
-    const reset = document.createElement('button');
-    reset.className='bs';
-    reset.style.cssText='font-size:11px;padding:5px 14px';
-    reset.textContent='Réinitialiser les filtres (sauf niveaux)';
-    reset.onclick=()=>{
-      _ebepPageState.cats.clear();
-      _ebepPageState.adapts.clear();
-      _ebepPageState.classes.clear();
-      renderEbepPage();
-    };
-    resetWrap.appendChild(reset);
-    body.appendChild(resetWrap);
+  const tot=el('tr', 'ebep-tab-tot'); tot.appendChild(el('td', 'ebep-tab-g', 'Total')); tot.appendChild(el('td'));
+  adapts.forEach(a=>tot.appendChild(el('td', 'ebep-tab-a', String(lignes.filter(l=>l.fiche[a.key]).length))));
+  tot.appendChild(el('td')); tot.appendChild(el('td'));
+  tbody.appendChild(tot);
+  const boite=el('div', 'ebep-tab-boite'); boite.appendChild(t); body.appendChild(boite);
+}
+/** Détail d'un élève (maquette A), sous sa ligne du tableau. */
+function _ebepDetail(l, ap, desc, span){
+  const el=(tag, cls, txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
+  const tr=el('tr', 'ebep-det-l'); const td=el('td'); td.colSpan=span; tr.appendChild(td);
+  const card=el('div', 'ebep-det'); td.appendChild(card);
+  if(desc){
+    const bb=el('button', 'ebep-det-bb'+(_ebepPageState.besoin?' on':''), (_ebepPageState.besoin?'▾':'▸')+' Description du besoin'); bb.type='button';
+    bb.onclick=()=>{ _ebepPageState.besoin=!_ebepPageState.besoin; renderEbepPage(); };
+    card.appendChild(bb);
+    if(_ebepPageState.besoin) card.appendChild(el('div', 'ebep-det-desc', desc));
   }
+  const g=el('div', 'ebep-det-g'); card.appendChild(g);
+  const c1=el('div'); c1.appendChild(el('div', 'ebep-det-h', 'À préparer — 7 prochains jours'));
+  if(!ap.length) c1.appendChild(el('div', 'ebep-muet', 'Rien à préparer.'));
+  ap.forEach(x=>{ const r=el('div', 'ebep-det-it'); r.appendChild(el('span', 'ebep-det-d', ((typeof _homeFormatDate==='function') ? _homeFormatDate(x.dateStr) : x.dateStr)+' '+x.debut)); r.appendChild(document.createTextNode(' '+x.texte)); c1.appendChild(r); });
+  g.appendChild(c1);
+  const c2=el('div'); c2.appendChild(el('div', 'ebep-det-h', 'Notes'));
+  const ajout=el('div', 'ebep-note-aj');
+  const inp=el('input', 'ebep-note-in'); inp.placeholder='Ajouter une note datée du jour…';
+  const ok=el('button', 'bs', 'Ajouter'); ok.type='button';
+  const go=()=>{ if(_ebepNoteAjouter(l.cls, l.uid, inp.value)){ saveS(); renderEbepPage(); const n=document.querySelector('.ebep-note-in'); if(n) n.focus(); } };
+  ok.onclick=go; inp.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } };
+  ajout.appendChild(inp); ajout.appendChild(ok); c2.appendChild(ajout);
+  const j=Array.isArray(l.fiche.journal) ? l.fiche.journal : [];
+  if(!j.length) c2.appendChild(el('div', 'ebep-muet', 'Aucune note.'));
+  j.forEach(n=>{
+    const r=el('div', 'ebep-det-it');
+    r.appendChild(el('span', 'ebep-det-d', (typeof _homeFormatDate==='function') ? _homeFormatDate(n.d) : n.d));
+    r.appendChild(document.createTextNode(' '+n.t+' '));
+    const x=el('button', 'ebep-note-x', '×'); x.type='button'; x.title='Supprimer cette note';
+    x.onclick=()=>{ if(!confirm('Supprimer cette note ?')) return; _ebepNoteRetirer(l.cls, l.uid, n.id); saveS(); renderEbepPage(); };
+    r.appendChild(x); c2.appendChild(r);
+  });
+  g.appendChild(c2);
+  return tr;
 }
 
 function getBesoinsSummary(uid){
