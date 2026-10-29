@@ -100,6 +100,34 @@ button,input{font-family:'DM Sans',sans-serif}
 .home-date strong{font-size:1.05rem;color:var(--tx);display:block}
 .home-hdr-btns{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .hdr-icon-btn{width:48px;height:48px;border-radius:var(--r2);border:1.5px solid var(--brd);background:var(--sur2);cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+/* V11.5.1 — thème saisonnier de l'accueil (bureau) */
+#menu.th-automne{--bg:#F4EADB;--sur2:#EFDDC3;--brd:#D8BC94;--brd2:#C9A577;--acc:#8E3414;--acc-l:#F3DCC4;--tx3:#8C7A62;background:var(--bg)}
+#menu.th-hiver{--bg:#EEF2F7;--sur2:#E3EAF2;--brd:#C3CFDD;--brd2:#9FB2C8;--acc:#1F3B63;--acc-l:#DDE6F2;--tx3:#7D8899;background:var(--bg)}
+#menu.th-automne .home-header,#menu.th-hiver .home-header{position:relative;border-bottom:0}
+#menu.th-automne .home-header{background:linear-gradient(100deg,#8E3414,#C4631F 55%,#D9A03A)}
+#menu.th-hiver .home-header{background:linear-gradient(100deg,#1F3B63,#3C6390 60%,#7FA3C8)}
+#menu.th-automne .home-header::after,#menu.th-hiver .home-header::after{content:'';position:absolute;left:0;right:0;bottom:-6px;height:6px;z-index:1;pointer-events:none}
+#menu.th-automne .home-header::after{background:repeating-linear-gradient(90deg,#C4631F 0 18px,#D9A03A 18px 36px,#8A8A2E 36px 54px)}
+#menu.th-hiver .home-header::after{background:repeating-linear-gradient(90deg,#DCE7F3 0 18px,#FFFFFF 18px 36px,#B9CCE2 36px 54px)}
+#menu.th-automne .m-title,#menu.th-hiver .m-title,#menu.th-automne .m-title span,#menu.th-hiver .m-title span{color:#fff}
+#menu.th-automne .m-title::before{content:'🍁 ';font-size:.8em}
+#menu.th-hiver .m-title::before{content:'❄ ';font-size:.8em}
+#menu.th-automne .m-version,#menu.th-hiver .m-version{color:rgba(255,255,255,.8)}
+#menu.th-automne .home-date,#menu.th-hiver .home-date,#menu.th-automne .home-date strong,#menu.th-hiver .home-date strong{color:#fff}
+#menu.th-automne .hdr-icon-btn,#menu.th-hiver .hdr-icon-btn{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.35)}
+#menu.th-automne .hdr-icon-btn.primary{background:#5E2109;border-color:#5E2109}
+#menu.th-hiver .hdr-icon-btn.primary{background:#132743;border-color:#132743}
+#menu.th-automne #rappels-bandeau{background:#FBF2E6;padding-top:calc(.45rem + 6px)}
+#menu.th-hiver #rappels-bandeau{background:#F7FAFD;padding-top:calc(.45rem + 6px)}
+#menu.th-automne .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FFFBF5}
+#menu.th-hiver .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FBFDFF}
+.th-ligne{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 .9rem;padding:8px 12px;border:1px solid var(--brd);border-radius:12px;background:var(--sur)}
+.th-lab{font-size:13px;font-weight:800}
+.th-seg{display:inline-flex;border:1px solid var(--brd);border-radius:var(--r2);overflow:hidden}
+.th-seg-b{border:0;border-left:1px solid var(--brd);background:var(--sur);color:var(--tx);font-size:12px;padding:6px 11px;cursor:pointer;font-family:inherit}
+.th-seg-b:first-child{border-left:0}
+.th-seg-b.on{background:var(--acc);color:#fff;font-weight:700}
+.th-info{font-size:11.5px;color:var(--tx3)}
 .hdr-icon-btn:hover{border-color:var(--acc);background:var(--acc-l)}
 .hdr-icon-btn.primary{background:var(--acc);border-color:var(--acc)}
 .hdr-icon-btn.primary:hover{background:#1E3D1A}
@@ -2432,6 +2460,32 @@ body.is-phone-landscape .home-mobile .hm-body > .hm-col:first-child{
   letter-spacing:.04em;
 }
 .hm-card-arrow{font-size:14px;color:var(--tx3);flex-shrink:0}
+/* V11.5.0 — photocopies sur mobile */
+.hm-imp-pill{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:999px;border:1px solid #F5B4AE;background:#FDE2E0;color:#8E1B1B;font-size:11px;font-weight:800;font-family:inherit;cursor:pointer;flex-shrink:0}
+.hm-imp-badge{font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:999px;flex-shrink:0;white-space:nowrap}
+.hm-imp-rouge{background:#FDE2E0;color:#8E1B1B}
+.hm-imp-ambre{background:#FEF3C7;color:#92400E}
+.hm-imp-vert{background:#DCFCE7;color:#166534}
+.hm-imp-docs{font-size:10.5px;color:var(--tx2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-imp-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:460;display:flex;flex-direction:column;justify-content:flex-end}
+.hm-imp-sheet{background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -6px 18px rgba(0,0,0,.15);max-height:82vh;display:flex;flex-direction:column;padding:6px 12px calc(12px + env(safe-area-inset-bottom))}
+.hm-imp-grab{width:38px;height:4px;border-radius:2px;background:#ccc;margin:2px auto 6px}
+.hm-imp-head{display:flex;align-items:center;gap:8px;padding-bottom:6px}
+.hm-imp-titre{flex:1;font-weight:800;font-size:14px}
+.hm-imp-x{border:1px solid var(--brd);background:#fff;border-radius:8px;width:32px;height:32px;font-size:14px;font-family:inherit;cursor:pointer}
+.hm-imp-liste{overflow-y:auto;-webkit-overflow-scrolling:touch}
+.hm-imp-vide{padding:16px 4px;color:var(--tx2);font-size:13px;text-align:center}
+.hm-imp-ligne{border-top:1px solid var(--brd);padding:9px 0}
+.hm-imp-top{display:flex;gap:9px;align-items:flex-start;cursor:pointer}
+.hm-imp-box{width:18px;height:18px;border:1.5px solid var(--brd2);border-radius:5px;flex:none;margin-top:1px}
+.hm-imp-ligne.on .hm-imp-box{border-color:var(--acc);background:var(--acc-l)}
+.hm-imp-c{flex:1;min-width:0}
+.hm-imp-doc{font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hm-imp-tag{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px}
+.hm-imp-s{font-size:11px;color:var(--tx2);margin-top:2px}
+.hm-imp-form{display:flex;align-items:center;gap:8px;margin:8px 0 0 27px;font-size:13px}
+.hm-imp-num{width:70px;padding:7px 8px;border:1px solid var(--brd);border-radius:8px;font-size:15px;font-family:inherit}
+.hm-imp-ok{padding:8px 14px;border:0;border-radius:8px;background:var(--acc);color:#fff;font-weight:700;font-family:inherit;font-size:13px;cursor:pointer}
 
 /* Carte réunion (REU) — sans clic, info pure */
 .hm-card.reu{
@@ -4581,7 +4635,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.55';
+const APP_VERSION = 'v11.5.1';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7432,6 +7486,168 @@ function _hmGetTargetDate(){
   return {targetDate:edtViewDate, targetStr, isToday:targetStr===todayStr};
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   V11.5.0 — Photocopies sur l'accueil MOBILE (maquettes M1 + M2, 29/10)
+   ─ pastille « 🖨️ N » en tête (documents dont le niveau n'est pas couvert
+     sur 3 semaines, même compte que la tuile du bureau) → feuille à cocher
+     « À imprimer · 3 semaines » ; « J'ai imprimé N » = _impAjouter (ajout) ;
+   ─ badge 🖨️ sur chaque cours du jour affiché (✓ / N / manque N) + noms des
+     documents ; un cours enregistré, annulé ou passé n'en a pas.
+   Les données viennent du moteur des Impressions (_impCollecte), rien de neuf.
+   ════════════════════════════════════════════════════════════════════ */
+var _hmImpCartes = [];
+var _hmImpCache = null;
+var _hmImpOuvert = '';
+/** Collecte du moteur Impressions, gardée 30 s (vidée à chaque impression saisie). */
+function _hmImpCol(t, au){
+  if(_hmImpCache && _hmImpCache.t===t && _hmImpCache.au===au && Date.now()-_hmImpCache.at<30000) return _hmImpCache.col;
+  const col=_impCollecte(t, au);
+  _hmImpCache={t, au, at:Date.now(), col};
+  return col;
+}
+/** Documents à imprimer (rouge : jamais imprimé ; ambre : stock insuffisant), dans l'ordre des Impressions. Pure. */
+function _hmImpAFaire(col){
+  return _impLignes(col||{docs:{}}).filter(d=>d && d.bilan && (d.bilan.statut==='rouge' || d.bilan.statut==='ambre'));
+}
+/** État d'un cours pour ses documents : {etat:'vert'|'ambre'|'rouge', n, docs} ou null (aucun document suivi). Pure. */
+function _hmImpCours(col, lv, cls, gid, docs){
+  const L=(Array.isArray(docs)?docs:[]).map(_impLibelle).filter(Boolean);
+  let etat='', n=0;
+  const suivis=[];
+  L.forEach(l=>{
+    const d=col && col.docs && col.docs[_impCle(lv, l)];
+    const st=d && d.bilan && d.bilan.parPublic && d.bilan.parPublic[cls+'|'+(gid||'')];
+    if(!st) return;
+    suivis.push(l);
+    if(st.statut==='rouge'){ etat='rouge'; n+=Math.max(0, st.manque|0); }
+    else if(st.statut==='ambre'){ if(etat!=='rouge') etat='ambre'; n+=Math.max(0, st.manque|0); }
+    else if(!etat) etat='vert';
+  });
+  if(!suivis.length) return null;
+  return {etat, n, docs:suivis};
+}
+/** Texte du badge d'un cours. Pure. */
+function _hmImpBadgeTexte(r){
+  if(!r) return '';
+  if(r.etat==='rouge') return '🖨️ '+r.n;
+  if(r.etat==='ambre') return '🖨️ manque '+r.n;
+  return '🖨️ ✓';
+}
+/** Pastille d'en-tête + badges des cartes (createElement). */
+function _hmImpDecorer(root, targetStr){
+  if(!root || typeof _impCollecte!=='function') return;
+  const t=_appToday(), au=_impDateDecalee(t, 21);
+  const col=_hmImpCol(t, au);
+  const n=_hmImpAFaire(col).length;
+  const r2=root.querySelector('.hm-header-r2');
+  if(r2 && n){
+    const pill=document.createElement('button');
+    pill.type='button'; pill.className='hm-imp-pill'; pill.id='hm-imp-pill';
+    pill.textContent='🖨️ '+n;
+    pill.title=n+' document(s) à imprimer (3 semaines)';
+    pill.onclick=(e)=>{ e.stopPropagation(); _hmImpOuvrir(); };
+    const sync=r2.querySelector('.hm-sync-pill');
+    if(sync && sync.nextSibling) r2.insertBefore(pill, sync.nextSibling); else r2.insertBefore(pill, r2.firstChild);
+  }
+  if(!targetStr || targetStr<t || !_hmImpCartes.length) return;
+  const colJ=(targetStr<=au) ? col : _hmImpCol(t, targetStr);
+  root.querySelectorAll('[data-hm-k]').forEach(card=>{
+    if(card.classList.contains('cancelled')) return;
+    const info=_hmImpCartes[Number(card.getAttribute('data-hm-k'))];
+    if(!info || !info.cls || !S.cl || !S.cl[info.cls]) return;
+    let slots=[]; try{ slots=buildYearSlots(info.cls)||[]; }catch(e){ slots=[]; }
+    const sl=slots.find(x=>x && x.dateStr===targetStr && x.debut===info.debut);
+    if(!sl || sl.saved) return;
+    let ds=[]; try{ ds=_docsDistribuesAuCours(sl.slotKey, info.cls)||[]; }catch(e){ ds=[]; }
+    const r=_hmImpCours(colJ, _sdcNiveau(info.cls), info.cls, _numPublicDuSlot(sl), ds);
+    if(!r) return;
+    const b=document.createElement('span');
+    b.className='hm-imp-badge hm-imp-'+r.etat;
+    b.textContent=_hmImpBadgeTexte(r);
+    b.title=r.docs.join(' · ');
+    if(r.etat!=='vert') b.onclick=(e)=>{ e.stopPropagation(); _hmImpOuvrir(); };
+    const arrow=card.querySelector('.hm-card-arrow');
+    if(arrow) card.insertBefore(b, arrow); else card.appendChild(b);
+    const main=card.querySelector('.hm-card-main');
+    if(main){
+      const sub=document.createElement('div');
+      sub.className='hm-imp-docs';
+      sub.textContent=r.docs.join(' · ');
+      main.appendChild(sub);
+    }
+  });
+}
+function _hmImpFermer(){
+  const bg=document.getElementById('hm-imp-bg');
+  if(bg) bg.remove();
+  _hmImpOuvert='';
+  document.removeEventListener('keydown', _hmImpEchap, true);
+}
+function _hmImpEchap(e){ if(e.key==='Escape'){ e.stopPropagation(); _hmImpFermer(); } }
+/** Feuille « À imprimer · 3 semaines » (createElement). */
+function _hmImpOuvrir(){
+  let bg=document.getElementById('hm-imp-bg');
+  if(!bg){
+    bg=document.createElement('div'); bg.id='hm-imp-bg'; bg.className='hm-imp-bg';
+    let depart=null;
+    bg.addEventListener('pointerdown', (e)=>{ depart=e.target; });
+    bg.addEventListener('click', (e)=>{ if(e.target===bg && depart===bg) _hmImpFermer(); });
+    document.body.appendChild(bg);
+    document.addEventListener('keydown', _hmImpEchap, true);
+  }
+  bg.textContent='';
+  const sh=document.createElement('div'); sh.className='hm-imp-sheet'; bg.appendChild(sh);
+  const grab=document.createElement('div'); grab.className='hm-imp-grab'; sh.appendChild(grab);
+  const head=document.createElement('div'); head.className='hm-imp-head'; sh.appendChild(head);
+  const ti=document.createElement('div'); ti.className='hm-imp-titre'; ti.textContent='🖨️ À imprimer · 3 semaines'; head.appendChild(ti);
+  const x=document.createElement('button'); x.type='button'; x.className='hm-imp-x'; x.textContent='✕'; x.title='Fermer';
+  x.onclick=(e)=>{ e.stopPropagation(); _hmImpFermer(); }; head.appendChild(x);
+  const liste=document.createElement('div'); liste.className='hm-imp-liste'; sh.appendChild(liste);
+  const t=_appToday();
+  const lignes=_hmImpAFaire(_hmImpCol(t, _impDateDecalee(t, 21)));
+  if(!lignes.length){
+    const v=document.createElement('div'); v.className='hm-imp-vide'; v.textContent='Rien à imprimer pour les 3 semaines à venir ✓';
+    liste.appendChild(v); return;
+  }
+  lignes.forEach(d=>liste.appendChild(_hmImpLigne(d)));
+}
+/** Une ligne de la feuille ; un appui ouvre « J'ai imprimé N ». */
+function _hmImpLigne(d){
+  const row=document.createElement('div'); row.className='hm-imp-ligne'+(_hmImpOuvert===d.cle?' on':'');
+  const top=document.createElement('div'); top.className='hm-imp-top'; row.appendChild(top);
+  const box=document.createElement('span'); box.className='hm-imp-box'; top.appendChild(box);
+  const c=document.createElement('div'); c.className='hm-imp-c'; top.appendChild(c);
+  const l1=document.createElement('div'); l1.className='hm-imp-doc';
+  const nom=document.createElement('b'); nom.textContent=d.label; l1.appendChild(nom);
+  const tag=document.createElement('span');
+  tag.className='hm-imp-tag hm-imp-'+d.bilan.statut;
+  tag.textContent=d.bilan.statut==='ambre' ? 'manque '+d.bilan.manque : String(d.bilan.manque);
+  l1.appendChild(tag); c.appendChild(l1);
+  const P=d.prevus.filter(p=>{ const st=d.bilan.parPublic[p.cle]; return !st || st.statut!=='vert'; })
+    .sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut));
+  const ebep=P.reduce((s,p)=>s+_impEbep(p.cls, p.gid, 'photo').length, 0);
+  const l2=document.createElement('div'); l2.className='hm-imp-s';
+  l2.textContent=d.lv+(P.length ? ' · '+_homeFormatDate(P[0].dateStr)+' · '+P.map(p=>p.label).join(', ') : '')
+    +(ebep ? ' · dont '+ebep+' adapté'+(ebep>1?'s':'') : '');
+  c.appendChild(l2);
+  top.onclick=(e)=>{ e.stopPropagation(); _hmImpOuvert=(_hmImpOuvert===d.cle)?'':d.cle; _hmImpOuvrir(); };
+  if(_hmImpOuvert===d.cle){
+    const f=document.createElement('div'); f.className='hm-imp-form'; row.appendChild(f);
+    const lab=document.createElement('span'); lab.textContent='J’ai imprimé'; f.appendChild(lab);
+    const inp=document.createElement('input'); inp.type='number'; inp.min='0'; inp.step='1'; inp.inputMode='numeric';
+    inp.className='hm-imp-num'; inp.value=String(Math.max(0, d.bilan.manque|0)); inp.setAttribute('aria-label', 'Exemplaires imprimés');
+    f.appendChild(inp);
+    const ok=document.createElement('button'); ok.type='button'; ok.className='hm-imp-ok'; ok.textContent='Valider';
+    ok.onclick=(e)=>{ e.stopPropagation();
+      if(_impAjouter(d.cle, d.lv, d.label, inp.value, 'add')){
+        _hmImpOuvert=''; _hmImpCache=null; _hmImpOuvrir();
+        try{ renderHomeMobile(); }catch(er){}
+      } };
+    f.appendChild(ok);
+    inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); ok.click(); } });
+  }
+  return row;
+}
 function _hmRenderCard(ev, todayStr, isToday, now){
   // Réunion @REU : carte info sans interaction
   if(ev._reu){
@@ -7493,6 +7709,7 @@ function _hmOpenPlan(rawCode, slotKey){
 function renderHomeMobile(){
   const root = document.getElementById('home-mobile');
   if(!root) return;
+  _hmImpCartes = [];   // V11.5.0
   // Cible date courante (mêmes règles que renderEdtList)
   const {targetDate, targetStr, isToday, noEdt} = _hmGetTargetDate();
   const now = (typeof _appNow === 'function') ? _appNow() : new Date();
@@ -7555,7 +7772,10 @@ function renderHomeMobile(){
       const amCards=[], pmCards=[];
       evs.forEach(ev=>{
         const isAM = ev.start.getHours()<CUT_H || (ev.start.getHours()===CUT_H && ev.start.getMinutes()<CUT_M);
-        const html = _hmRenderCard(ev, targetStr, isToday, now);
+        let html = _hmRenderCard(ev, targetStr, isToday, now);
+        // V11.5.0 — repère de la carte pour le badge 🖨️ (posé après le rendu, _hmImpDecorer)
+        if(!ev._reu){ try{ const _b=(typeof matchBellSlot==='function') ? (matchBellSlot(ev.start)||{}).debut : ''; _hmImpCartes.push({cls:extractClassCode(ev.summary)||'', debut:_b||formatHHMM(ev.start)});
+          html=html.replace(' class="hm-card', ' data-hm-k="'+(_hmImpCartes.length-1)+'" class="hm-card'); }catch(e){} }
         (isAM ? amCards : pmCards).push(html);
       });
       const amBlock = amCards.length
@@ -7577,6 +7797,7 @@ function renderHomeMobile(){
     + '</div>';
   root.innerHTML = headerHtml + bodyHtml + footerHtml;
   _hmRenderSyncPill();
+  try{ _hmImpDecorer(root, targetStr); }catch(e){ console.warn('[hm-imp]', e); }   // V11.5.0
 }
 
 // V020-v181.4.15 — Brouillon persistant des textareas du modal séance.
@@ -16147,7 +16368,7 @@ function _impVisibleSansCours(rec, stock){
 function _impRetirer(cle){
   const st=_impStore(); if(!st.docs[cle]) return;
   st.docs[cle].retire=Date.now();
-  _impTuileAt=0; saveS();
+  _impTuileAt=0; _hmImpCache=null; saveS();
 }
 /** V11.4.40 — État d'un document qu'aucun cours programmé n'appelle. Pure.
  *  'aucun' (jamais imprimé, ou stock épuisé) | 'retire' (« Retirer ») |
@@ -16190,7 +16411,7 @@ function _impOccurrences(lv){
 function _impRetablir(cle){
   const st=_impStore(); const r=st.docs[cle]; if(!r) return;
   delete r.retire; r.retabli=Date.now();
-  _impTuileAt=0; saveS();
+  _impTuileAt=0; _hmImpCache=null; saveS();
 }
 function _impStore(){
   if(!S.impressions || typeof S.impressions!=='object') S.impressions={};
@@ -16275,7 +16496,7 @@ function _impEnregistrerDistribution(cls, slotKey, seance){
   const entries=_impDocsDeSeance(seance.taskRows).map(l=>({doc:_impCle(lv, l), n})).filter(e=>e.doc);
   const st=_impStore();
   st.distrib=_impMajLedger(st.distrib, slotKey+'|'+cls+'|'+gid, entries, Date.now());
-  _impTuileAt=0;
+  _impTuileAt=0; _hmImpCache=null;
 }
 function _impAjouter(cle, lv, label, n, mode){
   const v=Math.round(Number(n));
@@ -16285,7 +16506,7 @@ function _impAjouter(cle, lv, label, n, mode){
   if(!Array.isArray(st.docs[cle].evts)) st.docs[cle].evts=[];
   st.docs[cle].evts.push({ts:Date.now(), n:v, mode:mode==='set'?'set':'add'});
   delete st.docs[cle].retire;
-  _impTuileAt=0;
+  _impTuileAt=0; _hmImpCache=null;
   saveS();
   return true;
 }
@@ -17989,6 +18210,59 @@ function _paramsFamilies(){
   return fams;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   V11.5.1 — Thème saisonnier de l'accueil (maquette C retenue le 29/10)
+   Réglage S.reglages.themeAccueil : 'auto' (défaut : selon la saison),
+   'normal', 'automne', 'hiver'. Seul l'accueil du BUREAU (#menu) change :
+   couleurs redéfinies dans sa portée + bandeau + frise. Mobile inchangé.
+   ════════════════════════════════════════════════════════════════════ */
+const THEMES_ACCUEIL=[['auto','Selon la saison'],['normal','Normal'],['automne','🍁 Automne'],['hiver','❄ Hiver']];
+/** Thème réellement affiché pour un choix et une date AAAA-MM-JJ : 'automne' | 'hiver' | ''. Pure.
+ *  Saison : automne du 22/09 au 20/12, hiver du 21/12 au 19/03, sinon aspect normal. */
+function _themeAccueilEffectif(choix, dateStr){
+  const c=String(choix||'auto');
+  if(c==='automne' || c==='hiver') return c;
+  if(c==='normal') return '';
+  const md=String(dateStr||'').slice(5,10);
+  if(!/^\d\d-\d\d$/.test(md)) return '';
+  if(md>='09-22' && md<='12-20') return 'automne';
+  if(md>='12-21' || md<='03-19') return 'hiver';
+  return '';
+}
+function _themeAccueilChoix(){
+  const r=(S && S.reglages) || {};
+  return THEMES_ACCUEIL.some(t=>t[0]===r.themeAccueil) ? r.themeAccueil : 'auto';
+}
+function _themeAccueilAppliquer(){
+  const m=document.getElementById('menu'); if(!m) return;
+  const th=_themeAccueilEffectif(_themeAccueilChoix(), _appToday());
+  m.classList.remove('th-automne','th-hiver');
+  if(th) m.classList.add('th-'+th);
+}
+function _themeAccueilChoisir(v){
+  if(!THEMES_ACCUEIL.some(t=>t[0]===v)) return;
+  if(!S.reglages || typeof S.reglages!=='object') S.reglages={};
+  S.reglages.themeAccueil=v;
+  saveS();
+  _themeAccueilAppliquer();
+}
+/** Ligne « Thème de l'accueil » (Paramètres › Accueil), createElement. */
+function _themeAccueilLigne(){
+  const row=document.createElement('div'); row.className='th-ligne';
+  const lab=document.createElement('span'); lab.className='th-lab'; lab.textContent='🎨 Thème de l’accueil'; row.appendChild(lab);
+  const seg=document.createElement('div'); seg.className='th-seg'; row.appendChild(seg);
+  const cur=_themeAccueilChoix();
+  THEMES_ACCUEIL.forEach(([v,l])=>{
+    const b=document.createElement('button'); b.type='button'; b.className='th-seg-b'+(v===cur?' on':''); b.textContent=l;
+    b.onclick=()=>{ _themeAccueilChoisir(v); renderParamsAccueil(); };
+    seg.appendChild(b);
+  });
+  const eff=_themeAccueilEffectif(cur, _appToday());
+  const info=document.createElement('span'); info.className='th-info';
+  info.textContent=cur==='auto' ? 'aujourd’hui : '+(eff==='automne'?'automne (22/09 → 20/12)':eff==='hiver'?'hiver (21/12 → 19/03)':'normal') : '';
+  row.appendChild(info);
+  return row;
+}
 function renderParamsAccueil(){
   const pane=document.getElementById('params-pane-accueil');
   if(!pane) return;
@@ -17997,6 +18271,7 @@ function renderParamsAccueil(){
   intro.style.cssText='font-size:12px;color:var(--tx3);margin:0 0 .9rem;line-height:1.5';
   intro.textContent='Vue d\u2019ensemble de la configuration. Cliquez une carte pour ouvrir la famille, ou un lien pour aller droit à la section.';
   pane.appendChild(intro);
+  try{ pane.appendChild(_themeAccueilLigne()); }catch(e){ console.warn('[theme]', e); }   // V11.5.1
   const grid=document.createElement('div');
   grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;align-items:stretch';
   pane.appendChild(grid);
@@ -24075,6 +24350,7 @@ function renderContraintesForCls(pane, clsCode, clsSel){
 }
 
 function renderMenu(){
+  try{ _themeAccueilAppliquer(); }catch(e){ console.warn('[theme]', e); }   // V11.5.1
   const g=document.getElementById('m-grid'); g.innerHTML='';
   LEVELS.forEach(lv=>{
     const on=S.en[lv];
