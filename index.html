@@ -2925,6 +2925,7 @@ body:has(#imp-bg) #font-ctrl{display:none}
 td.cov2-code{padding:6px 12px;font-family:'DM Mono',ui-monospace,monospace;font-size:11px;font-weight:600;white-space:nowrap}
 td.cov2-lbl{padding:6px 12px;max-width:520px}
 td.cov2-lbl:hover{text-decoration:underline}
+.cov2-lbl-t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 td.cov2-c{text-align:center;border-left:1px solid var(--brd);padding:4px}
 td.cov2-c i{display:inline-block;width:26px;height:16px;border-radius:4px}
 i.cov2-t{background:#BFD0F5}
@@ -4550,7 +4551,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.49';
+const APP_VERSION = 'v11.4.50';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -55578,7 +55579,7 @@ function renderProgCoverageMock(){
   wrap.appendChild(legend);
   const panel=document.createElement('div'); panel.className='progmk-cov-panel';
   const sourceItems=(pane._view==='comp')? activeLevels.flatMap(lv=>getRefItems(lv, getMatierePrincipale()).map(it=>({...it,_lv:lv}))) : activeLevels.flatMap(lv=>getRefKnowledges(lv, getMatierePrincipale()).map(it=>({...it,_lv:lv}))); // V035-V11.2.4 (v-b1) — couverture sur la principale (mono-matière : aucun mélange inter-référentiels)
-  const uniq={}; sourceItems.forEach(it=>{ if(!uniq[it.id]) uniq[it.id]={id:it.id,label:it.label,domaine:it.domaine}; });
+  const uniq={}; sourceItems.forEach(it=>{ if(!uniq[it.id]) uniq[it.id]={id:it.id,label:(typeof _refTexteOrigine==='function') ? _refTexteOrigine(it) : it.label,domaine:it.domaine}; });   // V11.4.50 — texte d'origine
   let rows=Object.values(uniq);
   if(pane._group==='domaine'){
     const grouped={}; rows.forEach(it=>{ const k=it.domaine||'Sans domaine'; if(!grouped[k]) grouped[k]={id:k,label:k,ids:[]}; grouped[k].ids.push(it.id); }); rows=Object.values(grouped);
@@ -55591,7 +55592,7 @@ function renderProgCoverageMock(){
   const tbody=document.createElement('tbody');
   rows.forEach(row=>{
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${escapeHtml(progMkShorten(row.label,72))}</td>`;
+    tr.innerHTML=`<td title="${escapeHtml(row.label)}">${escapeHtml(progMkShorten(row.label,72))}</td>`;
     let totalSeq=0;
     activeLevels.forEach(lv=>{
       const prog=getProgression(lv); const count=progMkCoverageCount(row.ids, prog); totalSeq+=count; const cls=count===0?'progmk-cov-none':count===1?'progmk-cov-low':count<=3?'progmk-cov-mid':'progmk-cov-high'; const sym=count===0?'□':count===1?'░':count<=3?'▓':'█'; const td=document.createElement('td'); td.innerHTML=`<button class="progmk-cov-btn ${cls}">${sym}</button>`; td.querySelector('button').title=`${row.label} · ${LBL[lv]||lv} · ${count} séquence(s)`; td.querySelector('button').onclick=()=>{ pane._detail={label:row.label,ids:row.ids,scope:lv,view:pane._view}; renderProgCoverageMock(); }; tr.appendChild(td);
@@ -66176,6 +66177,15 @@ const PROG_TECHNO_C4={
 };
 /** Place d'un identifiant de l'appli dans le programme. Pure.
  *  « OST12-5-3 » → {bloc:'OST12', theme:'OST', comp:'1', niv:'5', idx:2} ; « CCRI11-5 » → idx 0 ; sinon null. */
+/** V11.4.50 — Intitulé d'ORIGINE d'une compétence : le repère du programme officiel pour une
+ *  compétence de technologie (OST/SFC/CCRI), sinon l'intitulé tel qu'il est stocké. */
+function _refTexteOrigine(it){
+  if(!it) return '';
+  const pl=_progPlace(it.id), P=(typeof PROG_TECHNO_C4!=='undefined') ? PROG_TECHNO_C4 : null;
+  const bloc=(pl && P && P.blocs) ? P.blocs[pl.bloc] : null;
+  const rep=bloc ? ((bloc.reperes||{})[pl.niv]||[])[pl.idx] : '';
+  return String(rep || it.label || '').trim();
+}
 function _progPlace(id){
   const m=String(id||'').match(/^(OST|SFC|CCRI)(\d)(\d)-([345])(?:-(\d+))?$/);
   if(!m) return null;
@@ -66562,7 +66572,8 @@ function _covRendreSequences(pane){
     F.sous.forEach(s=>s.items.forEach(it=>{
       const tr=_refEl('tr');
       const cc=_refEl('td', 'cov2-code', it.id); cc.style.color=F.coul; tr.appendChild(cc);
-      const cl=_refEl('td', 'cov2-lbl', it.label); cl.title=it.label; tr.appendChild(cl);
+      const _orig=_refTexteOrigine(it);   // V11.4.50 — texte d'origine, tronqué à 2 lignes, complet au survol
+      const cl=_refEl('td', 'cov2-lbl'); cl.appendChild(_refEl('span', 'cov2-lbl-t', _orig)); cl.title=_orig; tr.appendChild(cl);
       let n=0;
       prog.forEach(q=>{ const e=_covEtat(q, it.id); if(e) n++; const c=_refEl('td', 'cov2-c'); const i=_refEl('i', e==='e'?'cov2-e':e==='t'?'cov2-t':''); c.appendChild(i);
         c.title=(q.titre||'')+(e==='e'?' · prévue en évaluation':e==='t'?' · travaillée':''); tr.appendChild(c); });
