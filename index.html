@@ -4581,7 +4581,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.53';
+const APP_VERSION = 'v11.4.54';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -4958,73 +4958,87 @@ const REFERENTIELS_DEFAULT = {
    Préfixe K- + code domaine Boizard
 ============================================================ */
 const REFERENTIELS_K = [
-  // ── OST1 – Évolution des OST ──────────────────────────────
-  {id:'K-OST1-1', label:'Éléments qui participent à l\'évolution des besoins (invention, innovation, développement durable)', domaine:'OST1 – Évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST1-2', label:'Fonction technique, principe technique', domaine:'OST1 – Évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST1-3', label:'Famille et lignée d\'OST', domaine:'OST1 – Évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST1-4', label:'Contraintes sociétales', domaine:'OST1 – Évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST1-5', label:'Grands types d\'apprentissage des IA et leurs usages possibles (géolocalisation, identification, calcul, traduction…)', domaine:'OST1 – Évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST1-6', label:'Incidences sociétales des IA : étude du biais et de l\'effet de l\'usage d\'une IA', domaine:'OST1 – Évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── OST12 – Usages et impacts du numérique ────────────────
-  {id:'K-OST12-1', label:'Système d\'information et stockage des données : fichiers (texte, image, tableur/CSV), dossiers, arborescence', domaine:'OST12 – Numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST12-2', label:'Extension et format de fichiers, droits d\'écriture et de lecture', domaine:'OST12 – Numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST12-3', label:'Unité de quantité d\'information : bit, octet et multiples ; ordres de grandeur (image, son, vidéo)', domaine:'OST12 – Numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST12-4', label:'Incidences liées au stockage, au flux des données et aux réseaux d\'information', domaine:'OST12 – Numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST12-5', label:'Cybersécurité : protection des données personnelles, traces numériques (cookies, géolocalisation), identification, authentification, propriété intellectuelle', domaine:'OST12 – Numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST12-6', label:'Cyberviolence : usurpation d\'identité, usage détourné', domaine:'OST12 – Numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── OST2 – L'OST dans son environnement ──────────────────
-  {id:'K-OST2-1', label:'Interacteurs extérieurs : usagers, données, autres objets, éléments de l\'environnement', domaine:'OST2 – OST dans son environnement', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST2-2', label:'Modes de représentation : croquis, schéma, graphique, algorithme, modélisation', domaine:'OST2 – OST dans son environnement', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST2-3', label:'Contraintes : exigences issues de normes ou cahier des charges, labels et certifications, ergonomie liée à l\'usage', domaine:'OST2 – OST dans son environnement', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── OST3 – Choix d'un OST / Développement durable ────────
-  {id:'K-OST3-1', label:'Composantes d\'une notice et d\'une documentation technique et leur organisation', domaine:'OST3 – Choix OST / DD', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST3-2', label:'Indice énergétique et indice de réparabilité', domaine:'OST3 – Choix OST / DD', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST3-3', label:'Impacts environnementaux : indicateurs air, eau, sol et santé', domaine:'OST3 – Choix OST / DD', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST3-4', label:'Piliers du développement durable et différentes étapes du cycle de vie d\'un OST', domaine:'OST3 – Choix OST / DD', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST3-5', label:'Critères de choix : qualité, efficacité énergétique, durabilité, recyclabilité', domaine:'OST3 – Choix OST / DD', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-OST3-6', label:'Critères de performance d\'un OST : grandeurs mesurables (vitesse, autonomie énergétique…)', domaine:'OST3 – Choix OST / DD', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── SFC11 – Chaîne d'énergie ──────────────────────────────
-  {id:'K-SFC11-1', label:'Formes d\'énergie : électrique, cinétique, potentielle, thermique, lumineuse', domaine:'SFC11 – Chaîne d\'énergie', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC11-2', label:'Conversions d\'énergie : moteur électrique, lampe, radiateur, génératrice, vérin', domaine:'SFC11 – Chaîne d\'énergie', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC11-3', label:'Fonctions des constituants : batterie, relais / interrupteur', domaine:'SFC11 – Chaîne d\'énergie', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC11-4', label:'Mécanismes de transmission et de transformation de mouvements : engrenages, courroies, chaînes', domaine:'SFC11 – Chaîne d\'énergie', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── SFC12 – Matériaux et procédés ─────────────────────────
-  {id:'K-SFC12-1', label:'Caractéristiques et propriétés des principaux matériaux', domaine:'SFC12 – Matériaux et procédés', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC12-2', label:'Caractéristiques des procédés de mise en forme disponibles dans le laboratoire', domaine:'SFC12 – Matériaux et procédés', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC12-3', label:'Étapes du cycle de vie : extraction, traitement, fabrication, assemblage, utilisation, fin de vie, transport ; incidence environnementale', domaine:'SFC12 – Matériaux et procédés', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── SFC13 – Chaîne d'information ─────────────────────────
-  {id:'K-SFC13-1', label:'Fonctions des constituants : capteurs (température, présence, distance…), microcontrôleur, composants IHM (boutons, afficheurs…)', domaine:'SFC13 – Chaîne d\'information', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── SFC14 – Structuration et traitement des données ───────
-  {id:'K-SFC14-1', label:'Vocabulaire des données : objet / descripteur / collection / type (mot, nombre, booléen) / données structurées', domaine:'SFC14 – Données', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC14-2', label:'Représentation des données : bit (0/1), booléens, mots (ASCII étendu), nombres entiers naturels', domaine:'SFC14 – Données', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC14-3', label:'Traitement des données : mise en forme et traitement (calculs, filtre, tri) dans un tableur', domaine:'SFC14 – Données', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── SFC15 – Réseau informatique ───────────────────────────
-  {id:'K-SFC15-1', label:'Réseau local et réseau mondial (Internet)', domaine:'SFC15 – Réseau', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC15-2', label:'Rôle d\'un terminal, carte réseau, liaisons (filaires/non filaires), commutateur, routeur, serveur', domaine:'SFC15 – Réseau', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC15-3', label:'Rôle et structure d\'une adresse IP, rôle des tables de routage', domaine:'SFC15 – Réseau', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC15-4', label:'Débit et ordres de grandeur associés', domaine:'SFC15 – Réseau', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── SFC21 – Dépannage et réparation ──────────────────────
-  {id:'K-SFC21-1', label:'Fiabilité, durabilité, indice de réparabilité', domaine:'SFC21 – Dépannage et réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC21-2', label:'Règles de sécurité et mise en œuvre dans un atelier FabLab (EPI, outillage manuel, appareillage)', domaine:'SFC21 – Dépannage et réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC21-3', label:'Technologie et caractéristiques des composants à remplacer : capteurs, actionneurs, microcontrôleurs, générateurs', domaine:'SFC21 – Dépannage et réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC21-4', label:'Procédés d\'obtention de pièce (ajout/enlèvement de matière), mise en forme (pliage, thermoformage), assemblage (fixe/démontable)', domaine:'SFC21 – Dépannage et réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC21-5', label:'Moyens de production : découpe laser, centre d\'usinage, fabrication additive (imprimante 3D)', domaine:'SFC21 – Dépannage et réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC21-6', label:'Moyens de prototypage électronique : plaque d\'essai, fils, composants électroniques, générateurs', domaine:'SFC21 – Dépannage et réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC21-7', label:'Modes de sollicitation des matériaux (flexion, torsion) ; conductibilités électrique et thermique ; disponibilité, valorisation, recyclage', domaine:'SFC21 – Dépannage et réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── SFC31 – Programmation ─────────────────────────────────
-  {id:'K-SFC31-1', label:'Algorithmique : affectation, variable (mot/nombre/booléen), opérateurs arithmétiques et logiques (ET, OU, NON)', domaine:'SFC31 – Programmation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC31-2', label:'Structures de contrôle : instruction conditionnelle, instructions itératives, séquences (bloc) d\'instructions', domaine:'SFC31 – Programmation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC31-3', label:'Listes : structure de données pour stocker, parcourir et traiter des données issues d\'un programme', domaine:'SFC31 – Programmation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC31-4', label:'Événement et déclenchement d\'une séquence d\'instructions', domaine:'SFC31 – Programmation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC31-5', label:'Entrées/sorties d\'un programme (capteurs IHM, actionneurs, fichiers)', domaine:'SFC31 – Programmation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-SFC31-6', label:'Programmation graphique par blocs ; lien avec la programmation textuelle (fin 3e)', domaine:'SFC31 – Programmation', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── CCRI11 – Gestion de projet ────────────────────────────
-  {id:'K-CCRI11-1', label:'Diagramme de planification des tâches : notion de tâches, durée et contraintes entre tâches', domaine:'CCRI11 – Gestion de projet', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-CCRI11-2', label:'Étapes d\'un projet, rôle d\'une revue de projet', domaine:'CCRI11 – Gestion de projet', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-CCRI11-3', label:'Écoconception', domaine:'CCRI11 – Gestion de projet', source:'boizard-k', niveaux:['5e','4e','3e']},
-  // ── CCRI31 – Programmation des OST ────────────────────────
-  {id:'K-CCRI31-1', label:'Modularité : sous-programme, fonction', domaine:'CCRI31 – Programmation OST', source:'boizard-k', niveaux:['5e','4e','3e']},
-  {id:'K-CCRI31-2', label:'Structuration d\'un programme : organisation, modularité, commentaires', domaine:'CCRI31 – Programmation OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // V11.4.54 — aligné sur le Boizard (choix B du 29/10 : une puce OU une sous-puce = une connaissance), texte exact, code du sous-domaine dans l'id
+  // ── OST11 – L’évolution des OST ─────────────────────
+  {id:'K-OST11-1', label:'Les éléments qui participent à l’évolution des besoins (invention, innovation, développement durable)', domaine:'OST11 – L’évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST11-2', label:'La fonction technique, le principe technique', domaine:'OST11 – L’évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST11-3', label:'La famille et la lignée d’OST', domaine:'OST11 – L’évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST11-4', label:'Les contraintes sociétales', domaine:'OST11 – L’évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST11-5', label:'Les grands types d’apprentissage des intelligences artificielles et leurs usages possibles (géolocalisation, identification, calcul, traduction, etc.)', domaine:'OST11 – L’évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST11-6', label:'Les incidences sociétales, notamment l’étude du biais et de l’effet de l’usage d’une intelligence artificielle (IA)', domaine:'OST11 – L’évolution des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── OST12 – Usages et impacts sociétaux du numérique ───
+  {id:'K-OST12-1', label:'Système d’information et stockage des données : fichiers informatiques (fichier texte, fichier image, fichier de type tableur ou CSV) et dossiers, arborescence', domaine:'OST12 – Usages et impacts sociétaux du numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST12-2', label:'Système d’information et stockage des données : extension et format de fichiers, droits d’écriture et de lecture sur les fichiers', domaine:'OST12 – Usages et impacts sociétaux du numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST12-3', label:'Système d’information et stockage des données : unité de quantité d’information : bit, octet et leurs multiples', domaine:'OST12 – Usages et impacts sociétaux du numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST12-4', label:'Système d’information et stockage des données : ordre de grandeur de la taille d’un fichier image, d’un fichier son, d’une vidéo', domaine:'OST12 – Usages et impacts sociétaux du numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST12-5', label:'Système d’information et stockage des données : incidences liées au stockage, au flux des données et aux réseaux d’information', domaine:'OST12 – Usages et impacts sociétaux du numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST12-6', label:'Cybersécurité : protection des données personnelles, traces numériques (témoins de connexion, géolocalisation), identification, authentification, respect de la propriété intellectuelle', domaine:'OST12 – Usages et impacts sociétaux du numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST12-7', label:'Cyberviolence : usurpation d’identité, usage détourné', domaine:'OST12 – Usages et impacts sociétaux du numérique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── OST21 – L’OST dans son environnement ────────────
+  {id:'K-OST21-1', label:'Les interacteurs extérieurs : usagers, données, autres objets, éléments de l’environnement', domaine:'OST21 – L’OST dans son environnement', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST21-2', label:'Les modes de représentation : croquis, schéma, graphique, algorithme, modélisation', domaine:'OST21 – L’OST dans son environnement', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST21-3', label:'Les contraintes : prise en compte des exigences issues des normes ou d’un cahier des charges, labels et certifications ; l’ergonomie liée à l’usage', domaine:'OST21 – L’OST dans son environnement', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── OST31 – Le choix d’un OST dans un contexte de développement durable ───
+  {id:'K-OST31-1', label:'Les composantes d’une notice et d’une documentation technique et leur organisation', domaine:'OST31 – Le choix d’un OST dans un contexte de développement durable', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST31-2', label:'L’indice énergétique et l’indice de réparabilité', domaine:'OST31 – Le choix d’un OST dans un contexte de développement durable', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST31-3', label:'Les impacts environnementaux (indicateurs : air, eau, sol et santé)', domaine:'OST31 – Le choix d’un OST dans un contexte de développement durable', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST31-4', label:'Les piliers du développement durable et les différentes étapes du cycle de vie d’un OST', domaine:'OST31 – Le choix d’un OST dans un contexte de développement durable', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-OST31-5', label:'Les critères de choix : la qualité, l’efficacité énergétique, la durabilité, la recyclabilité', domaine:'OST31 – Le choix d’un OST dans un contexte de développement durable', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── OST32 – La performance des OST ──────────────────
+  {id:'K-OST32-1', label:'Les critères de performance d’un OST (grandeurs mesurables : vitesse, autonomie énergétique, etc.)', domaine:'OST32 – La performance des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── SFC11 – Fonctions, solutions, constituants de la chaîne d’énergie ───
+  {id:'K-SFC11-1', label:'Les différentes formes d’énergie : électrique, cinétique, potentielle, thermique, lumineuse', domaine:'SFC11 – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC11-2', label:'Les conversions d’énergie des constituants suivants : moteur électrique, lampe, radiateur, génératrice, vérin', domaine:'SFC11 – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC11-3', label:'Les fonctions des constituants suivants : batterie, relais/interrupteur', domaine:'SFC11 – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC11-4', label:'Les mécanismes de transmission et de transformation de mouvements (engrenages, courroies, chaînes)', domaine:'SFC11 – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── SFC12 – Matériaux et procédés ───────────────────
+  {id:'K-SFC12-1', label:'Les caractéristiques et les propriétés des principaux matériaux', domaine:'SFC12 – Matériaux et procédés', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC12-2', label:'Les caractéristiques des procédés de mise en forme disponibles dans le laboratoire', domaine:'SFC12 – Matériaux et procédés', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC12-3', label:'Les étapes du cycle de vie d’un OST : extraction, traitement, fabrication, assemblage, utilisation, fin de vie, transport ; l’incidence environnementale', domaine:'SFC12 – Matériaux et procédés', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── SFC13 – Fonctions, solutions, constituants de la chaîne d’information ───
+  {id:'K-SFC13-1', label:'Les fonctions des constituants suivants : capteurs (température, présence, distance, etc.), microcontrôleur, composants d’une interface entre l’humain et la machine (IHM) : boutons, afficheurs, etc', domaine:'SFC13 – Fonctions, solutions, constituants de la chaîne d’information', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── SFC14 – Structuration et traitement des données ───
+  {id:'K-SFC14-1', label:'Vocabulaire des données : objet / descripteur / collection (liste) / type (mot/chaîne de caractères, nombre et booléen) / données structurées', domaine:'SFC14 – Structuration et traitement des données', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC14-2', label:'Représentation des données : le bit : élément minimum d’information, représentation par les symboles 0 et 1', domaine:'SFC14 – Structuration et traitement des données', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC14-3', label:'Représentation des données : représentation des booléens, des mots (code ASCII étendu), des nombres entiers naturels', domaine:'SFC14 – Structuration et traitement des données', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC14-4', label:'Traitement des données : mise en forme et traitement de données (calculs, filtre, tri) dans un logiciel (tableur)', domaine:'SFC14 – Structuration et traitement des données', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── SFC15 – La circulation de l’information dans un réseau informatique ───
+  {id:'K-SFC15-1', label:'Un réseau local, le réseau mondial (Internet)', domaine:'SFC15 – La circulation de l’information dans un réseau informatique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC15-2', label:'Le rôle d’un terminal, d’une carte réseau, des liaisons (filaires ou non filaires), d’un commutateur, d’un routeur, d’un serveur', domaine:'SFC15 – La circulation de l’information dans un réseau informatique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC15-3', label:'Le rôle et la structure d’une adresse IP, le rôle des tables de routage', domaine:'SFC15 – La circulation de l’information dans un réseau informatique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC15-4', label:'Le débit et les ordres de grandeur associés', domaine:'SFC15 – La circulation de l’information dans un réseau informatique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── SFC21 – Le dépannage et la réparation ───────────
+  {id:'K-SFC21-1', label:'La fiabilité, la durabilité, l’indice de réparabilité', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-2', label:'Les règles usuelles de sécurité et de mise en œuvre des moyens de réalisation au sein d’un atelier de fabrication collaboratif : les équipements de protection individuelle', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-3', label:'Les règles usuelles de sécurité et de mise en œuvre des moyens de réalisation au sein d’un atelier de fabrication collaboratif : l’outillage manuel', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-4', label:'Les règles usuelles de sécurité et de mise en œuvre des moyens de réalisation au sein d’un atelier de fabrication collaboratif : l’appareillage de prototypage, de réalisation, de fabrication', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-5', label:'La technologie et les caractéristiques des composants à remplacer : capteurs, actionneurs, composants, microcontrôleurs, générateurs', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-6', label:'Les procédés d’obtention de pièce (ajout et enlèvement de matière), de mise en forme (pliage, thermoformage) et d’assemblage (fixe et démontable)', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-7', label:'Les moyens de production : découpe au laser, centre d’usinage, fabrication additive (imprimante 3D)', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-8', label:'Les moyens de prototypage électronique : plaque d’essai, fils, composants électroniques, générateurs', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-9', label:'Les modes de sollicitation des matériaux (flexion, torsion)', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC21-10', label:'Les conductibilités électrique et thermique ; la disponibilité, la valorisation, le recyclage des matériaux', domaine:'SFC21 – Le dépannage et la réparation', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── SFC31 – La programmation d’une nouvelle fonctionnalité ───
+  {id:'K-SFC31-1', label:'Algorithmique et programmation : instruction d’affectation, variable (type mot, nombre et booléen)', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-2', label:'Algorithmique et programmation : opérateurs arithmétiques et logiques (ET, OU, NON)', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-3', label:'Algorithmique et programmation : instruction conditionnelle', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-4', label:'Algorithmique et programmation : instructions itératives', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-5', label:'Algorithmique et programmation : structure de données « listes » afin de stocker des données issues du programme pour les parcourir et les traiter', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-6', label:'Algorithmique et programmation : séquences (bloc) d’instructions', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-7', label:'Algorithmique et programmation : événement', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-8', label:'Algorithmique et programmation : déclenchement d’une séquence d’instructions par un événement', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-9', label:'Algorithmique et programmation : entrées ou sorties d’un programme (données issues par exemple de capteurs IHM et sorties pouvant être en lien avec un actionneur, fichiers)', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-10', label:'Programmation graphique par blocs', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-SFC31-11', label:'Lien entre la programmation graphique par bloc et la programmation textuelle (fin de 3e)', domaine:'SFC31 – La programmation d’une nouvelle fonctionnalité', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── CCRI11 – La gestion de projet technique ──────────
+  {id:'K-CCRI11-1', label:'Le diagramme de planification des tâches : notion de tâches, durée et contraintes entre tâches', domaine:'CCRI11 – La gestion de projet technique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-CCRI11-2', label:'Les étapes d’un projet, le rôle d’une revue de projet', domaine:'CCRI11 – La gestion de projet technique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-CCRI11-3', label:'L’écoconception', domaine:'CCRI11 – La gestion de projet technique', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── CCRI16 – La modélisation et la fabrication ───────
+  {id:'K-CCRI16-1', label:'Les instruments de mesure', domaine:'CCRI16 – La modélisation et la fabrication', source:'boizard-k', niveaux:['5e','4e','3e']},
+  // ── CCRI31 – La programmation des OST ────────────────
+  {id:'K-CCRI31-1', label:'La modularité : sous-programme, fonction', domaine:'CCRI31 – La programmation des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
+  {id:'K-CCRI31-2', label:'La structuration d’un programme (organisation, modularité, commentaires)', domaine:'CCRI31 – La programmation des OST', source:'boizard-k', niveaux:['5e','4e','3e']},
 ];
 
 /* Récupère les connaissances pour un niveau donné (cycle 4 = toutes) */
@@ -21990,20 +22004,22 @@ function renderSeanceCompPickerV2(lv, sean, mode, refresh){
     {v:'CCRI', l:'CCRI'},
   ];
   // Groupes de connaissances
-  const CONN_GROUPS=[
-    {v:'OST1',   l:'OST1 – Évol.'},
-    {v:'OST12',  l:'OST12 – Num.'},
-    {v:'OST2',   l:'OST2 – Env.'},
-    {v:'OST3',   l:'OST3 – DD'},
-    {v:'SFC11',  l:'SFC11 – Énergie'},
-    {v:'SFC12',  l:'SFC12 – Matériaux'},
-    {v:'SFC13',  l:'SFC13 – Info'},
-    {v:'SFC14',  l:'SFC14 – Données'},
-    {v:'SFC15',  l:'SFC15 – Réseau'},
-    {v:'SFC21',  l:'SFC21 – Dépannage'},
-    {v:'SFC31',  l:'SFC31 – Prog.'},
-    {v:'CCRI11', l:'CCRI11 – Projet'},
-    {v:'CCRI31', l:'CCRI31 – Prog. OST'},
+  const CONN_GROUPS=[   // V11.4.54 — sous-domaines du Boizard ayant des connaissances propres
+    {v:'OST11', l:'OST11 – L’évolution des OST'},
+    {v:'OST12', l:'OST12 – Usages et impacts soci…'},
+    {v:'OST21', l:'OST21 – L’OST dans son environ…'},
+    {v:'OST31', l:'OST31 – Le choix d’un OST dans…'},
+    {v:'OST32', l:'OST32 – La performance des OST'},
+    {v:'SFC11', l:'SFC11 – Fonctions, solutions, …'},
+    {v:'SFC12', l:'SFC12 – Matériaux et procédés'},
+    {v:'SFC13', l:'SFC13 – Fonctions, solutions, …'},
+    {v:'SFC14', l:'SFC14 – Structuration et trait…'},
+    {v:'SFC15', l:'SFC15 – La circulation de l’in…'},
+    {v:'SFC21', l:'SFC21 – Le dépannage et la rép…'},
+    {v:'SFC31', l:'SFC31 – La programmation d’une…'},
+    {v:'CCRI11', l:'CCRI11 – La gestion de projet t…'},
+    {v:'CCRI16', l:'CCRI16 – La modélisation et la …'},
+    {v:'CCRI31', l:'CCRI31 – La programmation des O…'},
   ];
 
   const wrap=document.createElement('div');
@@ -22145,7 +22161,7 @@ function renderSeanceCompPickerV2(lv, sean, mode, refresh){
     const allGrpBtn=mkToggleBtn('Tous', null, activeGroups.size===0, ()=>{ activeGroups.clear(); rebuildFilterBtns(); rebuildGrid(); });
     grpRow.appendChild(allGrpBtn);
     CONN_GROUPS.forEach(g=>{
-      const hasItems=_refItemsUniverse(lv,'conns').some(it=>it.id.startsWith('K-'+g.v)); // V035-V11.2.5 (v-b2)
+      const hasItems=_refItemsUniverse(lv,'conns').some(it=>it.id.startsWith('K-'+g.v+'-')); // V035-V11.2.5 (v-b2) ; V11.4.54 préfixe exact
       if(!hasItems) return;
       const b=mkToggleBtn(g.l, null, activeGroups.has(g.v), ()=>{
         if(activeGroups.has(g.v)) activeGroups.delete(g.v); else activeGroups.add(g.v);
@@ -22197,7 +22213,7 @@ function renderSeanceCompPickerV2(lv, sean, mode, refresh){
         if(activeSubdom.size>0 && !([...activeSubdom].some(sd=>it.domaine&&it.domaine.startsWith(sd)))) return false;
         if(activeThemes.size>0 && !(it.themes||[]).some(t=>activeThemes.has(t))) return false;
       } else {
-        if(activeGroups.size>0 && !([...activeGroups].some(g=>it.id.startsWith('K-'+g)))) return false;
+        if(activeGroups.size>0 && !([...activeGroups].some(g=>it.id.startsWith('K-'+g+'-')))) return false;   // V11.4.54 préfixe exact
       }
       if(q && !it.id.toLowerCase().includes(q) && !it.label.toLowerCase().includes(q) && !(it.domaine||'').toLowerCase().includes(q)) return false;
       return true;
