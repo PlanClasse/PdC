@@ -2884,6 +2884,9 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .ref-sous:first-of-type{border-top:0}
 .ref-sous-nom.ref-sous-orig{text-transform:none;letter-spacing:0;font-size:13.5px;line-height:1.35}
 .ref-sous-t{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.ref-fin-cycle{display:flex;gap:10px;align-items:baseline;padding:8px 16px;border-top:1px solid var(--brd);background:var(--ff);color:var(--fc);font-size:13px}
+.ref-fin-cycle-c{font-weight:800;white-space:nowrap}
+.ref-fin-cycle-t{font-weight:600;color:var(--tx)}
 .ref-sous-nom{padding:12px 16px;font-size:13px;font-weight:700;color:var(--fc);text-transform:uppercase;letter-spacing:.04em;background:var(--sur2);border-right:1px solid var(--brd)}
 .ref-cartes{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:10px 12px}
 .ref-carte{border:1px solid var(--brd);border-top:4px solid var(--fc);border-radius:10px;padding:8px 10px;background:var(--sur);display:flex;flex-direction:column;gap:5px;min-height:64px;text-align:left;cursor:pointer;font-family:inherit;color:var(--tx);transition:box-shadow .12s,transform .12s}
@@ -4578,7 +4581,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.4.52';
+const APP_VERSION = 'v11.4.53';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -4803,45 +4806,46 @@ function defaultState(){
 const REFERENTIELS_DEFAULT = {
   '5e': [
     // --- OST : Objets et systèmes techniques ---
-    {id:'OST11-5-1', label:'Collecter, trier et analyser des données', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['5e'], themes:['evolution']},
-    {id:'OST11-5-2', label:'Comparer des principes techniques pour une même fonction technique', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['5e'], themes:['evolution']},
-    {id:'OST12-5-1', label:'Décrire le rôle des systèmes d\'information dans le partage d\'information', domaine:'OST – Numérique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
-    {id:'OST12-5-2', label:'Recenser, identifier, classer et stocker des données dans des fichiers', domaine:'OST – Numérique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
-    {id:'OST12-5-3', label:'Identifier des règles de cybersécurité et de propriété intellectuelle', domaine:'OST – Numérique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
-    {id:'OST12-5-4', label:'Appréhender la responsabilité dans les dérives numériques', domaine:'OST – Numérique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
-    {id:'OST21-5-1', label:'Faire la liste des interacteurs extérieurs d\'un OST', domaine:'OST – OST dans son environnement', source:'boizard', niveaux:['5e'], themes:['evolution']},
-    {id:'OST21-5-2', label:'Repérer les choix de conception (ergonomie, sécurité, DD)', domaine:'OST – OST dans son environnement', source:'boizard', niveaux:['5e'], themes:['evolution']},
-    {id:'OST31-5-1', label:'Repérer les matériaux, formes d\'énergie, traitement info d\'un OST', domaine:'OST – Choix OST / DD', source:'boizard', niveaux:['5e'], themes:['materiaux','energies','environnement']},
-    {id:'OST31-5-2', label:'Identifier les étapes du cycle de vie influencées par matériaux et énergie', domaine:'OST – Choix OST / DD', source:'boizard', niveaux:['5e'], themes:['materiaux','energies','environnement']},
-    {id:'OST31-5-3', label:'Choisir un OST parmi plusieurs en vue de répondre à un besoin', domaine:'OST – Choix OST / DD', source:'boizard', niveaux:['5e'], themes:['materiaux','energies','environnement']},
-    {id:'OST32-5-1', label:'Mesurer et comparer une performance d\'un OST (protocole fourni)', domaine:'OST – Performance', source:'boizard', niveaux:['5e'], themes:['environnement']},
+    {id:'OST11-5-1', label:'Collecter, trier et analyser des données', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['5e'], themes:['evolution']},
+    {id:'OST11-5-2', label:'Comparer des principes techniques pour une même fonction technique', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['5e'], themes:['evolution']},
+    {id:'OST12-5-1', label:'Décrire le rôle des systèmes d’information dans le partage d’information', domaine:'OST – Usages et impacts sociétaux du numérique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
+    {id:'OST12-5-2', label:'Recenser des données, les identifier, les classer, les représenter, les stocker dans des fichiers, les retrouver dans une arborescence', domaine:'OST – Usages et impacts sociétaux du numérique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
+    {id:'OST12-5-3', label:'Identifier des règles permettant de sécuriser un environnement numérique (bases de la cybersécurité) et des règles de respect de la propriété intellectuelle', domaine:'OST – Usages et impacts sociétaux du numérique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
+    {id:'OST12-5-4', label:'Appréhender la responsabilité de chacun dans les dérives (cyberviolence, atteinte à la vie privée, aux données personnelles, usurpation d’identité)', domaine:'OST – Usages et impacts sociétaux du numérique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
+    {id:'OST21-5-1', label:'Faire la liste des interacteurs extérieurs d’un OST', domaine:'OST – L’OST dans son environnement', source:'boizard', niveaux:['5e'], themes:['evolution']},
+    {id:'OST21-5-2', label:'Repérer et expliquer les choix de conception dans les domaines de l’ergonomie et de la sécurité ou en lien avec des objectifs de développement durable', domaine:'OST – L’OST dans son environnement', source:'boizard', niveaux:['5e'], themes:['evolution']},
+    {id:'OST31-5-1', label:'Repérer pour un OST les matériaux, les sources et les formes d’énergie, le traitement de l’information', domaine:'OST – Le choix d’un OST dans un contexte de développement durable', source:'boizard', niveaux:['5e'], themes:['materiaux','energies','environnement']},
+    {id:'OST31-5-2', label:'Identifier les étapes du cycle de vie d’un OST influencées par les choix de matériaux et d’énergie', domaine:'OST – Le choix d’un OST dans un contexte de développement durable', source:'boizard', niveaux:['5e'], themes:['materiaux','energies','environnement']},
+    {id:'OST31-5-3', label:'Choisir un OST parmi plusieurs propositions en vue de répondre à un besoin', domaine:'OST – Le choix d’un OST dans un contexte de développement durable', source:'boizard', niveaux:['5e'], themes:['materiaux','energies','environnement']},
+    {id:'OST32-5-1', label:'Mesurer et comparer une performance d’un OST à partir d’un protocole fourni', domaine:'OST – La performance des OST', source:'boizard', niveaux:['5e'], themes:['environnement']},
     // --- SFC : Structure, fonctionnement, comportement ---
-    {id:'SFC11-5-1', label:'Associer solutions techniques à des fonctions techniques', domaine:'SFC – Chaîne d\'énergie', source:'boizard', niveaux:['5e'], themes:['energies']},
-    {id:'SFC11-5-2', label:'Identifier les constituants de la chaîne d\'énergie (organisation fournie)', domaine:'SFC – Chaîne d\'énergie', source:'boizard', niveaux:['5e'], themes:['energies']},
-    {id:'SFC11-5-3', label:'Indiquer la nature des énergies en entrée et sortie', domaine:'SFC – Chaîne d\'énergie', source:'boizard', niveaux:['5e'], themes:['energies']},
-    {id:'SFC12-5-1', label:'Identifier les principaux matériaux constitutifs d\'un OST', domaine:'SFC – Matériaux et procédés', source:'boizard', niveaux:['5e'], themes:['materiaux']},
-    {id:'SFC13-5-1', label:'Identifier les constituants de la chaîne d\'information (organisation fournie)', domaine:'SFC – Chaîne d\'information', source:'boizard', niveaux:['5e'], themes:['information']},
-    {id:'SFC14-5-1', label:'Déterminer des descripteurs pour décrire des objets sous forme de données', domaine:'SFC – Données', source:'boizard', niveaux:['5e'], themes:['information']},
-    {id:'SFC15-5-1', label:'Identifier les composants d\'un réseau local et sa topologie', domaine:'SFC – Réseau', source:'boizard', niveaux:['5e'], themes:['information','communication']},
-    {id:'SFC15-5-2', label:'Justifier la nécessité d\'identifier les terminaux sur un réseau local', domaine:'SFC – Réseau', source:'boizard', niveaux:['5e'], themes:['information','communication']},
-    {id:'SFC21-5-1', label:'Repérer visuellement une pièce défectueuse', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'SFC21-5-2', label:'Réaliser une réparation en suivant un protocole fourni', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'SFC21-5-3', label:'Découvrir les procédés de réalisation en FabLab', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'SFC31-5-1', label:'Identifier les données utilisées/produites par un programme existant', domaine:'SFC – Programmation', source:'boizard', niveaux:['5e'], themes:['programmation']},
-    {id:'SFC31-5-2', label:'Comprendre et traduire en algorithme naturel un programme', domaine:'SFC – Programmation', source:'boizard', niveaux:['5e'], themes:['programmation']},
-    {id:'SFC31-5-3', label:'Modifier les paramètres d\'un programme et identifier ses effets', domaine:'SFC – Programmation', source:'boizard', niveaux:['5e'], themes:['programmation']},
+    {id:'SFC11-5-1', label:'Associer des solutions techniques à une ou des fonctions techniques', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard', niveaux:['5e'], themes:['energies']},
+    {id:'SFC11-5-2', label:'Identifier des constituants de la chaîne d’énergie d’un objet technique (l’organisation de la chaîne d’énergie étant fournie)', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard', niveaux:['5e'], themes:['energies']},
+    {id:'SFC11-5-3', label:'Indiquer la nature des énergies en entrée et en sortie des constituants de la chaîne d’énergie', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard', niveaux:['5e'], themes:['energies']},
+    {id:'SFC12-5-1', label:'Identifier les principaux matériaux constitutifs d’un OST', domaine:'SFC – Matériaux et procédés', source:'boizard', niveaux:['5e'], themes:['materiaux']},
+    {id:'SFC13-5-1', label:'Identifier des constituants de la chaîne d’information d’un OST (l’organisation de la chaîne d’information étant fournie)', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’information', source:'boizard', niveaux:['5e'], themes:['information']},
+    {id:'SFC14-5-1', label:'Déterminer des descripteurs permettant de décrire des objets sous forme de données en précisant leurs types et leurs formats', domaine:'SFC – Structuration et traitement des données', source:'boizard', niveaux:['5e'], themes:['information']},
+    {id:'SFC15-5-1', label:'Identifier les composants qui constituent un réseau local (terminaux, commutateurs, liaisons filaires et sans fil (WiFi)) et sa topologie', domaine:'SFC – La circulation de l’information dans un réseau informatique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
+    {id:'SFC15-5-2', label:'Justifier la nécessité d’identifier les terminaux pour communiquer sur un réseau local (activité débranchée et vérification par un outil de simulation)', domaine:'SFC – La circulation de l’information dans un réseau informatique', source:'boizard', niveaux:['5e'], themes:['information','communication']},
+    {id:'SFC21-5-1', label:'Repérer visuellement une pièce défectueuse', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'SFC21-5-2', label:'Réaliser une réparation en suivant un protocole fourni', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'SFC21-5-3', label:'Découvrir les procédés de réalisation présents dans un atelier de fabrication collaboratif', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'SFC31-5-1', label:'Identifier les données utilisées et produites par le programme associé à une fonctionnalité d’un OST (à partir d’un programme existant)', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['5e'], themes:['programmation']},
+    {id:'SFC31-5-2', label:'Comprendre et traduire en un algorithme en langage naturel le programme associé à une fonctionnalité d’un OST', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['5e'], themes:['programmation']},
+    {id:'SFC31-5-3', label:'Modifier les paramètres d’un programme et identifier ou évaluer ses effets en termes de fonctionnalité', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['5e'], themes:['programmation']},
     // --- CCRI : Création, conception, réalisation ---
-    {id:'CCRI11-5', label:'Suivre un processus de conception et réalisation (tâches identifiées)', domaine:'CCRI – Gestion de projet', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'CCRI12-5', label:'Fabriquer une solution pour améliorer un OST existant', domaine:'CCRI – Prototypage', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'CCRI13-5', label:'Choisir un matériau parmi plusieurs selon leurs caractéristiques', domaine:'CCRI – Matériaux', source:'boizard', niveaux:['5e'], themes:['materiaux','conception']},
-    {id:'CCRI14-5', label:'Choisir une source d\'énergie parmi plusieurs proposées', domaine:'CCRI – Énergie', source:'boizard', niveaux:['5e'], themes:['energies','conception']},
-    {id:'CCRI15-5', label:'Assembler les constituants fournis pour réaliser un prototype', domaine:'CCRI – Assemblage', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'CCRI16-5', label:'Mettre en œuvre les moyens pour réaliser une forme (procédure fournie)', domaine:'CCRI – Modélisation et fabrication', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'CCRI21-5-1', label:'Utiliser une simulation fournie pour valider la tenue mécanique', domaine:'CCRI – Validation', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'CCRI22-5', label:'Vérifier comportement et performances (protocole fourni)', domaine:'CCRI – Validation', source:'boizard', niveaux:['5e'], themes:['conception']},
-    {id:'CCRI31-5-1', label:'Analyser un programme simple et tester s\'il répond au besoin', domaine:'CCRI – Programmation OST', source:'boizard', niveaux:['5e'], themes:['programmation','conception']},
-    {id:'CCRI31-5-2', label:'Modifier un programme fourni pour répondre au besoin', domaine:'CCRI – Programmation OST', source:'boizard', niveaux:['5e'], themes:['programmation','conception']},
-    {id:'CCRI31-5-3', label:'Réaliser et mettre au point un programme simple commandant un OST', domaine:'CCRI – Programmation OST', source:'boizard', niveaux:['5e'], themes:['programmation','conception']},
+    {id:'CCRI11-5', label:'Suivre un processus de conception et de réalisation dans une durée, avec des tâches identifiées', domaine:'CCRI – La gestion de projet technique', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'CCRI12-5', label:'Fabriquer une solution pour améliorer un OST existant', domaine:'CCRI – Le prototypage de solutions', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'CCRI13-5', label:'Choisir un matériau parmi plusieurs proposés en fonction de leurs caractéristiques', domaine:'CCRI – Le choix des matériaux', source:'boizard', niveaux:['5e'], themes:['materiaux','conception']},
+    {id:'CCRI14-5', label:'Choisir une source d’énergie parmi plusieurs proposées et une forme d’énergie possible', domaine:'CCRI – Le choix d’une source d’énergie', source:'boizard', niveaux:['5e'], themes:['energies','conception']},
+    {id:'CCRI15-5', label:'Assembler les constituants fournis pour réaliser un prototype', domaine:'CCRI – L’assemblage de constituants', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'CCRI16-5', label:'Mettre en œuvre les moyens pour réaliser une forme selon une procédure fournie', domaine:'CCRI – La modélisation et la fabrication', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'CCRI21-5-1', label:'Utiliser une simulation fournie pour valider la tenue mécanique d’un matériau', domaine:'CCRI – La validation du comportement mécanique d’un matériau', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'CCRI21-5-2', label:'Mettre en œuvre un protocole de test fourni pour valider la tenue mécanique d’un matériau', domaine:'CCRI – La validation du comportement mécanique d’un matériau', source:'boizard', niveaux:['5e'], themes:['conception']},   // V11.4.53 — repère du Boizard absent jusqu'ici
+    {id:'CCRI22-5', label:'Vérifier le comportement et les performances d’un objet technique en suivant un protocole fourni', domaine:'CCRI – La validation des performances d’un OST', source:'boizard', niveaux:['5e'], themes:['conception']},
+    {id:'CCRI31-5-1', label:'Analyser un programme simple fourni et tester s’il répond au besoin ou au problème posé', domaine:'CCRI – La programmation des OST', source:'boizard', niveaux:['5e'], themes:['programmation','conception']},
+    {id:'CCRI31-5-2', label:'Modifier un programme fourni pour répondre au besoin ou à un problème posé', domaine:'CCRI – La programmation des OST', source:'boizard', niveaux:['5e'], themes:['programmation','conception']},
+    {id:'CCRI31-5-3', label:'Réaliser et mettre au point un programme simple commandant un OST', domaine:'CCRI – La programmation des OST', source:'boizard', niveaux:['5e'], themes:['programmation','conception']},
     // --- CRCN : items générés dynamiquement via _CRCN_DESCRIPTOR_ITEMS dans getRefItems (S27 patch 16) ---
     // --- SOCLE COMMUN — Technologie (V.1.8) ---
     {id:'SC-TECH-1', label:'Distinguer un objet technique d\'un objet naturel et le décrire', domaine:'Socle – Technologie', source:'socle', niveaux:['5e'], themes:['evolution','materiaux']},
@@ -4857,88 +4861,88 @@ const REFERENTIELS_DEFAULT = {
     {id:'SC-ECC3-TECH', label:'Esprit critique : évaluer OST selon critères identifiés', domaine:'Socle – Culture commune (ECC3)', source:'socle', niveaux:['5e','4e','3e'], themes:['evolution','environnement']},
   ],
   '4e': [
-    {id:'OST11-4-1', label:'Mettre en relation les OST avec leurs usages', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['4e'], themes:['evolution']},
-    {id:'OST11-4-2', label:'Identifier les avantages/inconvénients des évolutions technologiques', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['4e'], themes:['evolution']},
-    {id:'OST11-4-3', label:'Justifier l\'évolution d\'un OST pour répondre à l\'évolution des besoins', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['4e'], themes:['evolution']},
-    {id:'OST12-4-1', label:'Identifier et appliquer les règles pour un usage raisonné des objets communicants', domaine:'OST – Numérique', source:'boizard', niveaux:['4e'], themes:['information','communication']},
-    {id:'OST21-4-1', label:'Décrire l\'expérience utilisateur d\'un OST (texte→schémas→algorithmes)', domaine:'OST – OST dans son environnement', source:'boizard', niveaux:['4e'], themes:['evolution']},
-    {id:'OST21-4-2', label:'Repérer et expliquer les contraintes/exigences de conception', domaine:'OST – OST dans son environnement', source:'boizard', niveaux:['4e'], themes:['evolution']},
-    {id:'OST31-4-1', label:'Identifier les caractéristiques pour le choix d\'un OST', domaine:'OST – Choix OST / DD', source:'boizard', niveaux:['4e'], themes:['materiaux','energies','environnement']},
-    {id:'OST31-4-2', label:'Comparer qualitativement/quantitativement des OST (bilan carbone, efficacité)', domaine:'OST – Choix OST / DD', source:'boizard', niveaux:['4e'], themes:['materiaux','energies','environnement']},
-    {id:'OST32-4-1', label:'Choisir les appareils de mesure adaptés (protocole donné)', domaine:'OST – Performance', source:'boizard', niveaux:['4e'], themes:['environnement']},
-    {id:'SFC11-4-1', label:'Identifier les constituants d\'une chaîne d\'énergie et leurs fonctions', domaine:'SFC – Chaîne d\'énergie', source:'boizard', niveaux:['4e'], themes:['energies']},
-    {id:'SFC11-4-2', label:'Repérer les transformations et flux d\'énergie au sein de l\'OST', domaine:'SFC – Chaîne d\'énergie', source:'boizard', niveaux:['4e'], themes:['energies']},
-    {id:'SFC12-4-1', label:'Mettre en relation la forme d\'une pièce avec le procédé de réalisation', domaine:'SFC – Matériaux et procédés', source:'boizard', niveaux:['4e'], themes:['materiaux']},
-    {id:'SFC13-4-1', label:'Identifier les constituants de la chaîne d\'information et leurs fonctions', domaine:'SFC – Chaîne d\'information', source:'boizard', niveaux:['4e'], themes:['information']},
-    {id:'SFC14-4-1', label:'Décrire et analyser la transformation des données issues d\'un OST', domaine:'SFC – Données', source:'boizard', niveaux:['4e'], themes:['information']},
-    {id:'SFC14-4-2', label:'Décrire et analyser la structuration d\'une table de données', domaine:'SFC – Données', source:'boizard', niveaux:['4e'], themes:['information']},
-    {id:'SFC15-4-1', label:'Paramétrer une adresse IP fixe pour ajouter un objet connecté', domaine:'SFC – Réseau', source:'boizard', niveaux:['4e'], themes:['information','communication']},
-    {id:'SFC15-4-2', label:'Résoudre des problèmes de communication entre terminaux (simulation)', domaine:'SFC – Réseau', source:'boizard', niveaux:['4e'], themes:['information','communication']},
-    {id:'SFC15-4-3', label:'Compléter une simulation pour valider le comportement d\'un réseau', domaine:'SFC – Réseau', source:'boizard', niveaux:['4e'], themes:['information','communication']},
-    {id:'SFC21-4-1', label:'Proposer un protocole pour vérifier l\'origine d\'un dysfonctionnement', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'SFC21-4-2', label:'Remplacer une pièce défectueuse sans protocole fourni', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'SFC21-4-3', label:'Choisir les procédés de réalisation et les mettre en œuvre', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'SFC31-4-1', label:'Analyser les données et déduire des modifications au programme', domaine:'SFC – Programmation', source:'boizard', niveaux:['4e'], themes:['programmation']},
-    {id:'SFC31-4-2', label:'Compléter un programme pour répondre à une fonctionnalité', domaine:'SFC – Programmation', source:'boizard', niveaux:['4e'], themes:['programmation']},
-    {id:'SFC31-4-3', label:'Tester et valider une modification du programme (simulé ou réel)', domaine:'SFC – Programmation', source:'boizard', niveaux:['4e'], themes:['programmation']},
-    {id:'CCRI11-4', label:'Organiser un processus de conception et réalisation (tâches identifiées)', domaine:'CCRI – Gestion de projet', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'CCRI12-4', label:'Proposer et fabriquer une solution pour ajouter une fonction à un OST', domaine:'CCRI – Prototypage', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'CCRI13-4', label:'Comparer différents matériaux pour choisir le plus adapté', domaine:'CCRI – Matériaux', source:'boizard', niveaux:['4e'], themes:['materiaux','conception']},
-    {id:'CCRI14-4', label:'Comparer différentes sources d\'énergie pour choisir la plus adaptée', domaine:'CCRI – Énergie', source:'boizard', niveaux:['4e'], themes:['energies','conception']},
-    {id:'CCRI15-4', label:'Identifier les constituants manquants dans un prototype et le compléter', domaine:'CCRI – Assemblage', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'CCRI16-4-1', label:'Modifier une forme à l\'aide d\'une modélisation', domaine:'CCRI – Modélisation et fabrication', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'CCRI16-4-2', label:'Choisir les moyens et produire la forme voulue (4e)', domaine:'CCRI – Modélisation et fabrication', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'CCRI17-4', label:'Interfacer un objet technique avec un réseau', domaine:'CCRI – Objets communicants', source:'boizard', niveaux:['4e']},
-    {id:'CCRI21-4-1', label:'Paramétrer une simulation pour valider la tenue mécanique', domaine:'CCRI – Validation', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'CCRI21-4-2', label:'Proposer un protocole de test pour valider la tenue mécanique', domaine:'CCRI – Validation', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'CCRI22-4', label:'Proposer un protocole de test pour valider comportement et performances', domaine:'CCRI – Validation', source:'boizard', niveaux:['4e'], themes:['conception']},
-    {id:'CCRI31-4-1', label:'Modifier un algorithme pour répondre au besoin ou au problème', domaine:'CCRI – Programmation OST', source:'boizard', niveaux:['4e'], themes:['programmation','conception']},
-    {id:'CCRI31-4-2', label:'Traduire un algorithme en programme (besoin simple)', domaine:'CCRI – Programmation OST', source:'boizard', niveaux:['4e'], themes:['programmation','conception']},
-    {id:'CCRI31-4-3', label:'Réaliser et mettre au point un programme (interaction H/M éventuelle)', domaine:'CCRI – Programmation OST', source:'boizard', niveaux:['4e'], themes:['programmation','conception']},
+    {id:'OST11-4-1', label:'Mettre en relation les OST avec leurs usages', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['4e'], themes:['evolution']},
+    {id:'OST11-4-2', label:'Identifier les avantages et les inconvénients associés aux évolutions technologiques et informatiques', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['4e'], themes:['evolution']},
+    {id:'OST11-4-3', label:'Justifier l’évolution d’un OST pour répondre à l’évolution des besoins', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['4e'], themes:['evolution']},
+    {id:'OST12-4-1', label:'Identifier et appliquer les règles pour un usage raisonné des objets communicants et des environnements numériques (propriété intellectuelle, identité numérique, témoins de connexion, géolocalisation)', domaine:'OST – Usages et impacts sociétaux du numérique', source:'boizard', niveaux:['4e'], themes:['information','communication']},
+    {id:'OST21-4-1', label:'Décrire l’expérience de l’utilisateur (ressenti et facilité d’usage) d’un OST en partant du langage naturel (texte, croquis) pour aboutir aux schémas, graphiques, algorithmes', domaine:'OST – L’OST dans son environnement', source:'boizard', niveaux:['4e'], themes:['evolution']},
+    {id:'OST21-4-2', label:'Repérer et expliquer les contraintes, exigences prises en compte (sécurité, incidences environnementales, formes et fonctions, ergonomie, qualité, fiabilité) pour répondre aux attentes des utilisateurs', domaine:'OST – L’OST dans son environnement', source:'boizard', niveaux:['4e'], themes:['evolution']},
+    {id:'OST31-4-1', label:'Identifier les caractéristiques à prendre en compte dans le choix d’un OST en vue de répondre à un besoin', domaine:'OST – Le choix d’un OST dans un contexte de développement durable', source:'boizard', niveaux:['4e'], themes:['materiaux','energies','environnement']},
+    {id:'OST31-4-2', label:'Comparer qualitativement et/ou quantitativement (incidences environnementales, bilan carbone, efficacité énergétique) plusieurs OST répondant au même besoin et arrêter un choix', domaine:'OST – Le choix d’un OST dans un contexte de développement durable', source:'boizard', niveaux:['4e'], themes:['materiaux','energies','environnement']},
+    {id:'OST32-4-1', label:'Choisir les appareils de mesure à utiliser pour mesurer une performance d’un OST à partir d’un protocole donné', domaine:'OST – La performance des OST', source:'boizard', niveaux:['4e'], themes:['environnement']},
+    {id:'SFC11-4-1', label:'Identifier les constituants d’une chaîne d’énergie et les associer à leurs fonctions', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard', niveaux:['4e'], themes:['energies']},
+    {id:'SFC11-4-2', label:'Repérer les transformations d’énergie et les flux d’énergie au sein de l’OST', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard', niveaux:['4e'], themes:['energies']},
+    {id:'SFC12-4-1', label:'Mettre en relation la forme d’une pièce avec le procédé de réalisation', domaine:'SFC – Matériaux et procédés', source:'boizard', niveaux:['4e'], themes:['materiaux']},
+    {id:'SFC13-4-1', label:'Identifier les constituants de la chaîne d’information d’un objet réel et les associer à leur fonction', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’information', source:'boizard', niveaux:['4e'], themes:['information']},
+    {id:'SFC14-4-1', label:'Décrire et analyser la transformation des données téléversées ou issues d’un OST', domaine:'SFC – Structuration et traitement des données', source:'boizard', niveaux:['4e'], themes:['information']},
+    {id:'SFC14-4-2', label:'Décrire et analyser la structuration d’une table de données qui permet une exploitation et une interprétation du comportement d’un OST', domaine:'SFC – Structuration et traitement des données', source:'boizard', niveaux:['4e'], themes:['information']},
+    {id:'SFC15-4-1', label:'Paramétrer une adresse IP fixe pour ajouter un objet connecté à un réseau local', domaine:'SFC – La circulation de l’information dans un réseau informatique', source:'boizard', niveaux:['4e'], themes:['information','communication']},
+    {id:'SFC15-4-2', label:'Résoudre des problèmes pour assurer la communication entre les différents terminaux dans un réseau informatique (simulation ou réseau local déconnecté du réseau pédagogique)', domaine:'SFC – La circulation de l’information dans un réseau informatique', source:'boizard', niveaux:['4e'], themes:['information','communication']},
+    {id:'SFC15-4-3', label:'Compléter une simulation fournie pour valider le comportement d’un réseau informatique', domaine:'SFC – La circulation de l’information dans un réseau informatique', source:'boizard', niveaux:['4e'], themes:['information','communication']},
+    {id:'SFC21-4-1', label:'Proposer un protocole permettant de vérifier l’origine d’un dysfonctionnement', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'SFC21-4-2', label:'Remplacer une pièce défectueuse sans protocole fourni (la pièce de remplacement étant fournie)', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'SFC21-4-3', label:'Choisir les procédés de réalisation et les mettre en œuvre', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'SFC31-4-1', label:'Analyser les données et en déduire des modifications à apporter au programme', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['4e'], themes:['programmation']},
+    {id:'SFC31-4-2', label:'Compléter un programme pour répondre à une fonctionnalité d’un OST', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['4e'], themes:['programmation']},
+    {id:'SFC31-4-3', label:'Tester et valider, dans un environnement simulé ou réel, une modification du programme', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['4e'], themes:['programmation']},
+    {id:'CCRI11-4', label:'Organiser un processus de conception et de réalisation dans une durée, avec des tâches identifiées', domaine:'CCRI – La gestion de projet technique', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'CCRI12-4', label:'Proposer et fabriquer une solution pour ajouter une nouvelle fonction à un OST (croquis, schéma, graphique, algorithme, modélisation)', domaine:'CCRI – Le prototypage de solutions', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'CCRI13-4', label:'Comparer différents matériaux pour choisir le plus adapté', domaine:'CCRI – Le choix des matériaux', source:'boizard', niveaux:['4e'], themes:['materiaux','conception']},
+    {id:'CCRI14-4', label:'Comparer différentes sources d’énergie pour choisir la plus adaptée', domaine:'CCRI – Le choix d’une source d’énergie', source:'boizard', niveaux:['4e'], themes:['energies','conception']},
+    {id:'CCRI15-4', label:'Identifier les constituants manquants dans un prototype et le compléter', domaine:'CCRI – L’assemblage de constituants', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'CCRI16-4-1', label:'Modifier une forme à l’aide d’une modélisation', domaine:'CCRI – La modélisation et la fabrication', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'CCRI16-4-2', label:'Choisir les moyens et produire la forme voulue', domaine:'CCRI – La modélisation et la fabrication', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'CCRI17-4', label:'Interfacer un objet technique avec un réseau', domaine:'CCRI – Les objets communicants', source:'boizard', niveaux:['4e']},
+    {id:'CCRI21-4-1', label:'Paramétrer une simulation fournie pour valider la tenue mécanique d’un matériau', domaine:'CCRI – La validation du comportement mécanique d’un matériau', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'CCRI21-4-2', label:'Proposer un protocole de test pour valider la tenue mécanique d’un matériau', domaine:'CCRI – La validation du comportement mécanique d’un matériau', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'CCRI22-4', label:'Proposer un protocole de test pour valider le comportement et les performances d’un objet technique', domaine:'CCRI – La validation des performances d’un OST', source:'boizard', niveaux:['4e'], themes:['conception']},
+    {id:'CCRI31-4-1', label:'Modifier un algorithme permettant de répondre au besoin ou au problème posé', domaine:'CCRI – La programmation des OST', source:'boizard', niveaux:['4e'], themes:['programmation','conception']},
+    {id:'CCRI31-4-2', label:'Traduire un algorithme permettant de répondre à un besoin ou à un problème simple en un programme.', domaine:'CCRI – La programmation des OST', source:'boizard', niveaux:['4e'], themes:['programmation','conception']},
+    {id:'CCRI31-4-3', label:'Réaliser et mettre au point un programme commandant un système réel incluant éventuellement une interaction entre un humain et une machine', domaine:'CCRI – La programmation des OST', source:'boizard', niveaux:['4e'], themes:['programmation','conception']},
     // --- SOCLE COMMUN — Technologie 4e ---
     {id:'SC-TECH-4e-1', label:'Analyser la composition interne d\'un OST (chaînes d\'énergie et d\'info)', domaine:'Socle – Technologie', source:'socle', niveaux:['4e'], themes:['information','energies']},
     {id:'SC-TECH-4e-2', label:'Identifier et résoudre un problème sur un OST existant', domaine:'Socle – Technologie', source:'socle', niveaux:['4e'], themes:['information','energies']},
     {id:'SC-TECH-4e-3', label:'Ajouter une fonctionnalité (approche MEI, effets environnementaux)', domaine:'Socle – Technologie', source:'socle', niveaux:['4e'], themes:['information','energies']},
   ],
   '3e': [
-    {id:'OST11-3-1', label:'Identifier les innovations de rupture attachées à l\'évolution d\'un OST', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['3e'], themes:['evolution']},
-    {id:'OST11-3-2', label:'Mettre en relation une découverte scientifique et ses effets sociétaux', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['3e'], themes:['evolution']},
-    {id:'OST11-3-3', label:'Exprimer dans un argumentaire l\'incidence d\'un OST sur la société', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['3e'], themes:['evolution']},
-    {id:'OST11-3-4', label:'Exprimer l\'incidence des contraintes sociétales sur les OST', domaine:'OST – Évolution des OST', source:'boizard', niveaux:['3e'], themes:['evolution']},
-    {id:'OST12-3-1', label:'Exprimer dans un argumentaire le rôle du numérique dans la société', domaine:'OST – Numérique', source:'boizard', niveaux:['3e'], themes:['information','communication']},
-    {id:'OST21-3-1', label:'Décrire l\'expérience utilisateur à l\'aide de modes de représentation choisis', domaine:'OST – OST dans son environnement', source:'boizard', niveaux:['3e'], themes:['evolution']},
-    {id:'OST31-3-1', label:'Établir une liste d\'OST possibles en vue de répondre à un besoin', domaine:'OST – Choix OST / DD', source:'boizard', niveaux:['3e'], themes:['materiaux','energies','environnement']},
-    {id:'OST31-3-2', label:'Choisir et argumenter un OST (cycle de vie, 3 piliers DD)', domaine:'OST – Choix OST / DD', source:'boizard', niveaux:['3e'], themes:['materiaux','energies','environnement']},
-    {id:'OST31-3-3', label:'Évaluer les OST selon des critères identifiés (perf., coût, réparabilité)', domaine:'OST – Choix OST / DD', source:'boizard', niveaux:['3e'], themes:['materiaux','energies','environnement']},
-    {id:'OST32-3-1', label:'Définir et mettre en œuvre un protocole de mesure de performance', domaine:'OST – Performance', source:'boizard', niveaux:['3e'], themes:['environnement']},
-    {id:'SFC11-3-1', label:'Élaborer, à l\'aide d\'un schéma bloc, la chaîne d\'énergie d\'un OST', domaine:'SFC – Chaîne d\'énergie', source:'boizard', niveaux:['3e'], themes:['energies']},
-    {id:'SFC12-3-1', label:'Justifier le choix d\'un matériau et son procédé (contraintes tech. et env.)', domaine:'SFC – Matériaux et procédés', source:'boizard', niveaux:['3e'], themes:['materiaux']},
-    {id:'SFC13-3-1', label:'Décrire un OST en caractérisant sa chaîne d\'information', domaine:'SFC – Chaîne d\'information', source:'boizard', niveaux:['3e'], themes:['information']},
-    {id:'SFC13-3-2', label:'Associer des grandeurs analogiques à des données exploitables', domaine:'SFC – Chaîne d\'information', source:'boizard', niveaux:['3e'], themes:['information']},
-    {id:'SFC14-3-1', label:'Représenter sous forme de données les informations d\'un OST', domaine:'SFC – Données', source:'boizard', niveaux:['3e'], themes:['information']},
-    {id:'SFC14-3-2', label:'Identifier la mise en forme, transmission ou stockage des données', domaine:'SFC – Données', source:'boizard', niveaux:['3e'], themes:['information']},
-    {id:'SFC15-3-1', label:'Identifier et représenter la circulation d\'une information dans Internet', domaine:'SFC – Réseau', source:'boizard', niveaux:['3e'], themes:['information','communication']},
-    {id:'SFC15-3-2', label:'Justifier la nécessité d\'un protocole de routage entre réseaux', domaine:'SFC – Réseau', source:'boizard', niveaux:['3e'], themes:['information','communication']},
-    {id:'SFC21-3-1', label:'Formuler des hypothèses expliquant un dysfonctionnement', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'SFC21-3-2', label:'Proposer un protocole de dépannage puis de réparation', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'SFC21-3-3', label:'Réaliser le dépannage ou la réparation d\'un système défectueux', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'SFC21-3-4', label:'Réaliser une pièce sur mesure pour réparer un objet technique', domaine:'SFC – Dépannage et réparation', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'SFC31-3-1', label:'Déterminer les données utilisées/produites en vue de modifier un programme', domaine:'SFC – Programmation', source:'boizard', niveaux:['3e'], themes:['programmation']},
-    {id:'SFC31-3-2', label:'Programmer un algorithme lié à une nouvelle fonctionnalité', domaine:'SFC – Programmation', source:'boizard', niveaux:['3e'], themes:['programmation']},
-    {id:'SFC31-3-3', label:'Modifier et tester le programme associé à une nouvelle fonctionnalité', domaine:'SFC – Programmation', source:'boizard', niveaux:['3e'], themes:['programmation']},
-    {id:'CCRI11-3', label:'Élaborer un processus de conception et réalisation (tâches identifiées)', domaine:'CCRI – Gestion de projet', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'CCRI12-3', label:'Proposer et fabriquer un ensemble de solutions pour produire un nouvel OST', domaine:'CCRI – Prototypage', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'CCRI13-3', label:'Choisir un matériau constitutif d\'un objet/système technique', domaine:'CCRI – Matériaux', source:'boizard', niveaux:['3e'], themes:['materiaux','conception']},
-    {id:'CCRI14-3', label:'Choisir une source d\'énergie pour un OST', domaine:'CCRI – Énergie', source:'boizard', niveaux:['3e'], themes:['energies','conception']},
-    {id:'CCRI15-3', label:'Choisir les constituants et assembler un prototype', domaine:'CCRI – Assemblage', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'CCRI16-3-1', label:'Modéliser une forme voulue', domaine:'CCRI – Modélisation et fabrication', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'CCRI16-3-2', label:'Choisir les moyens et produire la forme voulue (3e)', domaine:'CCRI – Modélisation et fabrication', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'CCRI17-3', label:'Interfacer deux objets techniques communicants', domaine:'CCRI – Objets communicants', source:'boizard', niveaux:['3e']},
-    {id:'CCRI21-3-1', label:'Mettre en œuvre une simulation pour valider la tenue mécanique', domaine:'CCRI – Validation', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'CCRI21-3-2', label:'Proposer un protocole de test pour valider la tenue mécanique (3e)', domaine:'CCRI – Validation', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'CCRI22-3', label:'Proposer un protocole de test pour valider comportement et performances (3e)', domaine:'CCRI – Validation', source:'boizard', niveaux:['3e'], themes:['conception']},
-    {id:'CCRI31-3-1', label:'Élaborer un algorithme, le traduire en programme structuré, tester', domaine:'CCRI – Programmation OST', source:'boizard', niveaux:['3e'], themes:['programmation','conception']},
-    {id:'CCRI31-3-2', label:'Réaliser et mettre au point un programme (interaction H/M obligatoire)', domaine:'CCRI – Programmation OST', source:'boizard', niveaux:['3e'], themes:['programmation','conception']},
+    {id:'OST11-3-1', label:'Identifier les innovations de rupture qui sont attachées à l’évolution d’un OST', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['3e'], themes:['evolution']},
+    {id:'OST11-3-2', label:'Mettre en relation une découverte scientifique avec ses développements technologiques et leurs effets sur la société', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['3e'], themes:['evolution']},
+    {id:'OST11-3-3', label:'Exprimer dans un argumentaire court l’incidence d’un OST sur la société', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['3e'], themes:['evolution']},
+    {id:'OST11-3-4', label:'Exprimer dans un argumentaire court l’incidence des contraintes sociétales sur les OST', domaine:'OST – L’évolution des OST', source:'boizard', niveaux:['3e'], themes:['evolution']},
+    {id:'OST12-3-1', label:'Exprimer dans un argumentaire court le rôle du développement stratégique du numérique au sein de la société et des environnements professionnels (ou des métiers)', domaine:'OST – Usages et impacts sociétaux du numérique', source:'boizard', niveaux:['3e'], themes:['information','communication']},
+    {id:'OST21-3-1', label:'Décrire l’expérience de l’utilisateur d’un OST à l’aide de modes de représentation choisis', domaine:'OST – L’OST dans son environnement', source:'boizard', niveaux:['3e'], themes:['evolution']},
+    {id:'OST31-3-1', label:'Établir une liste d’OST possibles en vue de répondre à un besoin', domaine:'OST – Le choix d’un OST dans un contexte de développement durable', source:'boizard', niveaux:['3e'], themes:['materiaux','energies','environnement']},
+    {id:'OST31-3-2', label:'Choisir un OST et argumenter ce choix en prenant en compte son cycle de vie et les trois piliers du développement durable', domaine:'OST – Le choix d’un OST dans un contexte de développement durable', source:'boizard', niveaux:['3e'], themes:['materiaux','energies','environnement']},
+    {id:'OST31-3-3', label:'Évaluer les OST selon des exigences ou des critères identifiés (caractéristiques, performances, coût, indice de réparabilité)', domaine:'OST – Le choix d’un OST dans un contexte de développement durable', source:'boizard', niveaux:['3e'], themes:['materiaux','energies','environnement']},
+    {id:'OST32-3-1', label:'Définir et mettre en œuvre un protocole pour mesurer une caractéristique, une performance d’un OST', domaine:'OST – La performance des OST', source:'boizard', niveaux:['3e'], themes:['environnement']},
+    {id:'SFC11-3-1', label:'Élaborer, à l’aide d’un schéma bloc, la chaîne d’énergie d’un OST', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’énergie', source:'boizard', niveaux:['3e'], themes:['energies']},
+    {id:'SFC12-3-1', label:'Justifier le choix d’un matériau et de son procédé de mise en forme au regard des contraintes techniques et environnementales', domaine:'SFC – Matériaux et procédés', source:'boizard', niveaux:['3e'], themes:['materiaux']},
+    {id:'SFC13-3-1', label:'Décrire un OST en caractérisant sa chaîne d’information', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’information', source:'boizard', niveaux:['3e'], themes:['information']},
+    {id:'SFC13-3-2', label:'Associer des grandeurs analogiques issues d’un OST à des données exploitables', domaine:'SFC – Fonctions, solutions, constituants de la chaîne d’information', source:'boizard', niveaux:['3e'], themes:['information']},
+    {id:'SFC14-3-1', label:'Représenter sous forme de données les informations de diverses natures utilisées par un OST', domaine:'SFC – Structuration et traitement des données', source:'boizard', niveaux:['3e'], themes:['information']},
+    {id:'SFC14-3-2', label:'Identifier, selon les cas, leur mise en forme, leur transmission, ou leur stockage dans des fichiers (texte, image, nombre) afin de comprendre le fonctionnement de l’OST', domaine:'SFC – Structuration et traitement des données', source:'boizard', niveaux:['3e'], themes:['information']},
+    {id:'SFC15-3-1', label:'Identifier et représenter la circulation d’une information dans le réseau Internet', domaine:'SFC – La circulation de l’information dans un réseau informatique', source:'boizard', niveaux:['3e'], themes:['information','communication']},
+    {id:'SFC15-3-2', label:'Justifier la nécessité d’un protocole de routage pour faire communiquer plusieurs réseaux (activité débranchée, table de routage donnée)', domaine:'SFC – La circulation de l’information dans un réseau informatique', source:'boizard', niveaux:['3e'], themes:['information','communication']},
+    {id:'SFC21-3-1', label:'Formuler des hypothèses expliquant le dysfonctionnement d’un objet technique', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'SFC21-3-2', label:'Proposer un protocole de dépannage puis de réparation', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'SFC21-3-3', label:'Réaliser le dépannage ou la réparation d’un système défectueux', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'SFC21-3-4', label:'Réaliser une pièce sur mesure pour réparer un objet technique', domaine:'SFC – Le dépannage et la réparation', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'SFC31-3-1', label:'Déterminer les données utilisées et produites par un programme associé à une fonctionnalité en vue de le modifier', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['3e'], themes:['programmation']},
+    {id:'SFC31-3-2', label:'Programmer un algorithme lié à une nouvelle fonctionnalité', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['3e'], themes:['programmation']},
+    {id:'SFC31-3-3', label:'Modifier et tester le programme associé à une nouvelle fonctionnalité d’un OST', domaine:'SFC – La programmation d’une nouvelle fonctionnalité', source:'boizard', niveaux:['3e'], themes:['programmation']},
+    {id:'CCRI11-3', label:'Élaborer un processus de conception et de réalisation dans une durée, avec des tâches identifiées', domaine:'CCRI – La gestion de projet technique', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'CCRI12-3', label:'Proposer et fabriquer un ensemble de solutions pour produire un nouvel OST (croquis, schéma, graphique, algorithme, modélisation)', domaine:'CCRI – Le prototypage de solutions', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'CCRI13-3', label:'Choisir un matériau constitutif d’un objet et/ou système technique', domaine:'CCRI – Le choix des matériaux', source:'boizard', niveaux:['3e'], themes:['materiaux','conception']},
+    {id:'CCRI14-3', label:'Choisir une source d’énergie pour un OST', domaine:'CCRI – Le choix d’une source d’énergie', source:'boizard', niveaux:['3e'], themes:['energies','conception']},
+    {id:'CCRI15-3', label:'Choisir les constituants et assembler un prototype', domaine:'CCRI – L’assemblage de constituants', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'CCRI16-3-1', label:'Modéliser une forme voulue', domaine:'CCRI – La modélisation et la fabrication', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'CCRI16-3-2', label:'Choisir les moyens et produire la forme voulue', domaine:'CCRI – La modélisation et la fabrication', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'CCRI17-3', label:'Interfacer deux objets techniques communicants', domaine:'CCRI – Les objets communicants', source:'boizard', niveaux:['3e']},
+    {id:'CCRI21-3-1', label:'Mettre en œuvre une simulation pour valider la tenue mécanique d’un matériau', domaine:'CCRI – La validation du comportement mécanique d’un matériau', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'CCRI21-3-2', label:'Proposer un protocole de test pour valider la tenue mécanique d’un matériau', domaine:'CCRI – La validation du comportement mécanique d’un matériau', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'CCRI22-3', label:'Proposer un protocole de test pour valider le comportement et les performances d’un objet technique', domaine:'CCRI – La validation des performances d’un OST', source:'boizard', niveaux:['3e'], themes:['conception']},
+    {id:'CCRI31-3-1', label:'Élaborer ou concevoir un algorithme permettant de répondre au besoin visé, puis le traduire en un programme structuré (appel de sous-programmes ou de fonctions), le tester et le mettre au point', domaine:'CCRI – La programmation des OST', source:'boizard', niveaux:['3e'], themes:['programmation','conception']},
+    {id:'CCRI31-3-2', label:'Réaliser et mettre au point un programme commandant un système réel incluant une interaction entre un humain et une machine', domaine:'CCRI – La programmation des OST', source:'boizard', niveaux:['3e'], themes:['programmation','conception']},
     // --- SOCLE COMMUN — Technologie 3e ---
     {id:'SC-TECH-3e-1', label:'Caractériser les chaînes d\'info et d\'énergie en matière de fonctions', domaine:'Socle – Technologie', source:'socle', niveaux:['3e'], themes:['information','energies','programmation']},
     {id:'SC-TECH-3e-2', label:'Concevoir, réaliser, programmer et paramétrer une nouvelle fonction', domaine:'Socle – Technologie', source:'socle', niveaux:['3e'], themes:['information','energies','programmation']},
@@ -66449,11 +66453,22 @@ function _refRendreMosaique(list, items, lv){
     if(F.nom) h.appendChild(_refEl('span', 'ref-fam-nom', F.nom));
     h.appendChild(_refEl('span', 'ref-fam-n', F.n+' compétence'+(F.n>1?'s':'')));
     sec.appendChild(h);
-    F.sous.forEach(s=>{
+    // V11.4.53 — ordre du Boizard (OST11, OST12, OST21…) et bandeau de la compétence de fin de cycle (OST 1, OST 2…)
+    const _P=(typeof PROG_TECHNO_C4!=='undefined') ? PROG_TECHNO_C4 : null;
+    const _pl=(x)=>{ for(const it of (x.items||[])){ const q=_progPlace(it && it.id); if(q) return q; } return null; };
+    const _sous=F.sous.map((x,k)=>({x, k, pl:_pl(x)})).sort((a,b)=>(a.pl && b.pl) ? (a.pl.bloc<b.pl.bloc ? -1 : a.pl.bloc>b.pl.bloc ? 1 : 0) : (a.pl ? -1 : b.pl ? 1 : a.k-b.k));
+    let _comp=null;
+    _sous.forEach(({x:s, pl})=>{
+      const _th=(pl && _P && _P.themes && _P.themes[pl.theme]) ? _P.themes[pl.theme] : null, _cf=_th && _th.competences ? _th.competences[pl.comp] : null;
+      if(_cf && _comp!==pl.theme+pl.comp){
+        _comp=pl.theme+pl.comp;
+        const bd=_refEl('div', 'ref-fin-cycle'); bd.appendChild(_refEl('span', 'ref-fin-cycle-c', pl.theme+' '+pl.comp)); bd.appendChild(_refEl('span', 'ref-fin-cycle-t', _cf.titre)); bd.title='Compétence de fin de cycle';
+        sec.appendChild(bd);
+      }
       const seul=(F.sous.length===1 && s.nom===F.code);   // V11.4.44 — domaine sans sous-domaine : pas de libellé répété
       const r=_refEl('div', 'ref-sous'+(seul?' ref-sous-seul':''));
       if(!seul){   // V11.4.52 — intitulé d'origine du programme, tronqué, complet au survol
-        const _t=_refSousTitreOrigine(s), _o=_t!==String(s.nom||'').trim();
+        const _t=_refSousTitreOrigine(s), _o=!!pl;   // V11.4.53 — sous-domaine du programme : casse normale
         const sn=_refEl('div', 'ref-sous-nom'+(_o?' ref-sous-orig':'')); sn.appendChild(_refEl('span', 'ref-sous-t', _t)); sn.title=_t;
         r.appendChild(sn);
       }
@@ -66494,6 +66509,7 @@ function _refCarte(it, F, idx, lv){
   const c=_refEl('button', 'ref-carte'+(it.isGreyed?' ref-gris':'')); c.type='button';
   c.appendChild(_refEl('span', 'ref-code', it.id));
   c.appendChild(_refEl('span', 'ref-lbl', it.label));
+  c.title=it.id+' — '+it.label;   // V11.4.53 — intitulé complet au survol (texte du Boizard, coupé à 3 lignes)
   if(idx){
     const x=idx[it.id], pied=_refEl('span', 'ref-pied');
     if(x && x.travail.length) pied.appendChild(_refEl('span', 'ref-u-ok', x.travail.slice(0,2).join(' ; ')+(x.travail.length>2?' …':'')));
