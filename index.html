@@ -4635,7 +4635,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.1';
+const APP_VERSION = 'v11.5.2';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -73666,7 +73666,14 @@ function analyseCopy(){
     catch(e){ _hasPendingLocal = false; }
     updateSyncIndicator();
   }
+  // V11.5.2 — la pastille de l'accueil MOBILE recopie cet indicateur : elle est
+  // redessinée à chaque mise à jour (avant : seulement au rendu de l'accueil,
+  // « Modifs locales à pousser » restait affiché après un import réussi).
   function updateSyncIndicator(){
+    _updateSyncIndicatorBrut();
+    try{ if(typeof _hmRenderSyncPill==='function') _hmRenderSyncPill(); }catch(e){}
+  }
+  function _updateSyncIndicatorBrut(){
     let el = document.getElementById('dbx-sync-indicator');
     if(!el) return; // pas encore créé, pas grave
     if(!isConnected()){
