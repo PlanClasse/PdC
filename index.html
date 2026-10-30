@@ -128,6 +128,11 @@ button,input{font-family:'DM Sans',sans-serif}
 .th-seg-b:first-child{border-left:0}
 .th-seg-b.on{background:var(--acc);color:#fff;font-weight:700}
 .th-info{font-size:11.5px;color:var(--tx3)}
+/* V11.5.3 — bandeau « nouvelle version » */
+.maj-bandeau{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9500;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 20px);padding:8px 10px 8px 14px;border-radius:12px;background:#1D4ED8;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13px;font-weight:600}
+.maj-ok{border:0;border-radius:8px;background:#fff;color:#1D4ED8;font-weight:800;padding:6px 12px;font-family:inherit;font-size:13px;cursor:pointer}
+.maj-ok:disabled{opacity:.7;cursor:wait}
+.maj-plt{border:1px solid rgba(255,255,255,.5);border-radius:8px;background:transparent;color:#fff;padding:5px 10px;font-family:inherit;font-size:12px;cursor:pointer}
 .hdr-icon-btn:hover{border-color:var(--acc);background:var(--acc-l)}
 .hdr-icon-btn.primary{background:var(--acc);border-color:var(--acc)}
 .hdr-icon-btn.primary:hover{background:#1E3D1A}
@@ -4635,7 +4640,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.2';
+const APP_VERSION = 'v11.5.3';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -18210,6 +18215,93 @@ function _paramsFamilies(){
   return fams;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   V11.5.3 — Nouvelle version en ligne ? (demande du 30/10 : « une fois par
+   jour, au lancement »). Lit l'en-tête de sw.js sur le site (4 Ko, publié à
+   chaque livraison avec l'application) ; si sa version est plus récente que
+   APP_VERSION → bandeau « Mettre à jour » (recharge forcée, sans le
+   « recharger deux fois »). Date du dernier contrôle : localStorage de
+   l'appareil (pas dans S : propre à chaque appareil). https seulement.
+   ════════════════════════════════════════════════════════════════════ */
+const MAJ_CLE='pc_maj_verif';
+/** Version lue dans le texte de sw.js (« V035-V11.5.3 » → 'v11.5.3'), '' sinon. Pure. */
+function _majVersionSw(txt){
+  const m=String(txt||'').match(/V035-V(\d+)\.(\d+)\.(\d+)/);
+  return m ? 'v'+m[1]+'.'+m[2]+'.'+m[3] : '';
+}
+/** Compare deux versions 'vA.B.C' : -1 / 0 / 1. Pure. */
+function _majComparer(a, b){
+  const p=x=>String(x||'').replace(/^v/i,'').split('.').map(n=>parseInt(n,10)||0);
+  const A=p(a), B=p(b);
+  for(let i=0;i<3;i++){ const x=A[i]||0, y=B[i]||0; if(x!==y) return x<y ? -1 : 1; }
+  return 0;
+}
+/** Nom du cache du service worker d'une version ('v11.5.4' → 'planclasse-v11-5-4', comme CACHE_NAME). Pure. */
+function _majNomCache(version){ return 'planclasse-'+String(version||'').replace(/\./g,'-'); }
+/** Faut-il contrôler aujourd'hui ? (dernier contrôle ≠ aujourd'hui). Pure. */
+function _majAControler(dernier, aujourdhui){ return String(dernier||'')!==String(aujourdhui||''); }
+async function _majVerifier(force){
+  try{
+    if(location.protocol!=='https:' || (typeof navigator!=='undefined' && navigator.onLine===false)) return null;
+    const t=_appToday();
+    let dernier=''; try{ dernier=localStorage.getItem(MAJ_CLE)||''; }catch(e){}
+    if(!force && !_majAControler(dernier, t)) return null;
+    const r=await fetch('sw.js?maj='+Date.now(), {cache:'no-store'});
+    if(!r || !r.ok) return null;
+    const enLigne=_majVersionSw(await r.text());
+    try{ localStorage.setItem(MAJ_CLE, t); }catch(e){}
+    if(enLigne && _majComparer(APP_VERSION, enLigne)<0){ _majBandeau(enLigne); return enLigne; }
+    return '';
+  }catch(e){ console.warn('[maj] contrôle', e); return null; }
+}
+function _majBandeau(version){
+  let b=document.getElementById('maj-bandeau'); if(b) b.remove();
+  b=document.createElement('div'); b.id='maj-bandeau'; b.className='maj-bandeau'; b.setAttribute('role','status');
+  const tx=document.createElement('span'); tx.className='maj-tx';
+  tx.textContent='🆕 Nouvelle version '+version+' disponible (vous avez '+APP_VERSION+')';
+  b.appendChild(tx);
+  const ok=document.createElement('button'); ok.type='button'; ok.className='maj-ok'; ok.textContent='Mettre à jour';
+  ok.onclick=(e)=>{ e.stopPropagation(); _majAppliquer(version, ok, tx); };
+  b.appendChild(ok);
+  const plt=document.createElement('button'); plt.type='button'; plt.className='maj-plt'; plt.textContent='Plus tard'; plt.title='Le bandeau reviendra demain';
+  plt.onclick=(e)=>{ e.stopPropagation(); b.remove(); };
+  b.appendChild(plt);
+  document.body.appendChild(b);
+}
+/** Recharge la nouvelle version : téléchargement forcé de la page, caches vidés, service worker mis à jour, rechargement. */
+async function _majAppliquer(version, btn, tx){
+  try{
+    if(btn){ btn.disabled=true; btn.textContent='Téléchargement…'; }
+    try{ if(typeof saveS==='function') saveS(); }catch(e){}
+    // Le service worker sert son cache d'abord : la page est demandée avec ?maj= (laissé au réseau par sw.js).
+    const page=location.href.split('#')[0];
+    const r=await fetch(page+(page.indexOf('?')<0?'?':'&')+'maj='+Date.now(), {cache:'no-store'});
+    const html=r && r.ok ? await r.text() : '';
+    if(html.indexOf("const APP_VERSION = '"+version+"'")<0){
+      if(tx) tx.textContent='La version '+version+' n’est pas encore servie par le site : réessayez dans quelques minutes.';
+      if(btn){ btn.disabled=false; btn.textContent='Réessayer'; }
+      return false;
+    }
+    // Anciens caches vidés ; la page vérifiée est rangée dans le cache que la NOUVELLE version
+    // du service worker garde (même nom que son CACHE_NAME) : le rechargement la sert à coup sûr.
+    try{ if(window.caches){
+      const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k)));
+      const c=await caches.open(_majNomCache(version));
+      const rep=()=>new Response(html, {status:200, headers:{'Content-Type':'text/html; charset=utf-8'}});
+      await c.put(page, rep());
+      await c.put(new URL('index.html', page).href, rep());
+      await c.put(new URL('./', page).href, rep());
+    } }catch(e){}
+    try{ if(navigator.serviceWorker){ const reg=await navigator.serviceWorker.getRegistration(); if(reg) await reg.update(); } }catch(e){}
+    location.reload();
+    return true;
+  }catch(e){
+    console.warn('[maj] application', e);
+    if(tx) tx.textContent='Mise à jour impossible pour l’instant (réseau ?). Fermez et rouvrez l’application deux fois.';
+    if(btn){ btn.disabled=false; btn.textContent='Réessayer'; }
+    return false;
+  }
+}
 /* ════════════════════════════════════════════════════════════════════
    V11.5.1 — Thème saisonnier de l'accueil (maquette C retenue le 29/10)
    Réglage S.reglages.themeAccueil : 'auto' (défaut : selon la saison),
@@ -49602,6 +49694,9 @@ window.addEventListener('load',()=>{
       });
     }
   }catch(e){}
+
+  // V11.5.3 — Nouvelle version en ligne ? Une fois par jour, au lancement (après le premier rendu).
+  setTimeout(()=>{ try{ if(typeof _majVerifier==='function') _majVerifier(); }catch(e){} }, 4000);
 
   // V031-v181.11.0 — Démarrage de la détection automatique fin-de-cours
   try { if(typeof _endOfClassStart === 'function') _endOfClassStart(); } catch(e){}

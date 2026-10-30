@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════════════════
-   PlanClasse — Service Worker (V035-V11.5.2)
+   PlanClasse — Service Worker (V035-V11.5.3)
    ──────────────────────────────────────────────────────────────────
    Rôle : permettre le fonctionnement hors-ligne après la première
    visite. Cache index.html, manifest.json et sw.js lui-même au moment
@@ -20,7 +20,7 @@
    incrémente CACHE_NAME.
    ════════════════════════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'planclasse-v11-5-2';
+const CACHE_NAME = 'planclasse-v11-5-3';
 
 const PRECACHE_URLS = [
   './',                // = index.html dans le scope
@@ -66,6 +66,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // V11.5.3 — contrôle « nouvelle version » de l'application (sw.js?maj=…) : réseau seul, jamais mis en cache.
+  if (url.searchParams.has('maj')) return;
 
   event.respondWith(
     caches.match(req).then(cached => {
