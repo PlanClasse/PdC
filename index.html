@@ -128,6 +128,20 @@ button,input{font-family:'DM Sans',sans-serif}
 .th-seg-b:first-child{border-left:0}
 .th-seg-b.on{background:var(--acc);color:#fff;font-weight:700}
 .th-info{font-size:11.5px;color:var(--tx3)}
+/* V11.5.4 — Halloween (maquette B du 30/10) : page de nuit, bandeau violet → orange, chauves-souris, frise, toile */
+#menu.th-halloween{--bg:#2A1B33;--sur:#36243F;--sur2:#422C4D;--brd:#5A3F66;--brd2:#7A5A88;--tx:#F5EDE6;--tx2:#D6C6D9;--tx3:#A792AE;--acc:#F97316;--acc-l:#4A2C2A;background:radial-gradient(circle at 85% 0%,#4B2A5C 0,transparent 45%),var(--bg);color:var(--tx)}
+#menu.th-halloween .home-header{position:relative;border-bottom:0;background:linear-gradient(100deg,#1E1029,#3B1F4A 50%,#C2410C)}
+#menu.th-halloween .home-header::before{content:'🦇\2003\2003\2003\2003\2003\2003\2003🦇\2003\2003\2003\2003\2003\2003\2003\2003🦇';position:absolute;left:40%;top:8px;font-size:15px;opacity:.85;pointer-events:none;white-space:nowrap;transform:rotate(-4deg)}
+#menu.th-halloween .home-header::after{content:'';position:absolute;left:0;right:0;bottom:-8px;height:8px;z-index:1;pointer-events:none;background:repeating-linear-gradient(135deg,#1E1029 0 10px,#EA580C 10px 20px)}
+#menu.th-halloween .m-title,#menu.th-halloween .m-title span,#menu.th-halloween .home-date,#menu.th-halloween .home-date strong{color:#fff}
+#menu.th-halloween .m-title::before{content:'🎃 ';font-size:.8em}
+#menu.th-halloween .m-version{color:rgba(255,255,255,.8)}
+#menu.th-halloween .hdr-icon-btn{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3)}
+#menu.th-halloween .hdr-icon-btn.primary{background:#EA580C;border-color:#EA580C}
+#menu.th-halloween #rappels-bandeau{background:#36243F;padding-top:calc(.45rem + 8px)}
+#menu.th-halloween .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#36243F}
+#menu.th-halloween .home-content{position:relative}
+#menu.th-halloween .home-content::after{content:'';position:absolute;right:0;bottom:0;width:150px;height:150px;pointer-events:none;opacity:.3;background:radial-gradient(circle at 100% 100%,transparent 0 18px,#fff 18px 19px,transparent 19px 48px,#fff 48px 49px,transparent 49px 82px,#fff 82px 83px,transparent 83px 118px,#fff 118px 119px,transparent 119px),linear-gradient(315deg,transparent 49.6%,#fff 49.6% 50.4%,transparent 50.4%),linear-gradient(340deg,transparent 49.6%,#fff 49.6% 50.4%,transparent 50.4%),linear-gradient(290deg,transparent 49.6%,#fff 49.6% 50.4%,transparent 50.4%)}
 /* V11.5.3 — bandeau « nouvelle version » */
 .maj-bandeau{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9500;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 20px);padding:8px 10px 8px 14px;border-radius:12px;background:#1D4ED8;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13px;font-weight:600}
 .maj-ok{border:0;border-radius:8px;background:#fff;color:#1D4ED8;font-weight:800;padding:6px 12px;font-family:inherit;font-size:13px;cursor:pointer}
@@ -4640,7 +4654,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.3';
+const APP_VERSION = 'v11.5.4';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -18308,15 +18322,17 @@ async function _majAppliquer(version, btn, tx){
    'normal', 'automne', 'hiver'. Seul l'accueil du BUREAU (#menu) change :
    couleurs redéfinies dans sa portée + bandeau + frise. Mobile inchangé.
    ════════════════════════════════════════════════════════════════════ */
-const THEMES_ACCUEIL=[['auto','Selon la saison'],['normal','Normal'],['automne','🍁 Automne'],['hiver','❄ Hiver']];
-/** Thème réellement affiché pour un choix et une date AAAA-MM-JJ : 'automne' | 'hiver' | ''. Pure.
- *  Saison : automne du 22/09 au 20/12, hiver du 21/12 au 19/03, sinon aspect normal. */
+const THEMES_ACCUEIL=[['auto','Selon la saison'],['normal','Normal'],['automne','🍁 Automne'],['hiver','❄ Hiver'],['halloween','🎃 Halloween']];
+/** Thème réellement affiché pour un choix et une date AAAA-MM-JJ : 'automne' | 'hiver' | 'halloween' | ''. Pure.
+ *  Saison : automne du 22/09 au 20/12, hiver du 21/12 au 19/03, sinon aspect normal.
+ *  V11.5.4 — Halloween du 31/10 au 06/11 inclus, chaque année (au milieu de l'automne). */
 function _themeAccueilEffectif(choix, dateStr){
   const c=String(choix||'auto');
-  if(c==='automne' || c==='hiver') return c;
+  if(c==='automne' || c==='hiver' || c==='halloween') return c;
   if(c==='normal') return '';
   const md=String(dateStr||'').slice(5,10);
   if(!/^\d\d-\d\d$/.test(md)) return '';
+  if(md>='10-31' && md<='11-06') return 'halloween';
   if(md>='09-22' && md<='12-20') return 'automne';
   if(md>='12-21' || md<='03-19') return 'hiver';
   return '';
@@ -18328,7 +18344,7 @@ function _themeAccueilChoix(){
 function _themeAccueilAppliquer(){
   const m=document.getElementById('menu'); if(!m) return;
   const th=_themeAccueilEffectif(_themeAccueilChoix(), _appToday());
-  m.classList.remove('th-automne','th-hiver');
+  m.classList.remove('th-automne','th-hiver','th-halloween');
   if(th) m.classList.add('th-'+th);
 }
 function _themeAccueilChoisir(v){
@@ -18351,7 +18367,7 @@ function _themeAccueilLigne(){
   });
   const eff=_themeAccueilEffectif(cur, _appToday());
   const info=document.createElement('span'); info.className='th-info';
-  info.textContent=cur==='auto' ? 'aujourd’hui : '+(eff==='automne'?'automne (22/09 → 20/12)':eff==='hiver'?'hiver (21/12 → 19/03)':'normal') : '';
+  info.textContent=cur==='auto' ? 'aujourd’hui : '+(eff==='halloween'?'Halloween (31/10 → 06/11)':eff==='automne'?'automne (22/09 → 20/12, sauf Halloween 31/10 → 06/11)':eff==='hiver'?'hiver (21/12 → 19/03)':'normal') : '';
   row.appendChild(info);
   return row;
 }
