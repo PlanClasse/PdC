@@ -390,6 +390,31 @@ button,input{font-family:'DM Sans',sans-serif}
 .esp-blocs i{width:13px;height:13px;border-radius:2px;background:var(--sur2)}
 .esp-blocs i.f{background:#4F7A3A}
 .esp-pill.esp-gris{background:var(--sur2);color:var(--tx2)}
+.esp-pill.esp-bleu{background:#DBEAFE;color:#1E40AF}
+.esp-sel{padding:4px 8px;border:1px solid var(--brd);border-radius:8px;font:inherit;font-weight:700;background:var(--sur)}
+.esp-zone .esp-imp{padding:4px 12px;min-height:0;line-height:1.3;font-size:12.5px}
+.esp-cls-l{font-weight:800}
+.esp-fiche-t{font-size:13px;color:var(--tx2)}
+.esp-fiche-t b{font-family:'DM Serif Display',serif;font-size:22px;color:var(--tx);font-weight:400}
+.esp-fiche{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.esp-cadenas{margin-left:auto}
+.esp-fl{display:flex;align-items:center;gap:10px;padding:7px 12px;border-top:1px solid #F0EEE8;font-size:12.5px}
+.esp-fl:first-of-type{border-top:0}
+.esp-fl-on{background:#FAF7FF}
+.esp-fl-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.esp-fl-v{display:flex;align-items:center;gap:6px;font-weight:700;white-space:nowrap}
+.esp-fl-d{font-size:11.5px;color:var(--tx3);font-weight:400;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.esp-bar-p{display:inline-block;width:90px;height:7px;border-radius:4px;background:var(--sur2);overflow:hidden;flex:none}
+.esp-bar-p i{display:block;height:100%;background:#6D28D9}
+@media (max-width:900px){.esp-fiche{grid-template-columns:1fr}}
+@media print{
+  body.esp-imprime>*:not(#esp-page){display:none!important}
+  body.esp-imprime #esp-page{position:static;display:block!important;background:#fff}
+  body.esp-imprime #esp-page .esp-bar,body.esp-imprime #esp-page .fp-header .ib{display:none!important}
+  body.esp-imprime #esp-page .esp-corps{overflow:visible;padding:0}
+  body.esp-imprime .esp-fiche{grid-template-columns:1fr 1fr}
+  body.esp-imprime .esp-carte{break-inside:avoid}
+}
 .esp-par{padding:7px 12px;font-size:12px;color:#5B21B6;background:#F5F1FF;border-bottom:1px solid var(--brd)}
 .esp-par-b{font-size:10px;font-weight:700;color:#5B21B6;margin-top:2px}
 .esp-niv tr.esp-suite td{border-top:1px dashed #E4DFF5}
@@ -4802,7 +4827,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.13';
+const APP_VERSION = 'v11.5.14';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -14474,7 +14499,7 @@ let _profCal7WeekOffset = 0;  // 0 = semaine en cours (selon règle samedi→ven
    ════════════════════════════════════════════════════════════════════ */
 var _esp=null;
 const ESP_ONGLETS=[['semaine','🗓 Semaine'],['afaire','✅ À faire'],['niveaux','📊 Niveaux'],['classes','🏫 Classes'],['eleves','👤 Élèves'],['tdb','🗂 Tableau de bord']];
-const ESP_PRETS=['semaine','afaire','niveaux','tdb'];   // onglets livrés (les autres : lots suivants)
+const ESP_PRETS=['semaine','afaire','niveaux','classes','tdb'];   // onglets livrés (les autres : lots suivants)
 /** Bouton « 👁️ Public / Prof » de l'accueil : ouvre l'espace ; depuis l'ancien tableau de bord, revient en Public. */
 function _espBouton(){
   if(typeof _appMode!=='undefined' && _appMode==='prof'){ toggleAppMode(); return; }
@@ -14533,6 +14558,7 @@ function _espRendre(){
   if(_esp.onglet==='semaine') _espRendreSemaine(zone, corps);
   else if(_esp.onglet==='afaire') _espRendreAFaire(zone, corps);
   else if(_esp.onglet==='niveaux') _espRendreNiveaux(zone, corps);
+  else if(_esp.onglet==='classes') _espRendreClasse(zone, corps);
   corps.scrollTop=scroll;
 }
 /** « 🗂 Tableau de bord » : l'ancien mode Prof, sur l'accueil, inchangé. */
@@ -14899,7 +14925,8 @@ function _espRendreNiveaux(zone, corps){
     for(let k=0;k<n;k++){
       const l=x.lignes[k], tr=_espEl('tr', (k===0?'':'esp-suite')+(x.parallele?' esp-par-l':''));
       if(k===0){
-        const tdC=_espEl('td', 'esp-cls', String(x.cls).toUpperCase()); tdC.rowSpan=n;
+        const tdC=_espEl('td', 'esp-cls'); tdC.rowSpan=n;
+        tdC.appendChild(_espBtn(String(x.cls).toUpperCase(), 'esp-lien esp-cls-l', ()=>{ _esp.onglet='classes'; _esp.cls=x.cls; _espRendre(); }, 'Ouvrir la fiche de la classe'));
         if(x.parallele){ tdC.appendChild(_espEl('div', 'esp-par-b', n+' en parallèle')); }
         tr.appendChild(tdC);
       }
@@ -14928,6 +14955,161 @@ function _espRendreNiveaux(zone, corps){
     }
   });
   carte.appendChild(_espEl('div', 'esp-leg', 'Séance faite = cochée dans la Synthèse ou rattachée à un cours passé · chapitres en parallèle = plusieurs séquences commencées et non terminées · piste repérée d’après les cours passés (classe entière ou demi-groupes) · écart compté en séances · projection : 1 cours ≈ 1 séance ; en demi-groupes, le groupe qui a le moins de cours.'));
+}
+/* ── Lot 4 (V11.5.14) — 🏫 Classes : fiche d'une classe ───────────────────
+   Progression (toutes les séquences, chapitres en parallèle compris) ·
+   Évaluations & compétences · Vie de classe (statuts, participation, EBEP :
+   chiffres, sans nom) · Prochains cours. Période : 4 semaines ou année.
+   « 🖨 Imprimer » : la fiche seule (base de conseil de classe). */
+const ESP_PERIODES=[['4s','4 semaines'],['annee','Année']];
+/** Comptes de statuts d'une classe sur une période : {cle: total}, + max par élève. Pure.
+ *  stat = S.statutsCours ; clés 'slotKey|cls' ou 'slotKey|cls|gid' ; [du, au] inclus. */
+function _espStatutsClasse(stat, cls, du, au){
+  const tot={}, parEleve={}; const c=String(cls).toLowerCase();
+  Object.keys(stat||{}).forEach(k=>{
+    const p=k.split('|'); if(String(p[1]||'').toLowerCase()!==c) return;
+    const d=String(p[0]).slice(0,10); if(d<du || d>au) return;
+    const m=stat[k]||{};
+    Object.keys(m).forEach(uid=>{ (Array.isArray(m[uid])?m[uid]:[]).forEach(key=>{
+      tot[key]=(tot[key]||0)+1;
+      const pe=parEleve[key]=parEleve[key]||{}; pe[uid]=(pe[uid]||0)+1; }); });
+  });
+  const max={}; Object.keys(parEleve).forEach(key=>{ max[key]=Math.max.apply(null, Object.keys(parEleve[key]).map(u=>parEleve[key][u])); });
+  return {tot, max};
+}
+/** Participation d'une classe sur une période : {actifs, jamais, total, appuis}. Pure.
+ *  parts = S.participations ('slotKey|cls' → {uid: N}) ; eleves = uids de la classe. */
+function _espParticipation(parts, cls, eleves, du, au){
+  const c=String(cls).toLowerCase(), n={}; let appuis=0;
+  Object.keys(parts||{}).forEach(k=>{
+    const p=k.split('|'); if(String(p[1]||'').toLowerCase()!==c) return;
+    const d=String(p[0]).slice(0,10); if(d<du || d>au) return;
+    Object.keys(parts[k]||{}).forEach(u=>{ const v=Number(parts[k][u])||0; if(v>0){ n[u]=(n[u]||0)+v; appuis+=v; } });
+  });
+  const L=Array.isArray(eleves)?eleves:[];
+  const actifs=L.filter(u=>n[u]>0).length;
+  return {actifs, jamais:L.length-actifs, total:L.length, appuis};
+}
+function _espUidsClasse(cls){ return ((S.cl[cls]||{}).students||[]).map(x=>(x && typeof x==='object') ? (x.uid||'') : x).filter(Boolean); }
+function _espCarteFiche(parent, titre, prive){
+  const c=_espEl('section', 'esp-carte esp-fc'); parent.appendChild(c);
+  const h=_espEl('div', 'esp-ch'); h.appendChild(_espEl('span', '', titre)); if(prive) h.appendChild(_espEl('span', 'esp-cadenas', '🔒')); c.appendChild(h);
+  return c;
+}
+function _espLigneFiche(parent, lib, val, pill, detail){
+  const r=_espEl('div', 'esp-fl'); r.appendChild(_espEl('span', 'esp-fl-l', lib));
+  const v=_espEl('span', 'esp-fl-v'); if(pill) v.appendChild(_espEl('span', 'esp-pill esp-'+pill, val)); else v.textContent=val; r.appendChild(v);
+  if(detail) r.appendChild(_espEl('span', 'esp-fl-d', detail));
+  parent.appendChild(r); return r;
+}
+function _espRendreClasse(zone, corps){
+  const niveaux=LEVELS.filter(l=>S.en && S.en[l]);
+  const classes=_homeListActiveClasses().filter(c=>S.cl[c] && (S.cl[c].students||[]).length)
+    .sort((a,b)=>(niveaux.indexOf(_sdcNiveau(a))-niveaux.indexOf(_sdcNiveau(b))) || a.localeCompare(b, 'fr', {numeric:true}));
+  if(!_esp.cls || classes.indexOf(_esp.cls)<0) _esp.cls=classes[0]||'';
+  if(!_esp.periode) _esp.periode='4s';
+  const cls=_esp.cls;
+  const nav=_espEl('div', 'esp-nav'); zone.appendChild(nav);
+  const ix=classes.indexOf(cls);
+  nav.appendChild(_espBtn('‹', 'bs esp-nav-b', ()=>{ if(ix>0){ _esp.cls=classes[ix-1]; _espRendre(); } }, 'Classe précédente'));
+  const sel=_espEl('select', 'esp-sel'); sel.setAttribute('aria-label', 'Classe');
+  niveaux.forEach(lv=>{ const g=_espEl('optgroup'); g.label=lv; classes.filter(c=>_sdcNiveau(c)===lv).forEach(c=>{ const o=_espEl('option', '', String(c).toUpperCase()); o.value=c; if(c===cls) o.selected=true; g.appendChild(o); }); if(g.children.length) sel.appendChild(g); });
+  sel.onchange=()=>{ _esp.cls=sel.value; _espRendre(); };
+  nav.appendChild(sel);
+  nav.appendChild(_espBtn('›', 'bs esp-nav-b', ()=>{ if(ix<classes.length-1){ _esp.cls=classes[ix+1]; _espRendre(); } }, 'Classe suivante'));
+  const seg=_espEl('div', 'esp-seg'); zone.appendChild(seg);
+  ESP_PERIODES.forEach(([k,l])=>seg.appendChild(_espBtn(l, 'esp-seg-b'+(_esp.periode===k?' on':''), ()=>{ _esp.periode=k; _espRendre(); })));
+  zone.appendChild(_espBtn('🖨 Imprimer', 'bs esp-imp', ()=>_espImprimer(), 'Imprimer la fiche (base de conseil de classe)'));
+  if(!cls){ corps.appendChild(_espEl('div', 'esp-vide', 'Aucune classe avec élèves.')); return; }
+  const t=_appToday(), lv=_sdcNiveau(cls), prog=getProgression(lv)||[];
+  const du=_esp.periode==='4s' ? _impDateDecalee(t, -28) : '0000-00-00';
+  const eleves=_espUidsClasse(cls);
+  const titre=_espEl('div', 'esp-fiche-t');
+  titre.appendChild(_espEl('b', '', String(cls).toUpperCase()));
+  titre.appendChild(_espEl('span', '', ' · '+eleves.length+' élèves · '+(_esp.periode==='4s' ? '4 dernières semaines' : 'depuis la rentrée')+' · '+_espDateCourte(t)));
+  corps.appendChild(titre);
+  const g=_espEl('div', 'esp-fiche'); corps.appendChild(g);
+  // 1. Progression
+  const cP=_espCarteFiche(g, '📚 Progression');
+  try{
+    const F=_espSeancesFaites(lv, [cls], t)[cls];
+    const vac=_espVacancesProchaines(S.edt && S.edt.vacances, t);
+    const ligne=_espLigneNiveau(lv, cls, prog, F, t, vac ? vac.debut : _impDateDecalee(t, 28));
+    const enCours=new Map(ligne.lignes.map(l=>[l.cour.seq.id, l]));
+    const SP=S.suiviProg||{};
+    if(!prog.length) cP.appendChild(_espEl('div', 'esp-vide', 'Pas de progression pour ce niveau.'));
+    prog.forEach((seq,i)=>{
+      const ids=(seq.seances||[]).map(x=>x.id), n=ids.filter(id=>F.has(seq.id+'|'+id)).length, sv=SP[lv+'|'+seq.id+'|'+cls]||{};
+      const fini=!!sv.done || (ids.length>0 && n===ids.length), l=enCours.get(seq.id);
+      const r=_espEl('div', 'esp-fl'+(l?' esp-fl-on':''));
+      r.appendChild(_espEl('span', 'esp-fl-l', 'SEQ'+_sdcSeqNum(seq, i)+' · '+(seq.titre||'')));
+      const v=_espEl('span', 'esp-fl-v');
+      if(fini) v.appendChild(_espEl('span', 'esp-pill esp-vert', '✓ terminée'));
+      else if(l){ if(l.piste) v.appendChild(_espEl('span', 'esp-piste', l.piste==='ce' ? 'classe entière' : '½ groupes')); const bl=_espEl('span', 'esp-blocs'); for(let k=0;k<ids.length;k++) bl.appendChild(_espEl('i', k<n ? 'f' : '')); v.appendChild(bl); v.appendChild(_espEl('span', 'esp-fl-d', ' S'+n+' / '+ids.length)); }
+      else v.appendChild(_espEl('span', 'esp-muet', n ? 'S'+n+' / '+ids.length : 'à venir'));
+      r.appendChild(v); cP.appendChild(r);
+    });
+    ligne.lignes.forEach(l=>{ if(l.projection && l.projection.cle!=='g') _espLigneFiche(cP, 'Projection '+l.nomSeq, l.projection.txt, ({v:'vert', a:'ambre', r:'rouge'})[l.projection.cle]); });
+  }catch(e){ console.warn('[esp] fiche progression', e); }
+  try{
+    const taf=Object.keys(S.tafVerifs||{}).filter(k=>String(k.split('|')[1]||'').toLowerCase()===String(cls).toLowerCase()).map(k=>S.tafVerifs[k]).filter(v=>v && v.status!=='done' && v.status!=='skipped');
+    _espLigneFiche(cP, 'TAF à vérifier', String(taf.length), taf.length ? 'ambre' : 'vert', taf.slice(0,3).map(v=>v.label||'').filter(Boolean).join(' · '));
+  }catch(e){}
+  // 2. Évaluations & compétences
+  const cE=_espCarteFiche(g, '🎯 Évaluations et compétences');
+  try{
+    const ev=[]; _homeIterateSeqEvals((seq, e, slotKey, c, dateStr)=>{ if(String(c).toLowerCase()===String(cls).toLowerCase()) ev.push({seq, e, slotKey, dateStr}); });
+    const faites=ev.filter(x=>x.dateStr<=t && x.dateStr>=du), avenir=ev.filter(x=>x.dateStr>t).sort((a,b)=>a.dateStr.localeCompare(b.dateStr));
+    _espLigneFiche(cE, 'Évaluations faites', String(faites.length), '', faites.slice(-3).map(x=>x.e.titre||'évaluation').join(' · '));
+    _espLigneFiche(cE, 'À venir', avenir.length ? (avenir[0].e.titre||'évaluation')+' · '+_espDateCourte(avenir[0].dateStr) : 'aucune', avenir.length ? 'bleu' : '', avenir.length>1 ? '+ '+(avenir.length-1)+' autre'+(avenir.length>2?'s':'') : '');
+    const ratt=(_homeGetEvalsARattraper()||[]).filter(x=>String(x.clsCode).toLowerCase()===String(cls).toLowerCase());
+    const nR=new Set(ratt.map(x=>x.studentName)).size;
+    _espLigneFiche(cE, 'À rattraper', nR ? nR+' élève'+(nR>1?'s':'') : 'personne', nR ? 'rouge' : 'vert');
+    const vis=new Set(); prog.forEach(q=>(q.evals||[]).forEach(e=>(e.comps||[]).forEach(c=>{ if(c) vis.add(c); })));
+    const ev2=new Set(); Object.keys(S.evalComps||{}).forEach(k=>{ const p=k.split('|'); if(String(p[1]||'').toLowerCase()!==String(cls).toLowerCase()) return;
+      const E=S.evalComps[k]||{}; Object.keys(E).forEach(u=>Object.keys(E[u]||{}).forEach(c=>{ if(E[u][c]!=null) ev2.add(c); })); });
+    const jam=[...vis].filter(c=>!ev2.has(c));
+    _espLigneFiche(cE, 'Compétences visées jamais évaluées', vis.size ? jam.length+' / '+vis.size : '—', vis.size ? (jam.length ? 'ambre' : 'vert') : '');
+  }catch(e){ console.warn('[esp] fiche évaluations', e); }
+  // 3. Vie de classe (chiffres seulement)
+  const cV=_espCarteFiche(g, '👥 Vie de classe', true);
+  try{
+    const st=_espStatutsClasse(S.statutsCours, cls, du, t), T=st.tot, M=st.max;
+    const lignes=[['absent','Absences'],['cahier','Oublis de cahier'],['regle','Oublis de règle'],['retard','Retards'],['avert','Avertissements'],['punition','Punitions'],['retenue','Retenues'],['exclusion','Exclusions']];
+    let rien=true;
+    lignes.forEach(([k,l])=>{ const n=T[k]|0; if(!n) return; rien=false;
+      _espLigneFiche(cV, l, String(n), (k==='avert'||k==='punition'||k==='retenue'||k==='exclusion') ? 'rouge' : 'gris', M[k]>1 ? 'jusqu’à '+M[k]+' pour un même élève' : ''); });
+    if(rien) _espLigneFiche(cV, 'Statuts négatifs', 'aucun', 'vert');
+    const pos=['particip','respect','entraide','autonome'].reduce((s,k)=>s+(T[k]|0), 0);
+    if(pos) _espLigneFiche(cV, 'Statuts positifs', String(pos), 'vert');
+    const P=_espParticipation(S.participations, cls, eleves, du, t);
+    const r=_espLigneFiche(cV, 'Participation ✋', P.actifs+' / '+P.total, '', P.jamais ? P.jamais+' jamais · '+P.appuis+' appui'+(P.appuis>1?'s':'') : P.appuis+' appui'+(P.appuis>1?'s':''));
+    const bar=_espEl('span', 'esp-bar-p'); const i=_espEl('i'); i.style.width=(P.total ? Math.round(100*P.actifs/P.total) : 0)+'%'; bar.appendChild(i); r.insertBefore(bar, r.lastChild);
+    const B=(S.besoinsEleves||{})[cls]||{}, uB=Object.keys(B).filter(u=>eleves.indexOf(u)>=0 && (typeof _ebepAUneAdaptation!=='function' || _ebepAUneAdaptation(B[u])));
+    const ads=(typeof getEbepAdaptations==='function') ? getEbepAdaptations().map(a=>[a.label, uB.filter(u=>B[u][a.key]).length]).filter(x=>x[1]) : [];
+    _espLigneFiche(cV, 'EBEP', uB.length+' élève'+(uB.length>1?'s':''), uB.length ? 'ambre' : '', ads.map(x=>x[0]+' '+x[1]).join(' · '));
+  }catch(e){ console.warn('[esp] fiche vie de classe', e); }
+  // 4. Prochains cours
+  const cC=_espCarteFiche(g, '🗓 Prochains cours');
+  try{
+    const av=_sdcCoursDeClasse(cls).filter(c=>c.dateStr>=t && !c.annule).sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut)).slice(0,5);
+    if(!av.length) cC.appendChild(_espEl('div', 'esp-vide', 'Aucun cours à venir.'));
+    av.forEach(c=>{
+      const gid=(c.demi && c.grpIds.length===1) ? String(c.grpIds[0]) : '';
+      const ti=_espTitreCours(cls, c.slotKey);
+      const r=_espLigneFiche(cC, _espDateCourte(c.dateStr)+' '+(c.debut||'')+(gid ? ' · '+_impGrpCourt(_impGrpLibelle(gid), cls) : ''), c.rempli ? (ti||'préparé') : 'à préparer', c.rempli ? 'vert' : 'rouge');
+      r.style.cursor='pointer'; r.title='Ouvrir dans « Saisir mes cours »';
+      r.onclick=()=>_espOuvrirCours({cls, slotKey:c.slotKey});
+    });
+  }catch(e){ console.warn('[esp] fiche cours', e); }
+}
+/** Impression de la fiche seule (le reste de l'application est masqué pour l'impression). */
+function _espImprimer(){
+  document.body.classList.add('esp-imprime');
+  const fin=()=>{ document.body.classList.remove('esp-imprime'); window.removeEventListener('afterprint', fin); };
+  window.addEventListener('afterprint', fin);
+  try{ window.print(); }catch(e){}
+  setTimeout(fin, 1500);
 }
 function _espRendreAFaire(zone, corps){
   const t=_appToday(), st=_espTodoStore();
