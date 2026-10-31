@@ -149,6 +149,9 @@ button,input{font-family:'DM Sans',sans-serif}
 .maj-ap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px}
 .maj-ap-b{font-size:12px;padding:5px 10px}
 .maj-ap-s{font-size:11.5px;color:var(--tx2)}
+.maj-encours{min-width:min(420px,calc(100vw - 20px));flex-direction:column;align-items:stretch;gap:6px;padding:10px 14px}
+.maj-barre{height:6px;border-radius:3px;background:rgba(255,255,255,.3);overflow:hidden}
+.maj-barre-p{height:100%;width:0;background:#fff;border-radius:3px;transition:width .2s}
 .maj-plt{border:1px solid rgba(255,255,255,.5);border-radius:8px;background:transparent;color:#fff;padding:5px 10px;font-family:inherit;font-size:12px;cursor:pointer}
 .hdr-icon-btn:hover{border-color:var(--acc);background:var(--acc-l)}
 .hdr-icon-btn.primary{background:var(--acc);border-color:var(--acc)}
@@ -4657,7 +4660,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.5';
+const APP_VERSION = 'v11.5.6';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -18305,20 +18308,25 @@ function _majBandeau(version){
   b.appendChild(plt);
   document.body.appendChild(b);
 }
-/** Recharge la nouvelle version : téléchargement forcé de la page, caches vidés, service worker mis à jour, rechargement. */
+/** Recharge la nouvelle version : téléchargement forcé de la page, caches vidés, service worker mis à jour, rechargement.
+ *  V11.5.6 — progression visible (demande du 31/10 : « le bouton Mettre à jour reste affiché ») :
+ *  les boutons disparaissent, une barre suit le téléchargement, puis « Installation… », « Redémarrage… ». */
 async function _majAppliquer(version, btn, tx){
+  const band=document.getElementById('maj-bandeau');
+  const ui=_majProgression(band);
   try{
-    if(btn){ btn.disabled=true; btn.textContent='Téléchargement…'; }
+    ui.etape('Téléchargement de la version '+version+'…', 0);
     try{ if(typeof saveS==='function') saveS(); }catch(e){}
     // Le service worker sert son cache d'abord : la page est demandée avec ?maj= (laissé au réseau par sw.js).
     const page=location.href.split('#')[0];
     const r=await fetch(page+(page.indexOf('?')<0?'?':'&')+'maj='+Date.now(), {cache:'no-store'});
-    const html=r && r.ok ? await r.text() : '';
+    if(!r || !r.ok) throw new Error('HTTP '+(r && r.status));
+    const html=await _majLireAvecProgression(r, (f)=>ui.etape('Téléchargement de la version '+version+'… '+Math.round(f*100)+' %', f*0.8));
     if(html.indexOf("const APP_VERSION = '"+version+"'")<0){
-      if(tx) tx.textContent='La version '+version+' n’est pas encore servie par le site : réessayez dans quelques minutes.';
-      if(btn){ btn.disabled=false; btn.textContent='Réessayer'; }
+      ui.echec('La version '+version+' n’est pas encore servie par le site : réessayez dans quelques minutes.', ()=>_majAppliquer(version));
       return false;
     }
+    ui.etape('Installation…', 0.88);
     // Anciens caches vidés ; la page vérifiée est rangée dans le cache que la NOUVELLE version
     // du service worker garde (même nom que son CACHE_NAME) : le rechargement la sert à coup sûr.
     try{ if(window.caches){
@@ -18330,14 +18338,55 @@ async function _majAppliquer(version, btn, tx){
       await c.put(new URL('./', page).href, rep());
     } }catch(e){}
     try{ if(navigator.serviceWorker){ const reg=await navigator.serviceWorker.getRegistration(); if(reg) await reg.update(); } }catch(e){}
+    ui.etape('Redémarrage…', 1);
     location.reload();
     return true;
   }catch(e){
     console.warn('[maj] application', e);
-    if(tx) tx.textContent='Mise à jour impossible pour l’instant (réseau ?). Fermez et rouvrez l’application deux fois.';
-    if(btn){ btn.disabled=false; btn.textContent='Réessayer'; }
+    ui.echec('Mise à jour impossible pour l’instant (réseau ?). Fermez et rouvrez l’application deux fois.', ()=>_majAppliquer(version));
     return false;
   }
+}
+/** Lit une réponse en suivant la progression (0 → 1). Taille attendue : Content-Length, sinon taille de la page actuelle. */
+async function _majLireAvecProgression(r, cb){
+  const total=Number(r.headers && r.headers.get('content-length'))||0;
+  const attendu=total || ((document.documentElement && document.documentElement.outerHTML.length) || 4000000);
+  if(!r.body || typeof r.body.getReader!=='function' || typeof TextDecoder==='undefined'){ const t=await r.text(); cb(1); return t; }
+  const lect=r.body.getReader(), dec=new TextDecoder('utf-8');
+  let txt='', recu=0;
+  for(;;){
+    const {done, value}=await lect.read();
+    if(done) break;
+    recu+=value.length; txt+=dec.decode(value, {stream:true});
+    cb(Math.min(0.99, _majFraction(recu, attendu)));
+  }
+  txt+=dec.decode();
+  cb(1);
+  return txt;
+}
+/** Fraction téléchargée, bornée à [0, 1]. Pure. */
+function _majFraction(recu, attendu){ const a=Number(attendu)||0, r=Number(recu)||0; return a>0 ? Math.max(0, Math.min(1, r/a)) : 0; }
+/** Bandeau en mode « en cours » : boutons retirés, message + barre. echec() remet « Réessayer » et « Plus tard ». */
+function _majProgression(band){
+  const fake={etape(){}, echec(){}};
+  if(!band) return fake;
+  band.classList.add('maj-encours');
+  band.textContent='';
+  const tx=document.createElement('span'); tx.className='maj-tx'; band.appendChild(tx);
+  const barre=document.createElement('div'); barre.className='maj-barre';
+  const plein=document.createElement('div'); plein.className='maj-barre-p'; barre.appendChild(plein);
+  band.appendChild(barre);
+  return {
+    etape(msg, f){ tx.textContent='⏳ '+msg; plein.style.width=Math.round(Math.max(0, Math.min(1, f||0))*100)+'%'; },
+    echec(msg, reessayer){
+      band.classList.remove('maj-encours'); band.textContent='';
+      const t=document.createElement('span'); t.className='maj-tx'; t.textContent=msg; band.appendChild(t);
+      const ok=document.createElement('button'); ok.type='button'; ok.className='maj-ok'; ok.textContent='Réessayer';
+      ok.onclick=(e)=>{ e.stopPropagation(); reessayer(); }; band.appendChild(ok);
+      const plt=document.createElement('button'); plt.type='button'; plt.className='maj-plt'; plt.textContent='Plus tard';
+      plt.onclick=(e)=>{ e.stopPropagation(); band.remove(); }; band.appendChild(plt);
+    }
+  };
 }
 /* ════════════════════════════════════════════════════════════════════
    V11.5.1 — Thème saisonnier de l'accueil (maquette C retenue le 29/10)
