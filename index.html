@@ -394,6 +394,14 @@ button,input{font-family:'DM Sans',sans-serif}
 .esp-sel{padding:4px 8px;border:1px solid var(--brd);border-radius:8px;font:inherit;font-weight:700;background:var(--sur)}
 .esp-zone .esp-imp{padding:4px 12px;min-height:0;line-height:1.3;font-size:12.5px}
 .esp-cls-l{font-weight:800}
+.esp-prive{font-size:11.5px;color:#5B21B6;background:#F5F1FF;border:1px solid #E4DFF5;border-radius:8px;padding:5px 10px;align-self:flex-start}
+.esp-sig{display:flex;gap:4px;flex-wrap:wrap}
+.esp-det{font-size:12px;color:var(--tx2)}
+.esp-zone .esp-imp.on{background:var(--sur2)}
+.esp-seuils-g{display:flex;flex-wrap:wrap;gap:10px 18px;padding:10px 12px}
+.esp-seuil{display:flex;align-items:center;gap:6px;font-size:12.5px}
+.esp-seuil input[type=number]{width:58px;padding:4px 6px;border:1px solid var(--brd);border-radius:7px;font:inherit}
+.esp-seuils .esp-imp{margin:0 12px 10px;padding:4px 12px;min-height:0;font-size:12px}
 .esp-fiche-t{font-size:13px;color:var(--tx2)}
 .esp-fiche-t b{font-family:'DM Serif Display',serif;font-size:22px;color:var(--tx);font-weight:400}
 .esp-fiche{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
@@ -4827,7 +4835,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.14';
+const APP_VERSION = 'v11.5.15';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -14499,7 +14507,7 @@ let _profCal7WeekOffset = 0;  // 0 = semaine en cours (selon règle samedi→ven
    ════════════════════════════════════════════════════════════════════ */
 var _esp=null;
 const ESP_ONGLETS=[['semaine','🗓 Semaine'],['afaire','✅ À faire'],['niveaux','📊 Niveaux'],['classes','🏫 Classes'],['eleves','👤 Élèves'],['tdb','🗂 Tableau de bord']];
-const ESP_PRETS=['semaine','afaire','niveaux','classes','tdb'];   // onglets livrés (les autres : lots suivants)
+const ESP_PRETS=['semaine','afaire','niveaux','classes','eleves','tdb'];   // onglets livrés (les autres : lots suivants)
 /** Bouton « 👁️ Public / Prof » de l'accueil : ouvre l'espace ; depuis l'ancien tableau de bord, revient en Public. */
 function _espBouton(){
   if(typeof _appMode!=='undefined' && _appMode==='prof'){ toggleAppMode(); return; }
@@ -14559,6 +14567,7 @@ function _espRendre(){
   else if(_esp.onglet==='afaire') _espRendreAFaire(zone, corps);
   else if(_esp.onglet==='niveaux') _espRendreNiveaux(zone, corps);
   else if(_esp.onglet==='classes') _espRendreClasse(zone, corps);
+  else if(_esp.onglet==='eleves') _espRendreEleves(zone, corps);
   corps.scrollTop=scroll;
 }
 /** « 🗂 Tableau de bord » : l'ancien mode Prof, sur l'accueil, inchangé. */
@@ -15110,6 +15119,135 @@ function _espImprimer(){
   window.addEventListener('afterprint', fin);
   try{ window.print(); }catch(e){}
   setTimeout(fin, 1500);
+}
+/* ── Lot 5 (V11.5.15) — 👤 Élèves à surveiller (NOMS affichés) ────────────
+   Seuils proposés le 31/10 et acceptés (« la suite ») ; réglables (⚙ Seuils,
+   S.reglages.espSeuils) : oublis (cahier + règle) ≥ 3 · avertissements ≥ 2 ·
+   sanction (punition, retenue, exclusion) ≥ 1 · évaluation non rattrapée
+   depuis plus de 10 j · aucune participation sur les 6 derniers cours ·
+   jamais tiré au sort (interrogation). Sélecteur de classe + période. */
+const ESP_SEUILS_DEFAUT={oublis:3, avert:2, sanctions:1, evalJ:10, particip:6, tirage:true};
+function _espSeuils(){
+  const r=(S.reglages && S.reglages.espSeuils) || {};
+  const o=Object.assign({}, ESP_SEUILS_DEFAUT);
+  ['oublis','avert','sanctions','evalJ','particip'].forEach(k=>{ const v=Number(r[k]); if(isFinite(v) && v>=0) o[k]=Math.round(v); });
+  if(typeof r.tirage==='boolean') o.tirage=r.tirage;
+  return o;
+}
+/** Signaux d'un élève d'après ses comptes et les seuils : [{cle, txt, niv}] (niv : r rouge, a ambre, b bleu). Pure.
+ *  d = {oublis, avert, sanctions, evals:[titres], sansPartic:N (cours consécutifs sans participation, -1 = inconnu), jamaisTire:bool} */
+function _espSignaux(d, se){
+  const out=[], x=d||{}, S2=se||ESP_SEUILS_DEFAUT;
+  if(S2.oublis>0 && (x.oublis|0)>=S2.oublis) out.push({cle:'oublis', niv:'r', txt:'oublis ≥ '+S2.oublis, det:x.oublis+' oubli'+(x.oublis>1?'s':'')+' (cahier, règle)'});
+  if(S2.avert>0 && (x.avert|0)>=S2.avert) out.push({cle:'avert', niv:'r', txt:x.avert+' avertissements', det:x.avert+' avertissement'+(x.avert>1?'s':'')});
+  if(S2.sanctions>0 && (x.sanctions|0)>=S2.sanctions) out.push({cle:'sanction', niv:'r', txt:'sanction', det:x.sanctions+' punition / retenue / exclusion'});
+  if(Array.isArray(x.evals) && x.evals.length) out.push({cle:'eval', niv:'a', txt:'éval. manquée', det:'non rattrapée : '+x.evals.join(', ')});
+  if(S2.particip>0 && (x.sansPartic|0)>=S2.particip) out.push({cle:'partic', niv:'b', txt:'ne participe pas', det:'aucune participation sur ses '+x.sansPartic+' derniers cours'});
+  if(S2.tirage && x.jamaisTire) out.push({cle:'tirage', niv:'b', txt:'jamais interrogé', det:'jamais tiré au sort (interrogation)'});
+  return out;
+}
+/** Comptes par élève pour une classe et une période. */
+function _espComptesEleves(cls, du, t, se){
+  const uids=_espUidsClasse(cls), c=String(cls).toLowerCase(), R={};
+  uids.forEach(u=>R[u]={oublis:0, avert:0, sanctions:0, evals:[], sansPartic:-1, jamaisTire:false});
+  // statuts
+  const ST=S.statutsCours||{}, absent={};
+  Object.keys(ST).forEach(k=>{ const p=k.split('|'); if(String(p[1]||'').toLowerCase()!==c) return; const d=String(p[0]).slice(0,10);
+    Object.keys(ST[k]||{}).forEach(u=>{ const L=Array.isArray(ST[k][u])?ST[k][u]:[];
+      if(L.indexOf('absent')>=0) (absent[p[0]]=absent[p[0]]||new Set()).add(u);
+      if(!R[u] || d<du || d>t) return;
+      L.forEach(key=>{ if(key==='cahier'||key==='regle') R[u].oublis++; else if(key==='avert') R[u].avert++; else if(key==='punition'||key==='retenue'||key==='exclusion') R[u].sanctions++; }); }); });
+  // participation : N derniers cours de l'élève (demi-groupe : seulement les siens ; absent : ignoré)
+  let cours=[]; try{ cours=_sdcCoursDeClasse(cls).filter(x=>x.dateStr<t && !x.annule).sort((a,b)=>(b.dateStr+b.debut).localeCompare(a.dateStr+a.debut)); }catch(e){}
+  const P=S.participations||{};
+  uids.forEach(u=>{
+    let n=0, vus=0;
+    for(const x of cours){
+      if(vus>=se.particip) break;
+      if(x.demi && x.grpIds.length===1){ const g=S.groupes && S.groupes[x.grpIds[0]]; const m=g && Array.isArray(g.students) ? g.students.map(y=>(y && typeof y==='object') ? y.uid : y) : null; if(m && m.indexOf(u)<0) continue; }
+      if(absent[x.slotKey] && absent[x.slotKey].has(u)) continue;
+      const PS=P[x.slotKey+'|'+cls]||P[x.slotKey+'|'+c];
+      if(!PS || !Object.keys(PS).some(k=>(PS[k]|0)>0)) continue;   // cours où la participation n'a pas été relevée : ignoré
+      vus++;
+      const v=PS[u]|0;
+      if(v>0) break; n++;
+    }
+    R[u].sansPartic=(vus>=se.particip) ? n : -1;
+  });
+  // évaluations non rattrapées (au moins une note saisie pour la classe : sinon l'évaluation n'est pas encore corrigée)
+  const lim=_impDateDecalee(t, -se.evalJ);
+  _homeIterateSeqEvals((seq, ev, slotKey, cc, dateStr)=>{
+    if(String(cc).toLowerCase()!==c || dateStr<du || dateStr>lim) return;
+    const comps=(ev.comps||[]).filter(Boolean); if(!comps.length) return;
+    const E=(S.evalComps||{})[slotKey+'|'+cc]||{};
+    const a=(u)=>comps.some(k=>E[u] && E[u][k]!=null);
+    if(!uids.some(a)) return;
+    uids.forEach(u=>{ if(!a(u)) R[u].evals.push((ev.titre||'évaluation')+' ('+_espDateCourte(dateStr)+')'); });
+  });
+  // tirage au sort : seulement si la classe a déjà eu des tirages d'interrogation
+  const TH=((S.tirageHistory||{})[cls]||(S.tirageHistory||{})[c]||{}).interrogation;
+  if(Array.isArray(TH) && TH.length){ const tires=new Set(); TH.forEach(x=>(Array.isArray(x)?x:[x]).forEach(u=>tires.add(u))); uids.forEach(u=>{ R[u].jamaisTire=!tires.has(u); }); }
+  return R;
+}
+function _espNomEleve(u){ try{ return (typeof getFullName==='function') ? getFullName(u) : u; }catch(e){ return u; } }
+function _espRendreEleves(zone, corps){
+  const niveaux=LEVELS.filter(l=>S.en && S.en[l]);
+  const classes=_homeListActiveClasses().filter(c=>S.cl[c] && (S.cl[c].students||[]).length)
+    .sort((a,b)=>(niveaux.indexOf(_sdcNiveau(a))-niveaux.indexOf(_sdcNiveau(b))) || a.localeCompare(b, 'fr', {numeric:true}));
+  if(_esp.ecls===undefined) _esp.ecls='';
+  if(_esp.ecls && classes.indexOf(_esp.ecls)<0) _esp.ecls='';
+  if(!_esp.periode) _esp.periode='4s';
+  const lab=_espEl('span', 'esp-af-n', 'Classe'); zone.appendChild(lab);
+  const sel=_espEl('select', 'esp-sel'); sel.setAttribute('aria-label', 'Classe');
+  const oT=_espEl('option', '', 'Toutes'); oT.value=''; sel.appendChild(oT);
+  niveaux.forEach(lv=>{ const g=_espEl('optgroup'); g.label=lv; classes.filter(c=>_sdcNiveau(c)===lv).forEach(c=>{ const o=_espEl('option', '', String(c).toUpperCase()); o.value=c; g.appendChild(o); }); if(g.children.length) sel.appendChild(g); });
+  sel.value=_esp.ecls; sel.onchange=()=>{ _esp.ecls=sel.value; _espRendre(); };
+  zone.appendChild(sel);
+  const seg=_espEl('div', 'esp-seg'); zone.appendChild(seg);
+  ESP_PERIODES.forEach(([k,l])=>seg.appendChild(_espBtn(l, 'esp-seg-b'+(_esp.periode===k?' on':''), ()=>{ _esp.periode=k; _espRendre(); })));
+  zone.appendChild(_espBtn('⚙ Seuils', 'bs esp-imp'+(_esp.seuilsOuverts?' on':''), ()=>{ _esp.seuilsOuverts=!_esp.seuilsOuverts; _espRendre(); }, 'Régler les seuils'));
+  const se=_espSeuils(), t=_appToday(), du=_esp.periode==='4s' ? _impDateDecalee(t, -28) : '0000-00-00';
+  if(_esp.seuilsOuverts) corps.appendChild(_espPanneauSeuils(se));
+  const avis=_espEl('div', 'esp-prive', '🔒 Noms d’élèves affichés : à ne pas projeter.'); corps.appendChild(avis);
+  const L=[]; let calmes=0;
+  (_esp.ecls ? [_esp.ecls] : classes).forEach(cls=>{
+    let R={}; try{ R=_espComptesEleves(cls, du, t, se); }catch(e){ console.warn('[esp] élèves '+cls, e); }
+    Object.keys(R).forEach(u=>{ const sg=_espSignaux(R[u], se); if(sg.length) L.push({u, cls, sg}); else calmes++; });
+  });
+  const poids=(x)=>x.sg.reduce((s,g)=>s+({r:3, a:2, b:1}[g.niv]||0), 0);
+  L.sort((a,b)=>(poids(b)-poids(a)) || _espNomEleve(a.u).localeCompare(_espNomEleve(b.u), 'fr'));
+  const carte=_espEl('section', 'esp-carte'); corps.appendChild(carte);
+  if(!L.length){ carte.appendChild(_espEl('div', 'esp-vide', 'Aucun élève ne dépasse les seuils ✓')); }
+  else {
+    const tb=_espEl('table', 'esp-table'); carte.appendChild(tb);
+    const th=_espEl('tr'); ['Élève','Classe','Signaux','Détail',''].forEach(x=>th.appendChild(_espEl('th', '', x))); tb.appendChild(th);
+    L.forEach(x=>{
+      const tr=_espEl('tr');
+      tr.appendChild(_espEl('td', 'esp-cls', _espNomEleve(x.u)));
+      tr.appendChild(_espEl('td', '', String(x.cls).toUpperCase()));
+      const tdS=_espEl('td', 'esp-sig'); x.sg.forEach(g=>tdS.appendChild(_espEl('span', 'esp-pill esp-'+({r:'rouge', a:'ambre', b:'bleu'}[g.niv]), g.txt))); tr.appendChild(tdS);
+      tr.appendChild(_espEl('td', 'esp-det', x.sg.map(g=>g.det).join(' · ')));
+      const tdA=_espEl('td', 'esp-act'); tdA.appendChild(_espBtn('Fiche classe', 'esp-pill esp-gris', ()=>{ _esp.onglet='classes'; _esp.cls=x.cls; _espRendre(); })); tr.appendChild(tdA);
+      tb.appendChild(tr);
+    });
+  }
+  if(calmes) carte.appendChild(_espEl('div', 'esp-leg', calmes+' autre'+(calmes>1?'s':'')+' élève'+(calmes>1?'s':'')+(_esp.ecls ? ' de '+String(_esp.ecls).toUpperCase() : '')+' : rien à signaler.'));
+  carte.appendChild(_espEl('div', 'esp-leg', 'Seuils : oublis ≥ '+se.oublis+' · avertissements ≥ '+se.avert+' · sanction ≥ '+se.sanctions+' · évaluation non rattrapée > '+se.evalJ+' j · aucune participation sur '+se.particip+' cours'+(se.tirage ? ' · jamais tiré au sort' : '')+' (0 = signal désactivé).'));
+}
+/** Panneau de réglage des seuils (createElement). */
+function _espPanneauSeuils(se){
+  const p=_espEl('section', 'esp-carte esp-seuils');
+  p.appendChild(_espEl('div', 'esp-ch', '⚙ Seuils des signaux (0 = désactivé)'));
+  const g=_espEl('div', 'esp-seuils-g'); p.appendChild(g);
+  const champ=(k, l)=>{ const w=_espEl('label', 'esp-seuil'); w.appendChild(_espEl('span', '', l)); const i=_espEl('input'); i.type='number'; i.min='0'; i.step='1'; i.value=String(se[k]);
+    i.onchange=()=>{ if(!S.reglages || typeof S.reglages!=='object') S.reglages={}; const r=S.reglages.espSeuils=Object.assign({}, S.reglages.espSeuils||{}); r[k]=Math.max(0, Math.round(Number(i.value)||0)); saveS(); _espRendre(); };
+    w.appendChild(i); g.appendChild(w); };
+  champ('oublis', 'Oublis (cahier, règle) ≥'); champ('avert', 'Avertissements ≥'); champ('sanctions', 'Sanctions ≥'); champ('evalJ', 'Éval. non rattrapée depuis (jours) >'); champ('particip', 'Sans participation sur (cours où elle est relevée)');
+  const w=_espEl('label', 'esp-seuil'); const c=_espEl('input'); c.type='checkbox'; c.checked=!!se.tirage;
+  c.onchange=()=>{ if(!S.reglages || typeof S.reglages!=='object') S.reglages={}; const r=S.reglages.espSeuils=Object.assign({}, S.reglages.espSeuils||{}); r.tirage=c.checked; saveS(); _espRendre(); };
+  w.appendChild(c); w.appendChild(_espEl('span', '', 'Signaler « jamais tiré au sort »')); g.appendChild(w);
+  p.appendChild(_espBtn('Valeurs proposées', 'bs esp-imp', ()=>{ if(S.reglages) delete S.reglages.espSeuils; saveS(); _espRendre(); }, 'Revenir aux seuils proposés'));
+  return p;
 }
 function _espRendreAFaire(zone, corps){
   const t=_appToday(), st=_espTodoStore();
