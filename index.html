@@ -143,6 +143,27 @@ button,input{font-family:'DM Sans',sans-serif}
 #menu.th-ete #rappels-bandeau{background:#FFFBF0;padding-top:calc(.45rem + 6px)}
 #menu.th-printemps .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FCFEF9}
 #menu.th-ete .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FFFDF7}
+/* V11.5.9 — Noël (maquette A enrichie du 31/10) : festons lumineux, guirlande sous le bandeau et sur l'emploi du temps, boules suspendues, houx sur les tuiles */
+#menu.th-noel{--bg:#F7F1E8;--sur2:#F1E4D2;--brd:#DCC6A8;--brd2:#C9A46C;--acc:#B91C1C;--acc-l:#FBE2E0;--tx3:#8A7660;background:var(--bg)}
+#menu.th-noel .home-header{position:relative;border-bottom:0;background:linear-gradient(100deg,#7F1D1D,#B91C1C 45%,#14532D)}
+#menu.th-noel .home-header>*:not(.th-deco){z-index:2}
+#menu.th-noel .home-header::before{content:'';position:absolute;left:0;right:0;top:0;height:26px;z-index:1;pointer-events:none;background:radial-gradient(circle at 24px 19px,#FDE047 0 3px,transparent 3.5px) 0 0/96px 26px repeat-x,radial-gradient(circle at 72px 19px,#60A5FA 0 3px,transparent 3.5px) 0 0/96px 26px repeat-x,radial-gradient(circle at 50% -6px,transparent 0 21px,#166534 21px 24px,transparent 24.5px) 0 0/48px 26px repeat-x}
+#menu.th-noel .home-header::after{content:'';position:absolute;left:0;right:0;bottom:-10px;height:10px;z-index:3;pointer-events:none;background:radial-gradient(circle at 9px 5px,#FDE047 0 3px,transparent 3.5px) 0 0/36px 10px,radial-gradient(circle at 27px 5px,#22C55E 0 3px,transparent 3.5px) 0 0/36px 10px,linear-gradient(#14532D,#14532D) 0 4px/100% 2px no-repeat,#7F1D1D}
+#menu.th-noel .m-title,#menu.th-noel .m-title span,#menu.th-noel .home-date,#menu.th-noel .home-date strong{color:#fff}
+#menu.th-noel .m-title::before{content:'🎄 ';font-size:.8em}
+#menu.th-noel .m-version{color:rgba(255,255,255,.85)}
+#menu.th-noel .hdr-icon-btn{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.35)}
+#menu.th-noel .hdr-icon-btn.primary{background:#14532D;border-color:#14532D}
+#menu.th-noel #rappels-bandeau{background:#FCF7F0;padding-top:calc(.45rem + 10px);position:relative}
+#menu.th-noel .home-edt{position:relative;overflow:visible}
+#menu.th-noel .home-edt::before{content:'';position:absolute;left:8px;right:8px;top:-7px;height:14px;z-index:3;pointer-events:none;background:radial-gradient(circle at 10px 9px,#EF4444 0 3.5px,transparent 4px) 0 0/40px 14px repeat-x,radial-gradient(circle at 30px 9px,#FDE047 0 3.5px,transparent 4px) 0 0/40px 14px repeat-x,radial-gradient(circle at 50% -10px,transparent 0 16px,#166534 16px 18px,transparent 18.5px) 0 0/20px 14px repeat-x}
+#menu.th-noel .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FFFDF9;border-top:3px solid #B91C1C;position:relative}
+#menu.th-noel .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp):nth-child(even){border-top-color:#15803D}
+#menu.th-noel .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp)::after{content:'';position:absolute;right:10px;top:-3px;width:14px;height:12px;pointer-events:none;background:radial-gradient(circle at 4px 5px,#DC2626 0 3px,transparent 3.5px),radial-gradient(circle at 9px 7px,#DC2626 0 3px,transparent 3.5px),radial-gradient(ellipse at 3px 3px,#15803D 0 4px,transparent 4.5px)}
+#menu .th-boule{position:absolute;top:100%;pointer-events:none;z-index:4;transform:none!important;display:flex;flex-direction:column;align-items:center;filter:none}
+#menu .th-boule i{display:block;width:1px;background:rgba(0,0,0,.35)}
+#menu .th-boule b{display:block;border-radius:50%;box-shadow:inset -3px -3px 5px rgba(0,0,0,.25),inset 2px 2px 3px rgba(255,255,255,.6)}
+#menu .th-boule b::before{content:'';display:block;width:6px;height:4px;margin:-3px auto 0;background:#C9A227;border-radius:1px}
 .th-ligne{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 .9rem;padding:8px 12px;border:1px solid var(--brd);border-radius:12px;background:var(--sur)}
 .th-lab{font-size:13px;font-weight:800}
 .th-seg{display:inline-flex;border:1px solid var(--brd);border-radius:var(--r2);overflow:hidden}
@@ -4698,7 +4719,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.8';
+const APP_VERSION = 'v11.5.9';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -18570,26 +18591,31 @@ function _majProgression(band){
    'normal', 'automne', 'hiver'. Seul l'accueil du BUREAU (#menu) change :
    couleurs redéfinies dans sa portée + bandeau + frise. Mobile inchangé.
    ════════════════════════════════════════════════════════════════════ */
-const THEMES_ACCUEIL=[['auto','Selon la saison'],['normal','Normal'],['printemps','🌸 Printemps'],['ete','☀️ Été'],['automne','🍁 Automne'],['hiver','❄ Hiver'],['halloween','🎃 Halloween']];
+const THEMES_ACCUEIL=[['auto','Selon la saison'],['normal','Normal'],['printemps','🌸 Printemps'],['ete','☀️ Été'],['automne','🍁 Automne'],['hiver','❄ Hiver'],['halloween','🎃 Halloween'],['noel','🎄 Noël']];
 /** V11.5.8 — décors du bandeau (spans posés par _themeAccueilAppliquer) : [emoji, gauche %, haut px, taille px, rotation °]. */
 const THEME_DECOS={
   printemps:[['🌸',22,6,22,-12],['🌷',29,34,18,8],['🦋',36,8,17,-6],['🌱',41,40,14,0],['🐝',58,10,15,10],['🌼',64,34,19,-8],['🌸',70,6,15,14]],
   ete:[['☀️',22,4,26,0],['🌊',30,36,17,0],['🍉',37,8,17,-10],['🐚',43,40,13,6],['🌻',58,6,20,8],['🏖️',64,34,18,0],['🍦',71,10,15,-8]],
   automne:[['🍂',22,6,21,-18],['🍁',29,36,17,12],['🌰',36,10,14,-6],['🍄',41,40,15,0],['🍁',58,6,20,22],['🍂',65,34,16,-10],['🍁',71,8,14,-28]],
   hiver:[['❄️',22,6,20,0],['⛄',29,32,20,0],['❄️',36,10,13,15],['🌲',41,36,17,0],['❄️',58,8,17,-10],['🧣',64,34,16,-8],['❄️',71,6,13,20]],
-  halloween:[['🦇',24,8,17,-12],['🕸️',30,34,18,0],['👻',37,6,17,8],['🦇',43,38,13,10],['🦇',57,8,15,-6],['🍬',63,36,14,20],['🦇',70,10,18,8]]
+  halloween:[['🦇',24,8,17,-12],['🕸️',30,34,18,0],['👻',37,6,17,8],['🦇',43,38,13,10],['🦇',57,8,15,-6],['🍬',63,36,14,20],['🦇',70,10,18,8]],
+  noel:[['🎄',21,30,26,0],['🎁',26,40,17,-8],['🔔',31,28,16,14],['⭐',35,40,13,0],['🍬',39,30,15,20],['🧦',45,36,15,-10],['🦌',57,30,20,0],['🎅',62,38,18,0],['🕯️',67,28,15,0],['❄️',71,42,12,0]]
 };
+/** V11.5.9 — boules suspendues sous la frise (bandeau « À faire ») : [gauche %, fil px, couleur, diamètre px]. */
+const THEME_BOULES={ noel:[[56,16,'#DC2626',12],[59,30,'#EAB308',10],[62,12,'#16A34A',11],[65,26,'#DC2626',13],[68,14,'#2563EB',10]] };
 /** Thème réellement affiché pour un choix et une date AAAA-MM-JJ :
  *  'printemps' | 'ete' | 'automne' | 'hiver' | 'halloween' | ''. Pure.
  *  Saisons (V11.5.8) : printemps 20/03 → 20/06, été 21/06 → 21/09, automne 22/09 → 20/12, hiver 21/12 → 19/03.
- *  V11.5.4 — Halloween du 31/10 au 06/11 inclus, chaque année (au milieu de l'automne). */
+ *  V11.5.4 — Halloween du 31/10 au 06/11 inclus, chaque année (au milieu de l'automne).
+ *  V11.5.9 — Noël du 10/12 au 01/01 inclus, chaque année (fin de l'automne, début de l'hiver). */
 function _themeAccueilEffectif(choix, dateStr){
   const c=String(choix||'auto');
-  if(['printemps','ete','automne','hiver','halloween'].indexOf(c)>=0) return c;
+  if(['printemps','ete','automne','hiver','halloween','noel'].indexOf(c)>=0) return c;
   if(c==='normal') return '';
   const md=String(dateStr||'').slice(5,10);
   if(!/^\d\d-\d\d$/.test(md)) return '';
   if(md>='10-31' && md<='11-06') return 'halloween';
+  if(md>='12-10' || md<='01-01') return 'noel';   // V11.5.9 — Noël du 10/12 au 01/01 inclus
   if(md>='09-22' && md<='12-20') return 'automne';
   if(md>='12-21' || md<='03-19') return 'hiver';
   if(md>='03-20' && md<='06-20') return 'printemps';
@@ -18602,11 +18628,19 @@ function _themeAccueilChoix(){
 function _themeAccueilAppliquer(){
   const m=document.getElementById('menu'); if(!m) return;
   const th=_themeAccueilEffectif(_themeAccueilChoix(), _appToday());
-  m.classList.remove('th-printemps','th-ete','th-automne','th-hiver','th-halloween');
+  m.classList.remove('th-printemps','th-ete','th-automne','th-hiver','th-halloween','th-noel');
   if(th) m.classList.add('th-'+th);
   // V11.5.8 — décors du bandeau (createElement, aria-hidden, ignorés par la souris)
+  m.querySelectorAll('.th-deco').forEach(x=>x.remove());
   const h=m.querySelector('.home-header'); if(!h) return;
-  h.querySelectorAll('.th-deco').forEach(x=>x.remove());
+  // V11.5.9 — boules suspendues SOUS le bandeau (accrochées au bandeau, qui n'est jamais redessiné ;
+  // le bandeau « À faire » l'est, il les effacerait)
+  (THEME_BOULES[th]||[]).forEach(([g,fil,col,d])=>{
+    const w=document.createElement('span'); w.className='th-deco th-boule'; w.setAttribute('aria-hidden','true'); w.style.left=g+'%';
+    const f=document.createElement('i'); f.style.height=fil+'px'; w.appendChild(f);
+    const b=document.createElement('b'); b.style.cssText='width:'+d+'px;height:'+d+'px;background:'+col; w.appendChild(b);
+    h.appendChild(w);
+  });
   (THEME_DECOS[th]||[]).forEach(([e,g,t,f,r])=>{
     const sp=document.createElement('span'); sp.className='th-deco'; sp.setAttribute('aria-hidden','true'); sp.textContent=e;
     sp.style.cssText='left:'+g+'%;top:'+t+'px;font-size:'+f+'px;transform:rotate('+r+'deg)';
@@ -18633,7 +18667,7 @@ function _themeAccueilLigne(){
   });
   const eff=_themeAccueilEffectif(cur, _appToday());
   const info=document.createElement('span'); info.className='th-info';
-  info.textContent=cur==='auto' ? 'aujourd’hui : '+({halloween:'Halloween (31/10 → 06/11)', automne:'automne (22/09 → 20/12, sauf Halloween 31/10 → 06/11)', hiver:'hiver (21/12 → 19/03)', printemps:'printemps (20/03 → 20/06)', ete:'été (21/06 → 21/09)'}[eff]||'normal') : '';
+  info.textContent=cur==='auto' ? 'aujourd’hui : '+({halloween:'Halloween (31/10 → 06/11)', noel:'Noël (10/12 → 01/01)', automne:'automne (22/09 → 20/12, sauf Halloween 31/10 → 06/11 et Noël dès le 10/12)', hiver:'hiver (21/12 → 19/03, sauf Noël jusqu’au 01/01)', printemps:'printemps (20/03 → 20/06)', ete:'été (21/06 → 21/09)'}[eff]||'normal') : '';
   row.appendChild(info);
   return row;
 }
