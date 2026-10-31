@@ -121,6 +121,28 @@ button,input{font-family:'DM Sans',sans-serif}
 #menu.th-hiver #rappels-bandeau{background:#F7FAFD;padding-top:calc(.45rem + 6px)}
 #menu.th-automne .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FFFBF5}
 #menu.th-hiver .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FBFDFF}
+/* V11.5.8 — décors du bandeau, printemps, été */
+#menu .th-deco{position:absolute;pointer-events:none;user-select:none;opacity:.9;line-height:1;z-index:0;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25))}
+#menu .home-header>*:not(.th-deco){position:relative;z-index:1}
+#menu.th-printemps{--bg:#F4F7EE;--sur2:#E9F0DD;--brd:#CBD9B5;--brd2:#A9C08A;--acc:#3F7D2E;--acc-l:#E3F0D8;--tx3:#7E8B6E;background:var(--bg)}
+#menu.th-ete{--bg:#FBF6EA;--sur2:#F6ECD3;--brd:#E3D2A6;--brd2:#D2B66E;--acc:#0E7490;--acc-l:#DDF1F6;--tx3:#8E866F;background:var(--bg)}
+#menu.th-printemps .home-header,#menu.th-ete .home-header{position:relative;border-bottom:0}
+#menu.th-printemps .home-header{background:linear-gradient(100deg,#3F7D2E,#7DB55A 50%,#E79BB5)}
+#menu.th-ete .home-header{background:linear-gradient(100deg,#0369A1,#0EA5E9 50%,#F5B83D)}
+#menu.th-printemps .home-header::after,#menu.th-ete .home-header::after{content:'';position:absolute;left:0;right:0;bottom:-6px;height:6px;z-index:1;pointer-events:none}
+#menu.th-printemps .home-header::after{background:repeating-linear-gradient(90deg,#F4B6C8 0 18px,#FFFFFF 18px 36px,#A8D58B 36px 54px)}
+#menu.th-ete .home-header::after{background:repeating-linear-gradient(90deg,#38BDF8 0 18px,#FDE68A 18px 36px,#FB923C 36px 54px)}
+#menu.th-printemps .m-title,#menu.th-ete .m-title,#menu.th-printemps .m-title span,#menu.th-ete .m-title span,#menu.th-printemps .home-date,#menu.th-ete .home-date,#menu.th-printemps .home-date strong,#menu.th-ete .home-date strong{color:#fff}
+#menu.th-printemps .m-title::before{content:'🌸 ';font-size:.8em}
+#menu.th-ete .m-title::before{content:'☀️ ';font-size:.8em}
+#menu.th-printemps .m-version,#menu.th-ete .m-version{color:rgba(255,255,255,.85)}
+#menu.th-printemps .hdr-icon-btn,#menu.th-ete .hdr-icon-btn{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.4)}
+#menu.th-printemps .hdr-icon-btn.primary{background:#2C5A20;border-color:#2C5A20}
+#menu.th-ete .hdr-icon-btn.primary{background:#075985;border-color:#075985}
+#menu.th-printemps #rappels-bandeau{background:#F8FBF3;padding-top:calc(.45rem + 6px)}
+#menu.th-ete #rappels-bandeau{background:#FFFBF0;padding-top:calc(.45rem + 6px)}
+#menu.th-printemps .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FCFEF9}
+#menu.th-ete .htile:not(.htile-primary):not(.htile-demo):not(.htile-imp){background:#FFFDF7}
 .th-ligne{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 .9rem;padding:8px 12px;border:1px solid var(--brd);border-radius:12px;background:var(--sur)}
 .th-lab{font-size:13px;font-weight:800}
 .th-seg{display:inline-flex;border:1px solid var(--brd);border-radius:var(--r2);overflow:hidden}
@@ -131,7 +153,6 @@ button,input{font-family:'DM Sans',sans-serif}
 /* V11.5.4 — Halloween (maquette B du 30/10) : page de nuit, bandeau violet → orange, chauves-souris, frise, toile */
 #menu.th-halloween{--bg:#2A1B33;--sur:#36243F;--sur2:#422C4D;--brd:#5A3F66;--brd2:#7A5A88;--tx:#F5EDE6;--tx2:#D6C6D9;--tx3:#A792AE;--acc:#F97316;--acc-l:#4A2C2A;background:radial-gradient(circle at 85% 0%,#4B2A5C 0,transparent 45%),var(--bg);color:var(--tx)}
 #menu.th-halloween .home-header{position:relative;border-bottom:0;background:linear-gradient(100deg,#1E1029,#3B1F4A 50%,#C2410C)}
-#menu.th-halloween .home-header::before{content:'🦇\2003\2003\2003\2003\2003\2003\2003🦇\2003\2003\2003\2003\2003\2003\2003\2003🦇';position:absolute;left:40%;top:8px;font-size:15px;opacity:.85;pointer-events:none;white-space:nowrap;transform:rotate(-4deg)}
 #menu.th-halloween .home-header::after{content:'';position:absolute;left:0;right:0;bottom:-8px;height:8px;z-index:1;pointer-events:none;background:repeating-linear-gradient(135deg,#1E1029 0 10px,#EA580C 10px 20px)}
 #menu.th-halloween .m-title,#menu.th-halloween .m-title span,#menu.th-halloween .home-date,#menu.th-halloween .home-date strong{color:#fff}
 #menu.th-halloween .m-title::before{content:'🎃 ';font-size:.8em}
@@ -4677,7 +4698,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.7';
+const APP_VERSION = 'v11.5.8';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -18549,20 +18570,30 @@ function _majProgression(band){
    'normal', 'automne', 'hiver'. Seul l'accueil du BUREAU (#menu) change :
    couleurs redéfinies dans sa portée + bandeau + frise. Mobile inchangé.
    ════════════════════════════════════════════════════════════════════ */
-const THEMES_ACCUEIL=[['auto','Selon la saison'],['normal','Normal'],['automne','🍁 Automne'],['hiver','❄ Hiver'],['halloween','🎃 Halloween']];
-/** Thème réellement affiché pour un choix et une date AAAA-MM-JJ : 'automne' | 'hiver' | 'halloween' | ''. Pure.
- *  Saison : automne du 22/09 au 20/12, hiver du 21/12 au 19/03, sinon aspect normal.
+const THEMES_ACCUEIL=[['auto','Selon la saison'],['normal','Normal'],['printemps','🌸 Printemps'],['ete','☀️ Été'],['automne','🍁 Automne'],['hiver','❄ Hiver'],['halloween','🎃 Halloween']];
+/** V11.5.8 — décors du bandeau (spans posés par _themeAccueilAppliquer) : [emoji, gauche %, haut px, taille px, rotation °]. */
+const THEME_DECOS={
+  printemps:[['🌸',22,6,22,-12],['🌷',29,34,18,8],['🦋',36,8,17,-6],['🌱',41,40,14,0],['🐝',58,10,15,10],['🌼',64,34,19,-8],['🌸',70,6,15,14]],
+  ete:[['☀️',22,4,26,0],['🌊',30,36,17,0],['🍉',37,8,17,-10],['🐚',43,40,13,6],['🌻',58,6,20,8],['🏖️',64,34,18,0],['🍦',71,10,15,-8]],
+  automne:[['🍂',22,6,21,-18],['🍁',29,36,17,12],['🌰',36,10,14,-6],['🍄',41,40,15,0],['🍁',58,6,20,22],['🍂',65,34,16,-10],['🍁',71,8,14,-28]],
+  hiver:[['❄️',22,6,20,0],['⛄',29,32,20,0],['❄️',36,10,13,15],['🌲',41,36,17,0],['❄️',58,8,17,-10],['🧣',64,34,16,-8],['❄️',71,6,13,20]],
+  halloween:[['🦇',24,8,17,-12],['🕸️',30,34,18,0],['👻',37,6,17,8],['🦇',43,38,13,10],['🦇',57,8,15,-6],['🍬',63,36,14,20],['🦇',70,10,18,8]]
+};
+/** Thème réellement affiché pour un choix et une date AAAA-MM-JJ :
+ *  'printemps' | 'ete' | 'automne' | 'hiver' | 'halloween' | ''. Pure.
+ *  Saisons (V11.5.8) : printemps 20/03 → 20/06, été 21/06 → 21/09, automne 22/09 → 20/12, hiver 21/12 → 19/03.
  *  V11.5.4 — Halloween du 31/10 au 06/11 inclus, chaque année (au milieu de l'automne). */
 function _themeAccueilEffectif(choix, dateStr){
   const c=String(choix||'auto');
-  if(c==='automne' || c==='hiver' || c==='halloween') return c;
+  if(['printemps','ete','automne','hiver','halloween'].indexOf(c)>=0) return c;
   if(c==='normal') return '';
   const md=String(dateStr||'').slice(5,10);
   if(!/^\d\d-\d\d$/.test(md)) return '';
   if(md>='10-31' && md<='11-06') return 'halloween';
   if(md>='09-22' && md<='12-20') return 'automne';
   if(md>='12-21' || md<='03-19') return 'hiver';
-  return '';
+  if(md>='03-20' && md<='06-20') return 'printemps';
+  return 'ete';
 }
 function _themeAccueilChoix(){
   const r=(S && S.reglages) || {};
@@ -18571,8 +18602,16 @@ function _themeAccueilChoix(){
 function _themeAccueilAppliquer(){
   const m=document.getElementById('menu'); if(!m) return;
   const th=_themeAccueilEffectif(_themeAccueilChoix(), _appToday());
-  m.classList.remove('th-automne','th-hiver','th-halloween');
+  m.classList.remove('th-printemps','th-ete','th-automne','th-hiver','th-halloween');
   if(th) m.classList.add('th-'+th);
+  // V11.5.8 — décors du bandeau (createElement, aria-hidden, ignorés par la souris)
+  const h=m.querySelector('.home-header'); if(!h) return;
+  h.querySelectorAll('.th-deco').forEach(x=>x.remove());
+  (THEME_DECOS[th]||[]).forEach(([e,g,t,f,r])=>{
+    const sp=document.createElement('span'); sp.className='th-deco'; sp.setAttribute('aria-hidden','true'); sp.textContent=e;
+    sp.style.cssText='left:'+g+'%;top:'+t+'px;font-size:'+f+'px;transform:rotate('+r+'deg)';
+    h.appendChild(sp);
+  });
 }
 function _themeAccueilChoisir(v){
   if(!THEMES_ACCUEIL.some(t=>t[0]===v)) return;
@@ -18594,7 +18633,7 @@ function _themeAccueilLigne(){
   });
   const eff=_themeAccueilEffectif(cur, _appToday());
   const info=document.createElement('span'); info.className='th-info';
-  info.textContent=cur==='auto' ? 'aujourd’hui : '+(eff==='halloween'?'Halloween (31/10 → 06/11)':eff==='automne'?'automne (22/09 → 20/12, sauf Halloween 31/10 → 06/11)':eff==='hiver'?'hiver (21/12 → 19/03)':'normal') : '';
+  info.textContent=cur==='auto' ? 'aujourd’hui : '+({halloween:'Halloween (31/10 → 06/11)', automne:'automne (22/09 → 20/12, sauf Halloween 31/10 → 06/11)', hiver:'hiver (21/12 → 19/03)', printemps:'printemps (20/03 → 20/06)', ete:'été (21/06 → 21/09)'}[eff]||'normal') : '';
   row.appendChild(info);
   return row;
 }
