@@ -314,22 +314,21 @@ button,input{font-family:'DM Sans',sans-serif}
 .mode-toggle-btn:hover{border-color:var(--acc);color:var(--acc)}
 .mode-toggle-btn.mode-prof{background:#EEEDFE;border-color:#7C3AED;color:#5B21B6}
 .mode-toggle-btn.mode-prof:hover{background:#CECBF6;border-color:#5B21B6;color:#3C3489}
-/* V11.5.10 — Espace prof */
-.esp-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:450;display:flex;justify-content:center;align-items:stretch;padding:14px}
-.esp-pan{background:var(--bg);border-radius:var(--r3);box-shadow:var(--sh2);width:min(1360px,100%);display:flex;flex-direction:column;overflow:hidden}
-.esp-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;background:var(--sur);border-bottom:1px solid var(--brd)}
-.esp-titre{font-family:'DM Serif Display',serif;font-size:19px}
+/* V11.5.10 / V11.5.11 — Espace prof : vraie page (comme #ebep-page) */
+#esp-page{position:fixed;inset:0;background:var(--bg);z-index:400;display:none;flex-direction:column}
+#esp-page.open{display:flex}
+.esp-home{padding:5px 10px;font-size:16px}
+.esp-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:.5rem 1.2rem;background:var(--sur);border-bottom:1px solid var(--brd);flex-shrink:0}
 .esp-tabs{display:flex;gap:2px;flex-wrap:wrap}
 .esp-tab{border:0;background:transparent;padding:7px 12px;border-radius:8px;font-weight:600;font-size:13px;color:var(--tx2);cursor:pointer;font-family:inherit}
 .esp-tab.on{background:#6D28D9;color:#fff}
 .esp-tab.bientot{opacity:.4;cursor:default}
 .esp-zone{display:flex;gap:8px;align-items:center;flex:1 1 auto;justify-content:flex-end;min-width:0}
-.esp-fermer{padding:.45rem 1rem}
 .esp-nav{display:flex;gap:4px;align-items:center}
-.esp-nav-b{padding:5px 10px}
-.esp-nav-j{padding:5px 12px;font-weight:600}
+.esp-nav .esp-nav-b{padding:4px 10px;min-height:0;line-height:1.3}
+.esp-nav .esp-nav-j{padding:4px 12px;font-weight:600;min-height:0;line-height:1.3}
 .esp-nav-j.on{background:var(--tx);color:#fff;border-color:var(--tx)}
-.esp-corps{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.esp-corps{flex:1;overflow:auto;padding:1rem 1.2rem;display:flex;flex-direction:column;gap:12px;min-height:0}
 .esp-carte{background:var(--sur);border:1px solid var(--brd);border-radius:12px;overflow:hidden;flex-shrink:0}
 .esp-ch{display:flex;gap:8px;align-items:center;padding:7px 12px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--tx2);background:#FAF9F6;border-bottom:1px solid var(--brd)}
 .esp-ch-s{margin-left:auto;text-transform:none;font-weight:400;letter-spacing:0;color:var(--tx3)}
@@ -344,7 +343,7 @@ button,input{font-family:'DM Sans',sans-serif}
 .esp-cc-c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .esp-cc-e{margin-left:auto;font-size:10px;font-weight:800;background:rgba(255,255,255,.92);border-radius:6px;padding:0 5px;white-space:nowrap}
 .esp-cc-e.esp-vert,.esp-cc-e.esp-enreg{color:#166534}.esp-cc-e.esp-rouge{color:#B91C1C}.esp-cc-e.esp-ambre{color:#92400E}
-.esp-vide{color:var(--tx3);font-size:12px;text-align:center;padding:8px}
+.esp-vide{color:var(--tx3);font-size:12px;text-align:center;padding:10px}
 .esp-kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex-shrink:0}
 .esp-k{background:var(--sur);border:1px solid var(--brd);border-radius:10px;padding:8px 12px}
 .esp-k b{display:block;font-size:20px}.esp-k span{font-size:11.5px;color:var(--tx3)}
@@ -362,7 +361,23 @@ button,input{font-family:'DM Sans',sans-serif}
 .esp-pill.esp-vert,.esp-pill.esp-enreg{background:#DCFCE7;color:#166534}.esp-pill.esp-rouge{background:#FDE2E0;color:#8E1B1B}.esp-pill.esp-ambre{background:#FEF3C7;color:#92400E}
 .esp-b-f{border:0;border-radius:7px;padding:4px 11px;background:#6D28D9;color:#fff;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit}
 .esp-leg{display:flex;gap:14px;flex-wrap:wrap;padding:7px 12px;font-size:11px;color:var(--tx3);border-top:1px solid #F0EEE8}
-@media (max-width:900px){.esp-cal{grid-template-columns:repeat(2,minmax(0,1fr))}.esp-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.esp-af{column-count:2;column-gap:12px}
+.esp-af>.esp-carte{display:block;break-inside:avoid;margin-bottom:12px}
+.esp-af-c{margin-left:4px;font-size:10.5px;padding:0 7px;border-radius:999px;background:var(--sur2);color:var(--tx2)}
+.esp-af-retard .esp-af-c{background:#FDE2E0;color:#8E1B1B}.esp-af-jour .esp-af-c{background:#FFEDD5;color:#9A3412}.esp-af-semaine .esp-af-c{background:#FEF3C7;color:#92400E}
+.esp-af-l{display:flex;align-items:center;gap:9px;padding:7px 12px;border-top:1px solid #F0EEE8}
+.esp-af-l:first-of-type{border-top:0}
+.esp-af-bx{width:17px;height:17px;border:1.5px solid var(--brd2);border-radius:4px;background:#fff;cursor:pointer;flex:none;padding:0}
+.esp-af-bx:hover{border-color:#6D28D9;background:#F3EEFF}
+.esp-af-ic{flex:none;width:20px;text-align:center}
+.esp-af-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.esp-af-t b{font-size:13px;font-weight:600}
+.esp-af-d{font-size:11.5px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.esp-af-l .esp-af-a{padding:3px 9px;font-size:12px;white-space:nowrap;min-height:0;line-height:1.4}
+.esp-af-l .esp-af-r{padding:3px 7px;font-size:12px;min-height:0;line-height:1.4}
+.esp-af-n{font-size:12px;color:var(--tx2);font-weight:600}
+.esp-af-reaff{padding:4px 10px;font-size:12px}
+@media (max-width:900px){.esp-cal{grid-template-columns:repeat(2,minmax(0,1fr))}.esp-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}.esp-af{column-count:1}}
 #prof-banner{display:none;background:#7C3AED;color:#fff;font-size:12px;font-weight:700;padding:7px 1.5rem;text-align:center;letter-spacing:.02em;border-bottom:2px solid #5B21B6;box-shadow:0 2px 4px rgba(124,58,237,.15)}
 body.mode-prof #prof-banner{display:block}
 
@@ -4768,7 +4783,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.10';
+const APP_VERSION = 'v11.5.11';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -14430,18 +14445,17 @@ let _appMode = 'public';      // 'public' | 'prof'
 let _profCal7WeekOffset = 0;  // 0 = semaine en cours (selon règle samedi→vendredi)
 
 /* ════════════════════════════════════════════════════════════════════
-   V11.5.10 — ESPACE PROF (supervision avancée), lot 1 (maquette v2 du 31/10)
-   Fenêtre plein écran à onglets : 🗓 Semaine (ouverture) · À faire · Niveaux ·
-   Classes · Élèves (lots suivants, grisés) · 🗂 Tableau de bord (= l'ancien
-   mode Prof, INCHANGÉ, conservé pour les collègues).
-   Semaine : calendrier 5 jours (badge d'état par cours) + chiffres + tableau
-   (contenu préparé, documents, évaluation, EBEP). Données existantes :
-   « Saisir mes cours » (_sdcCoursDeClasse), Impressions (_impCollecte,
-   _hmImpCours), évaluations (_impRappels), EBEP (_impEbep).
+   ESPACE PROF (supervision avancée) — V11.5.10 lot 1, V11.5.11 : VRAIE PAGE
+   (comme EBEP ou l'ancien mode Prof, plus une fenêtre) + lot 2 « À faire ».
+   Onglets : 🗓 Semaine (ouverture) · ✅ À faire · Niveaux · Classes · Élèves
+   (lots suivants, grisés) · 🗂 Tableau de bord (= ancien mode Prof, inchangé).
+   Page #esp-page créée à la première ouverture (invariants du HTML statique
+   intacts). « Saisir mes cours » et « Impressions » s'ouvrent PAR-DESSUS et,
+   à leur fermeture, la page se redessine (_espRafraichir).
    ════════════════════════════════════════════════════════════════════ */
 var _esp=null;
 const ESP_ONGLETS=[['semaine','🗓 Semaine'],['afaire','✅ À faire'],['niveaux','📊 Niveaux'],['classes','🏫 Classes'],['eleves','👤 Élèves'],['tdb','🗂 Tableau de bord']];
-const ESP_PRETS=['semaine','tdb'];   // onglets livrés (les autres : lots suivants)
+const ESP_PRETS=['semaine','afaire','tdb'];   // onglets livrés (les autres : lots suivants)
 /** Bouton « 👁️ Public / Prof » de l'accueil : ouvre l'espace ; depuis l'ancien tableau de bord, revient en Public. */
 function _espBouton(){
   if(typeof _appMode!=='undefined' && _appMode==='prof'){ toggleAppMode(); return; }
@@ -14450,33 +14464,42 @@ function _espBouton(){
 function openEspaceProf(opts){
   opts=opts||{};
   _esp={onglet:opts.onglet||'semaine', semaine:0, sel:''};
+  let pg=document.getElementById('esp-page');
+  if(!pg){
+    pg=_espEl('div'); pg.id='esp-page';
+    const h=_espEl('div', 'fp-header'); pg.appendChild(h);
+    h.appendChild(_espEl('div', 'fp-title', '👁️ Espace prof'));
+    h.appendChild(_espEl('div', 'fp-sub', 'Supervision : préparer, suivre, anticiper'));
+    const home=_espBtn('🏠', 'ib esp-home', closeEspaceProf, 'Retour à l’accueil'); h.appendChild(home);
+    pg.appendChild(_espEl('div', 'esp-bar'));
+    pg.appendChild(_espEl('div', 'esp-corps'));
+    document.body.appendChild(pg);
+  }
+  pg.classList.add('open');
+  document.addEventListener('keydown', _espEchap, true);
   _espRendre();
 }
 function closeEspaceProf(){
-  const bg=document.getElementById('esp-bg'); if(bg) bg.remove();
+  const pg=document.getElementById('esp-page'); if(pg) pg.classList.remove('open');
   document.removeEventListener('keydown', _espEchap, true);
   _esp=null;
 }
-function _espEchap(e){ if(e.key==='Escape' && _esp && !document.querySelector('#mbg.open')){ e.stopPropagation(); closeEspaceProf(); } }
+/** Retour d'un écran ouvert par-dessus (Saisir mes cours, Impressions) : la page se met à jour. */
+function _espRafraichir(){ try{ if(_esp) _espRendre(); }catch(e){ console.warn('[esp] rafraîchir', e); } }
+function _espEchap(e){
+  if(e.key!=='Escape' || !_esp) return;
+  if(document.querySelector('#mbg.open') || document.getElementById('sdc-bg') || document.getElementById('imp-bg')) return;
+  e.stopPropagation(); closeEspaceProf();
+}
 function _espEl(tag, cls, txt){ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
 function _espBtn(txt, cls, fn, titre){ const b=_espEl('button', cls, txt); b.type='button'; if(titre) b.title=titre; b.onclick=(e)=>{ e.stopPropagation(); fn(e); }; return b; }
 function _espRendre(){
   if(!_esp) return;
-  let bg=document.getElementById('esp-bg');
-  const scroll=bg && bg.querySelector('.esp-corps') ? bg.querySelector('.esp-corps').scrollTop : 0;
-  if(!bg){
-    bg=_espEl('div', 'esp-bg'); bg.id='esp-bg';
-    let depart=null;
-    bg.addEventListener('pointerdown', (e)=>{ depart=e.target; });
-    bg.addEventListener('click', (e)=>{ if(e.target===bg && depart===bg) closeEspaceProf(); });
-    document.body.appendChild(bg);
-    document.addEventListener('keydown', _espEchap, true);
-  }
-  bg.textContent='';
-  const pan=_espEl('div', 'esp-pan'); bg.appendChild(pan);
-  const head=_espEl('div', 'esp-head'); pan.appendChild(head);
-  head.appendChild(_espEl('div', 'esp-titre', 'Espace prof'));
-  const tabs=_espEl('div', 'esp-tabs'); head.appendChild(tabs);
+  const pg=document.getElementById('esp-page'); if(!pg) return;
+  const bar=pg.querySelector('.esp-bar'), corps=pg.querySelector('.esp-corps');
+  const scroll=corps.scrollTop;
+  bar.textContent=''; corps.textContent='';
+  const tabs=_espEl('div', 'esp-tabs'); bar.appendChild(tabs);
   ESP_ONGLETS.forEach(([k,l])=>{
     const pret=ESP_PRETS.indexOf(k)>=0;
     const b=_espBtn(l, 'esp-tab'+(_esp.onglet===k?' on':'')+(pret?'':' bientot'), ()=>{
@@ -14487,10 +14510,9 @@ function _espRendre(){
     if(!pret) b.setAttribute('aria-disabled', 'true');
     tabs.appendChild(b);
   });
-  const zone=_espEl('div', 'esp-zone'); head.appendChild(zone);
-  head.appendChild(_espBtn('Fermer', 'bs esp-fermer', closeEspaceProf));
-  const corps=_espEl('div', 'esp-corps'); pan.appendChild(corps);
+  const zone=_espEl('div', 'esp-zone'); bar.appendChild(zone);
   if(_esp.onglet==='semaine') _espRendreSemaine(zone, corps);
+  else if(_esp.onglet==='afaire') _espRendreAFaire(zone, corps);
   corps.scrollTop=scroll;
 }
 /** « 🗂 Tableau de bord » : l'ancien mode Prof, sur l'accueil, inchangé. */
@@ -14498,7 +14520,7 @@ function _espTableauDeBord(){
   closeEspaceProf();
   if(typeof _appMode!=='undefined' && _appMode!=='prof') toggleAppMode();
 }
-/** Titre court de la séance d'un cours : progression rattachée, sinon 1re ligne du texte saisi. */
+/** Titre court de la séance d'un cours : progression rattachée, sinon texte saisi. */
 function _espTitreCours(cls, slotKey){
   try{
     const ps=_homeProgSeanceFromMapping(slotKey, cls) || _homeProgSeanceFromMapping(slotKey, String(cls).toLowerCase());
@@ -14570,8 +14592,8 @@ function _espChiffres(cours){
            evals:av.filter(c=>c.evals.length).length, ebep:av.reduce((s,c)=>s+(c.ebep|0), 0) };
 }
 function _espPublic(c){ return String(c.cls).toUpperCase()+(c.gid ? ' '+_impGrpCourt(_impGrpLibelle(c.gid), c.cls) : ''); }
+/** Ouvre un cours dans « Saisir mes cours », PAR-DESSUS la page (retour : page à jour). */
 function _espOuvrirCours(c){
-  closeEspaceProf();
   try{ openSaisieCours({cls:c.cls, slotKey:c.slotKey}); }catch(e){ console.warn('[esp] ouvrir', e); }
 }
 function _espRendreSemaine(zone, corps){
@@ -14582,7 +14604,6 @@ function _espRendreSemaine(zone, corps){
   nav.appendChild(_espBtn(lib+(sem ? ' · Sem. '+sem : ''), 'bs esp-nav-j'+(_esp.semaine===0?' on':''), ()=>{ _esp.semaine=0; _esp.sel=''; _espRendre(); }, 'Revenir à la semaine en cours'));
   nav.appendChild(_espBtn('›', 'bs esp-nav-b', ()=>{ _esp.semaine++; _esp.sel=''; _espRendre(); }, 'Semaine suivante'));
   const cours=_espCoursSemaine(lundi);
-  // Calendrier 5 jours
   const cal=_espEl('section', 'esp-carte'); corps.appendChild(cal);
   const ch=_espEl('div', 'esp-ch'); ch.appendChild(_espEl('span', '', '📅 Calendrier 5 jours')); ch.appendChild(_espEl('span', 'esp-ch-s', 'un clic sur un cours → son détail ci-dessous')); cal.appendChild(ch);
   const grille=_espEl('div', 'esp-cal'); cal.appendChild(grille);
@@ -14596,7 +14617,7 @@ function _espRendreSemaine(zone, corps){
     L.forEach(c=>{
       const e=_espEtat(c), k=c.slotKey+'|'+c.cls;
       const b=_espBtn('', 'esp-cc lv'+String(c.lv).replace(/\D/g,'')+(_esp.sel===k?' sel':''), ()=>{ _esp.sel=(_esp.sel===k)?'':k; _espRendre();
-        setTimeout(()=>{ const r=document.querySelector('#esp-bg tr.sel'); if(r && r.scrollIntoView) r.scrollIntoView({block:'center', behavior:'smooth'}); }, 30); },
+        setTimeout(()=>{ const r=document.querySelector('#esp-page tr.sel'); if(r && r.scrollIntoView) r.scrollIntoView({block:'center', behavior:'smooth'}); }, 30); },
         (c.debut||'')+' · '+_espPublic(c)+(c.titre ? ' · '+c.titre : ''));
       b.appendChild(_espEl('span', 'esp-cc-c', _espPublic(c)));
       b.appendChild(_espEl('span', 'esp-cc-e esp-'+e.cle, e.txt));
@@ -14604,13 +14625,11 @@ function _espRendreSemaine(zone, corps){
     });
     grille.appendChild(j);
   });
-  // Chiffres
   const k=_espChiffres(cours);
   const kp=_espEl('div', 'esp-kpi'); corps.appendChild(kp);
   [[k.prets+' / '+k.total, 'cours à venir prêts', k.prets<k.total?'':'ok'],[String(k.docs), 'document'+(k.docs>1?'s':'')+' à imprimer', k.docs?'rouge':'ok'],[String(k.evals), 'cours avec évaluation', ''],[String(k.ebep), 'adaptation'+(k.ebep>1?'s':'')+' EBEP à prévoir', k.ebep?'ambre':'']].forEach(([v,l,c])=>{
     const x=_espEl('div', 'esp-k'); x.appendChild(_espEl('b', c?'esp-k-'+c:'', v)); x.appendChild(_espEl('span', '', l)); kp.appendChild(x);
   });
-  // Tableau
   const tc=_espEl('section', 'esp-carte'); corps.appendChild(tc);
   if(!cours.length){ tc.appendChild(_espEl('div', 'esp-vide', 'Aucun cours cette semaine.')); return; }
   const tb=_espEl('table', 'esp-table'); tc.appendChild(tb);
@@ -14631,7 +14650,7 @@ function _espRendreSemaine(zone, corps){
     if(!c.passe && !c.enregistre && !c.rempli) tdA.appendChild(_espBtn('Préparer', 'esp-b-f', ()=>_espOuvrirCours(c), 'Ouvrir ce cours dans « Saisir mes cours »'));
     else {
       const pill=_espBtn(e.txt, 'esp-pill esp-'+e.cle, ()=>{
-        if(d && (d.etat==='rouge'||d.etat==='ambre')){ closeEspaceProf(); openImpressions({vue:'jour', jour:c.dateStr}); }
+        if(d && (d.etat==='rouge'||d.etat==='ambre')) openImpressions({vue:'jour', jour:c.dateStr});
         else _espOuvrirCours(c);
       }, d && (d.etat==='rouge'||d.etat==='ambre') ? 'Ouvrir les impressions de ce jour' : 'Ouvrir ce cours');
       tdA.appendChild(pill);
@@ -14642,6 +14661,123 @@ function _espRendreSemaine(zone, corps){
   });
   const leg=_espEl('div', 'esp-leg'); tc.appendChild(leg);
   [['v','prêt'],['a','partiel / à prévoir'],['r','manquant'],['b','évaluation'],['g','sans objet']].forEach(([c,l])=>{ const s=_espEl('span'); s.appendChild(_espEl('span', 'esp-dot esp-dot-'+c)); s.appendChild(document.createTextNode(' '+l)); leg.appendChild(s); });
+}
+
+/* ── Lot 2 (V11.5.11) — ✅ À faire : une seule liste, par échéance ──────────
+   Rassemble ce qui était éparpillé (pastilles, cartes de l'ancien mode Prof,
+   Impressions, EBEP, notes TDL). Case cochée : TDL → [FAIT] dans la note ;
+   sinon « traité » (masqué tant que l'élément ne change pas : signature).
+   ⏰ : reporté à demain. S.espTodo.masques[cle] = {sig?, jusqua?}. */
+const ESP_ECHEANCES=[['retard','🔴 En retard'],['jour','🟠 Aujourd’hui'],['semaine','🟡 Cette semaine'],['tard','⚪ Plus tard']];
+/** Échéance d'une date par rapport à aujourd'hui. Pure. */
+function _espEcheance(dateStr, today){
+  const d=String(dateStr||''), t=String(today||'');
+  if(!d || d<t) return 'retard';
+  if(d===t) return 'jour';
+  const lim=new Date(t+'T12:00:00'); lim.setDate(lim.getDate()+7);
+  const l=lim.getFullYear()+'-'+String(lim.getMonth()+1).padStart(2,'0')+'-'+String(lim.getDate()).padStart(2,'0');
+  return d<=l ? 'semaine' : 'tard';
+}
+/** Un élément est-il affiché ? (masque par signature, ou report jusqu'à une date). Pure. */
+function _espVisible(it, masques, today){
+  const m=masques && it && masques[it.cle];
+  if(!m) return true;
+  if(m.jusqua) return String(today)>=String(m.jusqua);
+  return String(m.sig)!==String(it.sig);
+}
+function _espTodoStore(){
+  if(!S.espTodo || typeof S.espTodo!=='object') S.espTodo={};
+  if(!S.espTodo.masques || typeof S.espTodo.masques!=='object') S.espTodo.masques={};
+  return S.espTodo;
+}
+function _espDateCourte(d){ try{ return new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}); }catch(e){ return d; } }
+/** Lignes TDL non faites des notes de semaine : [{k, i, dateStr, text}]. */
+function _espTdl(){
+  const out=[], N=(S.agendaNotes && S.agendaNotes._global) || {};
+  Object.keys(N).forEach(k=>{
+    String(N[k]||'').split('\n').forEach((l,i)=>{
+      const p=(typeof _tdlParseLine==='function') ? _tdlParseLine(l) : null;
+      if(p && p.tag!=='FAIT' && p.text) out.push({k, i, dateStr:p.dateStr, text:p.text});
+    });
+  });
+  return out;
+}
+function _espTdlFait(k, i){
+  const N=S.agendaNotes && S.agendaNotes._global; if(!N || N[k]==null) return;
+  const L=String(N[k]).split('\n'), p=_tdlParseLine(L[i]||''); if(!p) return;
+  L[i]=_tdlBuildLine(p, 'FAIT'); N[k]=L.join('\n'); saveS();
+  try{ renderHomeWeekNote(); }catch(e){}
+}
+/** Tous les éléments « à faire ». Chaque source est isolée (une panne n'empêche pas les autres). */
+function _espAFaireItems(){
+  const t=_appToday(), items=[], add=(o)=>items.push(o);
+  const src=(nom, f)=>{ try{ f(); }catch(e){ console.warn('[esp] à faire : '+nom, e); } };
+  src('séances', ()=>{ const P=getPendingSeances()||[]; if(P.length) add({cle:'pending', ech:'retard', ic:'💾', titre:'Enregistrer '+P.length+' séance'+(P.length>1?'s':''), detail:P.slice(0,4).map(p=>String(p.clsCode).toUpperCase()+' '+_espDateCourte(p.dateStr)).join(' · ')+(P.length>4?' …':''), sig:P.map(p=>p.slotKey+p.clsCode).join(','), action:['Enregistrer', ()=>showPendingSeanceModal(getPendingSeances())]}); });
+  src('non saisis', ()=>{
+    let L=_homeGetCoursNonSaisis()||[]; const mu=S.notifMutes && S.notifMutes.coursNonSaisis;
+    if(mu) L=L.filter(x=>!x.dateStr || x.dateStr>mu);
+    if(L.length) add({cle:'nonsaisis', ech:'retard', ic:'⚠️', titre:L.length+' cours passé'+(L.length>1?'s':'')+' sans rien de saisi', detail:L.slice(0,4).map(x=>String(x.clsCode).toUpperCase()+' '+_espDateCourte(x.dateStr)).join(' · ')+(L.length>4?' …':''), sig:L.length+'|'+(L[0]&&L[0].dateStr), action:['Ouvrir le plus récent', ()=>_espOuvrirCours({cls:L[0].clsCode, slotKey:L[0].dateStr+'_'+L[0].debut})]});
+  });
+  src('rattrapages', ()=>{
+    const g={}; (_homeGetEvalsARattraper()||[]).forEach(x=>{ const k=x.slotKey+'|'+x.clsCode; (g[k]=g[k]||{x, eleves:new Set()}).eleves.add(x.studentName); });
+    Object.keys(g).forEach(k=>{ const {x, eleves}=g[k]; add({cle:'ratt|'+k, ech:'retard', ic:'🏆', titre:'Rattraper « '+(x.evalTitre||'évaluation')+' »', detail:String(x.clsCode).toUpperCase()+' · '+eleves.size+' élève'+(eleves.size>1?'s':'')+' · '+x.dateLabel, sig:eleves.size}); });
+  });
+  src('TAF', ()=>{ (_homeGetTachesSyntheseAnciennes()||[]).forEach(x=>add({cle:'taf|'+x.clsCode+'|'+x.dateStr+'|'+x.label, ech:'retard', ic:'📝', titre:'Vérifier la TAF « '+(x.label||'sans libellé')+' »', detail:String(x.clsCode).toUpperCase()+' · donnée il y a '+x.ageDays+' j', sig:'1'})); });
+  src('ajustements', ()=>{ const A=getPendingPlanningAdjustments()||[]; if(A.length) add({cle:'ajust', ech:'retard', ic:'🗓️', titre:A.length+' ajustement'+(A.length>1?'s':'')+' de planning à relire', detail:'reports après absence ou annulation', sig:A.length, action:['Voir', ()=>showPlanningAdjustmentsModal(getPendingPlanningAdjustments())]}); });
+  src('rappels', ()=>{ const R=(S.rappelsTaches||[]).filter(r=>!r.done); if(R.length) add({cle:'rappels', ech:'retard', ic:'📌', titre:R.length+' tâche'+(R.length>1?'s':'')+' reportée'+(R.length>1?'s':'')+' à replacer', detail:'', sig:R.length, action:['Voir', ()=>showRappelsTachesModal((S.rappelsTaches||[]).filter(r=>!r.done))]}); });
+  src('docs du jour', ()=>{ (_homeGetDocsAujourdhui()||[]).forEach(x=>{ const lib=x.isTrace ? '📓 '+(x.traceLabels||[]).join(', ') : (x.docs||[]).join(', '); if(lib) add({cle:'dist|'+t+'|'+x.clsCode+'|'+x.debut, ech:'jour', ic:'📦', titre:'Distribuer : '+lib, detail:String(x.clsCode).toUpperCase()+' · '+x.debut, sig:lib}); }); });
+  src('évals du jour', ()=>{ (_homeGetEvalsPrevuesAujourdhui()||[]).forEach(x=>add({cle:'evj|'+x.slotKey+'|'+x.clsCode, ech:'jour', ic:'🎯', titre:'Évaluation : '+x.titre, detail:String(x.clsCode).toUpperCase()+' · '+x.debut+((x.adapteUids||[]).length?' · '+x.adapteUids.length+' adaptée(s)':''), sig:'1'})); });
+  src('photocopies', ()=>{
+    _hmImpAFaire(_impCollecte(t, _impDateDecalee(t, 21))).forEach(d=>{
+      const P=d.prevus.filter(p=>{ const st=d.bilan.parPublic[p.cle]; return !st || st.statut!=='vert'; }).sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut));
+      const date=P.length ? P[0].dateStr : t;
+      add({cle:'imp|'+d.cle, ech:_espEcheance(date, t), ic:'🖨️', titre:'Imprimer « '+d.label+' »', detail:d.lv+' · '+(d.bilan.statut==='ambre'?'manque ':'')+d.bilan.manque+' ex. · '+(P.length?_espDateCourte(P[0].dateStr)+' '+P.map(p=>p.label).join(', '):''), sig:d.bilan.manque, action:['Impressions', ()=>openImpressions({vue:'gestion'})]});
+    });
+  });
+  src('à préparer', ()=>{
+    const fin=_impDateDecalee(t, 7), parJour={};
+    _homeListActiveClasses().forEach(cls=>{ _sdcCoursDeClasse(cls).forEach(c=>{ if(c.dateStr<t || c.dateStr>fin || c.annule || c.rempli || c.saved) return; (parJour[c.dateStr]=parJour[c.dateStr]||[]).push(c); }); });
+    Object.keys(parJour).sort().forEach(d=>{ const L=parJour[d].sort((a,b)=>String(a.debut).localeCompare(String(b.debut)));
+      add({cle:'prep|'+d, ech:_espEcheance(d, t), ic:'🗓️', titre:'Préparer '+L.length+' cours', detail:_espDateCourte(d)+' · '+L.map(c=>String(c.cls).toUpperCase()).join(', '), sig:L.length, action:['Saisir', ()=>_espOuvrirCours(L[0])]}); });
+  });
+  src('fiches', ()=>{ const n=(typeof _tirageNbFichesTotal==='function') ? _tirageNbFichesTotal() : 0; if(n) add({cle:'fiches', ech:'semaine', ic:'📝', titre:n+' fiche'+(n>1?'s':'')+' d’évaluation à compléter', detail:'tirages au sort', sig:n, action:['Ouvrir', ()=>openFichesACompleter()]}); });
+  src('RRUPN', ()=>{ let n=0; Object.values(S.suiviAcces||{}).forEach(c=>Object.values(c||{}).forEach(u=>Object.values(u||{}).forEach(d=>{ if(d && d.reiniDemandes) n+=d.reiniDemandes.filter(r=>!r.effectue).length; })));
+    if(n) add({cle:'rrupn', ech:'semaine', ic:'🔐', titre:n+' réinitialisation'+(n>1?'s':'')+' d’accès numérique', detail:'demandes en attente', sig:n, action:['Ouvrir', ()=>{ closeEspaceProf(); openSuivi(); showRupnTab('demandes'); }]}); });
+  src('EBEP', ()=>{
+    let n=0, prem='';
+    _homeListActiveClasses().forEach(cls=>{ const B=(S.besoinsEleves||{})[cls]||{}; const uids=Object.keys(B); if(!uids.length) return;
+      const cours=_ebepCoursAVenir(cls, 7); uids.forEach(u=>{ _ebepAPreparer(B[u], u, cours).forEach(a=>{ n++; if(!prem || a.dateStr<prem) prem=a.dateStr; }); }); });
+    if(n) add({cle:'ebep', ech:_espEcheance(prem, t), ic:'🧩', titre:n+' adaptation'+(n>1?'s':'')+' EBEP à préparer', detail:'7 prochains jours · dès le '+_espDateCourte(prem), sig:n, action:['EBEP', ()=>{ closeEspaceProf(); openEbepPage(); }]});
+  });
+  src('TDL', ()=>{ _espTdl().forEach(x=>add({cle:'tdl|'+x.k+'|'+x.i, ech:_espEcheance(x.dateStr, t), ic:'✏️', titre:x.text, detail:'note de semaine · '+_espDateCourte(x.dateStr), sig:x.text, tdl:x})); });
+  return items;
+}
+function _espRendreAFaire(zone, corps){
+  const t=_appToday(), st=_espTodoStore();
+  const tous=_espAFaireItems(), vis=tous.filter(it=>_espVisible(it, st.masques, t)), nMasq=tous.length-vis.length;
+  zone.appendChild(_espEl('span', 'esp-af-n', vis.length+' élément'+(vis.length>1?'s':'')));
+  if(nMasq) zone.appendChild(_espBtn(nMasq+' masqué'+(nMasq>1?'s':'')+' · tout réafficher', 'bs esp-af-reaff', ()=>{ st.masques={}; saveS(); _espRendre(); }, 'Réafficher les éléments traités ou reportés'));
+  const g=_espEl('div', 'esp-af'); corps.appendChild(g);
+  ESP_ECHEANCES.forEach(([e,l])=>{
+    const L=vis.filter(it=>it.ech===e);
+    const c=_espEl('section', 'esp-carte esp-af-'+e); g.appendChild(c);
+    const h=_espEl('div', 'esp-ch'); h.appendChild(_espEl('span', '', l)); h.appendChild(_espEl('span', 'esp-af-c', String(L.length))); c.appendChild(h);
+    if(!L.length){ c.appendChild(_espEl('div', 'esp-vide', e==='retard' ? 'Rien en retard ✓' : 'Rien')); return; }
+    L.forEach(it=>{
+      const r=_espEl('div', 'esp-af-l');
+      const bx=_espBtn('', 'esp-af-bx', ()=>{
+        if(it.tdl) _espTdlFait(it.tdl.k, it.tdl.i);
+        else { st.masques[it.cle]={sig:it.sig, ts:Date.now()}; saveS(); }
+        _espRendre();
+      }, it.tdl ? 'Fait (noté [FAIT] dans la note de semaine)' : 'Traité : masquer (revient si la situation change)');
+      r.appendChild(bx);
+      r.appendChild(_espEl('span', 'esp-af-ic', it.ic));
+      const tx=_espEl('div', 'esp-af-t'); tx.appendChild(_espEl('b', '', it.titre)); if(it.detail) tx.appendChild(_espEl('span', 'esp-af-d', it.detail)); r.appendChild(tx);
+      if(it.action) r.appendChild(_espBtn(it.action[0], 'bs esp-af-a', it.action[1]));
+      r.appendChild(_espBtn('⏰', 'bs esp-af-r', ()=>{ st.masques[it.cle]={jusqua:_impDateDecalee(t, 1), ts:Date.now()}; saveS(); _espRendre(); }, 'Reporter à demain'));
+      c.appendChild(r);
+    });
+  });
 }
 function toggleAppMode(){
   _appMode = (_appMode === 'public') ? 'prof' : 'public';
@@ -17003,6 +17139,7 @@ function closeImpressions(){
   document.removeEventListener('keydown', _impEchap, true);
   _imp=null; _impTuileAt=0;
   try{ _impMajTuileDiff(); }catch(e){}
+  try{ _espRafraichir(); }catch(e){}   // V11.5.11 — espace prof ouvert dessous
 }
 function _impEchap(e){ if(e.key==='Escape' && _imp && !document.querySelector('#mbg.open')){ e.stopPropagation(); closeImpressions(); } }
 function _impRendre(){
@@ -33312,6 +33449,7 @@ function closeSaisieCours(){
   const bg=document.getElementById('sdc-bg'); if(bg) bg.remove();
   _sdc=null;
   _sdcRafraichirVues();
+  try{ _espRafraichir(); }catch(e){}   // V11.5.11 — espace prof ouvert dessous
   if(avert){
     let quand='';
     try{ const c=_sdcCoursDeClasse(avert.cls).find(x=>x.slotKey===avert.slotKey); if(c) quand=_sdcDateLongue(c.dateStr)+' · '+c.debut; }catch(e){}
