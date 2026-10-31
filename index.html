@@ -2914,9 +2914,26 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .imp-act{display:flex;flex-direction:column;gap:4px;align-items:stretch}
 .imp-retirer{border:0;background:transparent;color:var(--tx3);font-size:12px;text-decoration:underline;cursor:pointer;padding:2px;font-family:inherit}
 .imp-retirer:hover{color:#B91C1C}
+/* V11.5.7 — archiver, historique */
+.imp-act2{display:flex;gap:4px;justify-content:flex-end}
+.imp-hist-b{padding:4px 8px;font-size:13px}
+.imp-hist-b.on{background:var(--sur2);font-weight:700}
+.imp-archiver{padding:4px 9px;font-size:12px;flex:1}
+.imp-archiver:disabled{opacity:.45;cursor:not-allowed}
+.imp-hist{background:#FAF9F6;border-top:1px dashed var(--brd);margin:8px -14px -10px;padding:8px 14px 10px 28px}
+.imp-arch .imp-hist{margin:0}
+.imp-hist-ev{display:grid;grid-template-columns:150px 24px minmax(0,1fr) 80px;gap:8px;align-items:center;font-size:12.5px;padding:3px 0}
+.imp-hist-g .imp-hist-ev{grid-template-columns:60px 24px minmax(0,1fr) 50px 80px;border-bottom:1px solid #EFEDE6;padding:5px 0}
+.imp-hist-d{color:var(--tx3);font-size:11.5px}
+.imp-hist-lv{color:var(--tx3);font-size:11.5px}
+.imp-hist-q{text-align:right;font-weight:800}
+.imp-hist-imprime .imp-hist-q{color:#1D4ED8}
+.imp-hist-servi .imp-hist-q{color:#8E1B1B}
+.imp-hist-jr{font-size:11px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;padding:10px 0 3px;border-bottom:1px solid var(--brd)}
+.imp-hist-jr:first-child{padding-top:0}
 .imp-arch{background:var(--sur2)}
 .imp-arch-h{display:block;width:100%;text-align:left;border:0;background:transparent;padding:9px 14px;font-size:13px;font-weight:700;color:var(--tx2);cursor:pointer;font-family:inherit}
-.imp-arch-r{display:grid;grid-template-columns:minmax(0,1fr) 90px 104px;gap:12px;align-items:center;padding:8px 14px;border-top:1px solid var(--brd)}
+.imp-arch-r{display:grid;grid-template-columns:minmax(0,1fr) 90px 150px;gap:12px;align-items:center;padding:8px 14px;border-top:1px solid var(--brd)}
 .imp-coche{font-size:10px;color:var(--tx3);white-space:nowrap;flex-shrink:0}
 @media (max-width:1000px){
   .imp-head-z{order:5;flex-basis:100%}
@@ -4660,7 +4677,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.6';
+const APP_VERSION = 'v11.5.7';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -16393,6 +16410,7 @@ function _impVisibleSansCours(rec, stock){
 function _impRetirer(cle){
   const st=_impStore(); if(!st.docs[cle]) return;
   st.docs[cle].retire=Date.now();
+  _impJournal(st, {ts:st.docs[cle].retire, type:'archive', cle});   // V11.5.7
   _impTuileAt=0; _hmImpCache=null; saveS();
 }
 /** V11.4.40 — État d'un document qu'aucun cours programmé n'appelle. Pure.
@@ -16436,6 +16454,7 @@ function _impOccurrences(lv){
 function _impRetablir(cle){
   const st=_impStore(); const r=st.docs[cle]; if(!r) return;
   delete r.retire; r.retabli=Date.now();
+  _impJournal(st, {ts:r.retabli, type:'retabli', cle});   // V11.5.7
   _impTuileAt=0; _hmImpCache=null; saveS();
 }
 function _impStore(){
@@ -16701,7 +16720,7 @@ function _impRendre(){
   const head=_impEl('div', 'imp-head'); pan.appendChild(head);
   head.appendChild(_impEl('div', 'imp-titre', '🖨️ Impressions'));
   const onglets=_impEl('div', 'imp-seg');
-  [['gestion','Gestion des impressions'],['jour','Par jour'],['retour','Retour du photocopieur']].forEach(([v,l])=>{
+  [['gestion','Gestion des impressions'],['jour','Par jour'],['retour','Retour du photocopieur'],['historique','🕘 Historique']].forEach(([v,l])=>{
     onglets.appendChild(_impBtn(l, 'imp-seg-b'+(_imp.vue===v?' on':''), ()=>{ _imp.vue=v; _imp.form=null; _impRendre(); }));
   });
   head.appendChild(onglets);
@@ -16710,6 +16729,7 @@ function _impRendre(){
   const corps=_impEl('div', 'imp-corps'); pan.appendChild(corps);
   if(_imp.vue==='jour') _impRendreJour(zone, corps);
   else if(_imp.vue==='retour') _impRendreRetour(zone, corps);
+  else if(_imp.vue==='historique') _impRendreHistorique(zone, corps);   // V11.5.7
   else _impRendreGestion(zone, corps);
   corps.scrollTop=scroll;
 }
@@ -16748,6 +16768,7 @@ function _impRendreGestion(zone, corps){
   const t=_appToday();
   const col=_impCollecte(t, _impDateDecalee(t, _imp.horizon));
   const lignes=_impLignes(col);
+  try{ _imp.futurs=_impFuturs(); }catch(e){ _imp.futurs={}; }   // V11.5.7 — archivage refusé si prévu plus tard
   const niveaux=_impNiveauxTries(Object.keys(col.classes));
   const seg=_impEl('div', 'imp-seg');
   [''].concat(niveaux).forEach(lv=>seg.appendChild(_impBtn(lv||'Tous niveaux', 'imp-seg-b'+(_imp.niveau===lv?' on':''), ()=>{ _imp.niveau=lv; _impRendre(); })));
@@ -16771,7 +16792,7 @@ function _impRendreGestion(zone, corps){
   [['imp-vert','classe ✓ effectif','servie (effectif retiré du stock)'],['imp-neutre','classe · date · effectif','programmée'],['imp-hors','classe','pas encore programmée : non comptée']].forEach(([c,a,b])=>{
     const s=_impEl('span', 'imp-leg-i'); s.appendChild(_impEl('span', 'imp-chip '+c, a)); s.appendChild(document.createTextNode(b)); leg.appendChild(s);
   });
-  leg.appendChild(_impEl('span', 'imp-leg-i', 'Un document imprimé reste listé tant qu’il en reste en stock ; « Retirer » le masque.'));
+  leg.appendChild(_impEl('span', 'imp-leg-i', 'Un document imprimé reste listé tant qu’il en reste en stock ; « Archiver » le range (impossible tant qu’un cours le prévoit) ; 🕘 = son historique.'));
   leg.appendChild(_impEl('span', 'imp-leg-n', 'Reste à servir = effectifs des cours programmés non enregistrés · Stock = imprimé − effectifs servis'));
   corps.appendChild(leg);
 }
@@ -16799,10 +16820,17 @@ function _impLigneGestion(d){
   const besoin=(d.bilan.statut==='rouge'||d.bilan.statut==='ambre');
   const act=_impEl('div', 'imp-act'); g.appendChild(act);
   act.appendChild(_impBtn('＋ Imprimé', 'bs imp-plus'+(besoin?' imp-plus-fort':''), ()=>{ _imp.form=d.cle; _impRendre(); }));
-  // V11.4.39 — plus aucun cours programmé : on peut le sortir des pages (surplus d'impression).
-  if(!d.prevus.length && _impStore().docs[d.cle])
-    act.appendChild(_impBtn('Retirer', 'imp-retirer', ()=>{ _impRetirer(d.cle); _impRendre(); }, 'Ne plus afficher ce document (il revient s’il est de nouveau programmé ou réimprimé)'));
+  // V11.5.7 — 🕘 historique + « Archiver » (remplace « Retirer ») : impossible tant qu'un cours à venir le prévoit.
+  const act2=_impEl('div', 'imp-act2'); act.appendChild(act2);
+  act2.appendChild(_impBtn('🕘', 'bs imp-hist-b'+(_imp.hist===d.cle?' on':''), ()=>{ _imp.hist=(_imp.hist===d.cle)?'':d.cle; _impRendre(); }, 'Historique de ce document'));
+  const fut=(_imp.futurs && _imp.futurs[d.cle]) || (d.prevus.length ? d.prevus.slice().sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut))[0] : null);
+  const peut=_impPeutArchiver(d, _imp.futurs) && !!_impStore().docs[d.cle];
+  const bA=_impBtn('Archiver', 'bs imp-archiver', ()=>{ if(_impArchiver(d, _imp.futurs)) _impRendre(); },
+    fut ? 'Encore prévu le '+_homeFormatDate(fut.dateStr)+' ('+fut.label+') : archivage impossible' : (peut ? 'Ranger ce document dans les archives (« Rétablir » le ramène)' : 'Rien à archiver : document jamais imprimé'));
+  if(!peut) bA.disabled=true;
+  act2.appendChild(bA);
   if(_imp.form===d.cle) row.appendChild(_impFormImprime(d, d.bilan.manque));
+  if(_imp.hist===d.cle) row.appendChild(_impHistDoc(d.cle));
   return row;
 }
 function _impRendreJour(zone, corps){
@@ -16992,6 +17020,130 @@ function _impEnsureTuile(){
 }
 /** V11.4.40 — Section repliée « Archivés (n) » : documents retirés ou archivés par la
  *  Synthèse, chacun avec « Rétablir ». Un document reprogrammé en sort de lui-même. */
+/* ════════════════════════════════════════════════════════════════════
+   V11.5.7 — Impressions : « Archiver » sur chaque document (IMPOSSIBLE tant
+   qu'un cours à venir le prévoit, arbitrage du 31/10) ; historique d'un
+   document (🕘) ; onglet « 🕘 Historique » (tout, jour par jour, filtres).
+   L'historique est reconstitué de ce qui est déjà enregistré : impressions
+   (docs[cle].evts), distributions (distrib), archivages / rétablissements
+   (journal, + dernier retire / retabli des données antérieures).
+   ════════════════════════════════════════════════════════════════════ */
+function _impJournal(st, ev){
+  if(!st || !ev) return;
+  if(!Array.isArray(st.journal)) st.journal=[];
+  st.journal.push(ev);
+  if(st.journal.length>1000) st.journal=st.journal.slice(-1000);
+}
+/** Documents prévus dans un cours à venir (toute l'année) : cle → premier cours {dateStr, label}. */
+function _impFuturs(){
+  const t=_appToday(), col=_impCollecte(t, '9999-12-31'), out={};
+  Object.keys(col.docs).forEach(k=>{
+    const P=col.docs[k].prevus.slice().sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut));
+    if(P.length) out[k]={dateStr:P[0].dateStr, label:P[0].label};
+  });
+  return out;
+}
+/** Peut-on archiver ? Non si un cours à venir le prévoit (dans l'horizon ou au-delà). Pure. */
+function _impPeutArchiver(d, futurs){
+  if(!d || !d.cle) return false;
+  if(Array.isArray(d.prevus) && d.prevus.length) return false;
+  return !(futurs && futurs[d.cle]);
+}
+function _impArchiver(d, futurs){
+  if(!_impPeutArchiver(d, futurs)) return false;
+  const st=_impStore();
+  if(!st.docs[d.cle]) return false;
+  _impRetirer(d.cle);
+  return true;
+}
+/** Événements de l'historique, du plus récent au plus ancien. Pure (store = S.impressions).
+ *  {ts, type:'imprime'|'stock'|'servi'|'archive'|'retabli', cle, lv, label, n?, cls?, gid?} */
+function _impHistorique(store){
+  const st=store||{}, docs=st.docs||{}, distrib=st.distrib||{}, out=[];
+  const info=(cle)=>{ const r=docs[cle]||{}; const i=String(cle).indexOf('|');
+    return {lv:r.lv||String(cle).slice(0,i), label:r.label||String(cle).slice(i+1)}; };
+  Object.keys(docs).forEach(cle=>{
+    const r=docs[cle]||{}, I=info(cle);
+    (Array.isArray(r.evts)?r.evts:[]).forEach(e=>{
+      if(!e || !isFinite(e.ts)) return;
+      out.push({ts:e.ts, type:e.mode==='set'?'stock':'imprime', cle, lv:I.lv, label:I.label, n:Math.max(0, Math.round(Number(e.n)||0))});
+    });
+  });
+  Object.keys(distrib).forEach(k=>{
+    const d=distrib[k]; if(!d || !d.doc || !isFinite(d.ts)) return;
+    const p=String(d.slot||'').split('|'), I=info(d.doc);
+    out.push({ts:d.ts, type:'servi', cle:d.doc, lv:I.lv, label:I.label, n:Math.max(0, d.n|0), cls:p[1]||'', gid:p[2]||'', date:String(p[0]||'').slice(0,10)});
+  });
+  const J=Array.isArray(st.journal)?st.journal:[], vus=new Set();
+  J.forEach(e=>{ if(!e || !e.cle || !isFinite(e.ts)) return; const I=info(e.cle); vus.add(e.type+'|'+e.cle+'|'+e.ts);
+    out.push({ts:e.ts, type:e.type, cle:e.cle, lv:I.lv, label:I.label}); });
+  Object.keys(docs).forEach(cle=>{   // données d'avant le journal : dernier retrait / rétablissement
+    const r=docs[cle]||{}, I=info(cle);
+    if(isFinite(r.retire) && !vus.has('archive|'+cle+'|'+r.retire)) out.push({ts:r.retire, type:'archive', cle, lv:I.lv, label:I.label});
+    if(isFinite(r.retabli) && !vus.has('retabli|'+cle+'|'+r.retabli)) out.push({ts:r.retabli, type:'retabli', cle, lv:I.lv, label:I.label});
+  });
+  return out.sort((a,b)=>b.ts-a.ts);
+}
+/** Filtre : niveau ('' = tous), type ('' | 'imprime' (imprimés + corrections) | 'servi' | 'archive' (+ rétablis)). Pure. */
+function _impHistFiltrer(evs, niveau, type){
+  return (Array.isArray(evs)?evs:[]).filter(e=>{
+    if(niveau && String(e.lv).toLowerCase()!==String(niveau).toLowerCase()) return false;
+    if(type==='imprime') return e.type==='imprime' || e.type==='stock';
+    if(type==='servi') return e.type==='servi';
+    if(type==='archive') return e.type==='archive' || e.type==='retabli';
+    return true;
+  });
+}
+const _IMP_HIST_TYPES={imprime:['🖨️','Imprimé','+ '], stock:['✎','Stock corrigé','= '], servi:['✓','Servi','− '], archive:['📦','Archivé',''], retabli:['↩','Rétabli','']};
+function _impHistQuand(ts){
+  try{ return new Date(ts).toLocaleString('fr-FR',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; }
+}
+function _impHistTexte(e, avecDoc){
+  const T=_IMP_HIST_TYPES[e.type]||['•',e.type,''];
+  let t=avecDoc ? e.label+' · '+T[1].toLowerCase() : T[1];
+  if(e.type==='servi') t+=' en '+_impPublicLibelle(e.cls, e.gid);
+  if(e.type==='stock') t+=avecDoc ? '' : ' (retour du photocopieur)';
+  return t;
+}
+function _impHistLigne(e, avecDoc){
+  const T=_IMP_HIST_TYPES[e.type]||['•','',''];
+  const r=_impEl('div', 'imp-hist-ev imp-hist-'+e.type);
+  r.appendChild(_impEl('span', 'imp-hist-d', avecDoc ? (()=>{ try{ return new Date(e.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }catch(x){ return ''; } })() : _impHistQuand(e.ts)));
+  r.appendChild(_impEl('span', 'imp-hist-i', T[0]));
+  r.appendChild(_impEl('span', 'imp-hist-t', _impHistTexte(e, avecDoc)));
+  if(avecDoc) r.appendChild(_impEl('span', 'imp-hist-lv', e.lv));
+  r.appendChild(_impEl('span', 'imp-hist-q', e.n!=null ? T[2]+e.n : ''));
+  return r;
+}
+/** Historique d'UN document, déplié sous sa ligne. */
+function _impHistDoc(cle){
+  const box=_impEl('div', 'imp-hist');
+  const evs=_impHistorique(_impStore()).filter(e=>e.cle===cle);
+  if(!evs.length){ box.appendChild(_impEl('div', 'imp-muet', 'Rien d’enregistré pour ce document.')); return box; }
+  evs.forEach(e=>box.appendChild(_impHistLigne(e, false)));
+  return box;
+}
+/** Onglet « 🕘 Historique ». */
+function _impRendreHistorique(zone, corps){
+  const evs=_impHistorique(_impStore());
+  const niveaux=_impNiveauxTries(Array.from(new Set(evs.map(e=>e.lv).filter(Boolean))));
+  const segN=_impEl('div', 'imp-seg');
+  [''].concat(niveaux).forEach(lv=>segN.appendChild(_impBtn(lv||'Tous niveaux', 'imp-seg-b'+(_imp.niveau===lv?' on':''), ()=>{ _imp.niveau=lv; _impRendre(); })));
+  zone.appendChild(segN);
+  const segT=_impEl('div', 'imp-seg');
+  [['','Tout'],['imprime','🖨️ Imprimés'],['servi','✓ Servis'],['archive','📦 Archivés']].forEach(([v,l])=>segT.appendChild(_impBtn(l, 'imp-seg-b'+((_imp.histType||'')===v?' on':''), ()=>{ _imp.histType=v; _impRendre(); })));
+  zone.appendChild(segT);
+  const L=_impHistFiltrer(evs, _imp.niveau, _imp.histType||'');
+  if(!L.length){ corps.appendChild(_impEl('div', 'imp-vide', 'Aucun événement enregistré.')); return; }
+  const liste=_impEl('div', 'imp-hist-g'); corps.appendChild(liste);
+  let jour='';
+  L.slice(0, 400).forEach(e=>{
+    let j=''; try{ j=new Date(e.ts).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }catch(x){}
+    if(j!==jour){ jour=j; liste.appendChild(_impEl('div', 'imp-hist-jr', j)); }
+    liste.appendChild(_impHistLigne(e, true));
+  });
+  if(L.length>400) corps.appendChild(_impEl('div', 'imp-muet', (L.length-400)+' événement(s) plus ancien(s) non affiché(s).'));
+}
 function _impBlocArchives(corps, archives){
   if(!archives || !archives.length) return;
   const bloc=_impEl('section', 'imp-bloc imp-arch'); corps.appendChild(bloc);
@@ -17003,12 +17155,15 @@ function _impBlocArchives(corps, archives){
     const c1=_impEl('div'); c1.appendChild(_impEl('div', 'imp-doc', a.label));
     let pourquoi='';
     if(a.etat==='synthese') pourquoi='séance achevée dans toutes les classes (Synthèse)';
-    else { let d=''; try{ d=new Date(a.retire).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}); }catch(e){} pourquoi='retiré'+(d?' le '+d:''); }
+    else { let d=''; try{ d=new Date(a.retire).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}); }catch(e){} pourquoi='archivé par vous'+(d?' le '+d:''); }
     c1.appendChild(_impEl('div', 'imp-doc-s', a.lv+' · '+pourquoi));
     r.appendChild(c1);
     r.appendChild(_impEl('div', 'imp-n'+(a.stock==null||a.stock<=0?' imp-muet':''), a.stock==null?'—':'stock '+Math.max(0,a.stock)));
-    r.appendChild(_impBtn('Rétablir', 'bs imp-plus', ()=>{ _impRetablir(a.cle); _impRendre(); }, 'Remettre ce document dans les pages'));
+    const ac=_impEl('div', 'imp-act2'); r.appendChild(ac);   // V11.5.7
+    ac.appendChild(_impBtn('🕘', 'bs imp-hist-b'+(_imp.hist===a.cle?' on':''), ()=>{ _imp.hist=(_imp.hist===a.cle)?'':a.cle; _impRendre(); }, 'Historique de ce document'));
+    ac.appendChild(_impBtn('Rétablir', 'bs imp-plus', ()=>{ _impRetablir(a.cle); _impRendre(); }, 'Remettre ce document dans les pages'));
     bloc.appendChild(r);
+    if(_imp.hist===a.cle) bloc.appendChild(_impHistDoc(a.cle));
   });
 }
 
