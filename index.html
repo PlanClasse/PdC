@@ -1614,6 +1614,11 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .seat.occupied{border-style:solid;cursor:grab}.seat.occupied:hover{box-shadow:var(--sh)}
 .seat-n{display:none}
 .seat-role{position:absolute;top:2px;right:3px;font-size:9px;font-weight:800;line-height:1;padding:2px 4px;border-radius:4px;background:#7C3AED;color:#fff;letter-spacing:.02em;z-index:2;pointer-events:auto;cursor:help}  /* V11.4.0 — délégués */
+.seat-fs{position:absolute;top:2px;left:3px;font-size:8px;font-weight:800;line-height:1;padding:1px 3px;border-radius:3px;border:1px solid #0F766E;color:#0F766E;background:rgba(255,255,255,.85);letter-spacing:.03em;z-index:2;pointer-events:auto;cursor:help}  /* V11.5.16 — fiche de suivi */
+.stp-fs-btn{font-size:11px;font-weight:800;letter-spacing:.03em;border-color:var(--brd)}
+.stp-fs-btn.on{background:#0F766E;border-color:#0F766E;color:#fff}
+.stp-fs-btn.confirmer{background:#B91C1C;border-color:#B91C1C;color:#fff}
+.esp-pill.esp-fs{background:#CCFBF1;color:#0F766E}
 .seat-nm{font-size:17px;font-weight:700;text-align:center;color:#000;padding:0 4px;line-height:1.1;pointer-events:none;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .seat-nm.long{font-size:15px}
 .seat-nm.vlong{font-size:12px}
@@ -4835,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.15';
+const APP_VERSION = 'v11.5.16';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -15097,6 +15102,8 @@ function _espRendreClasse(zone, corps){
     const B=(S.besoinsEleves||{})[cls]||{}, uB=Object.keys(B).filter(u=>eleves.indexOf(u)>=0 && (typeof _ebepAUneAdaptation!=='function' || _ebepAUneAdaptation(B[u])));
     const ads=(typeof getEbepAdaptations==='function') ? getEbepAdaptations().map(a=>[a.label, uB.filter(u=>B[u][a.key]).length]).filter(x=>x[1]) : [];
     _espLigneFiche(cV, 'EBEP', uB.length+' élève'+(uB.length>1?'s':''), uB.length ? 'ambre' : '', ads.map(x=>x[0]+' '+x[1]).join(' · '));
+    const nFS=eleves.filter(u=>_fsActive(S.ficheSuivi, u)).length;   // V11.5.16
+    _espLigneFiche(cV, 'Fiches de suivi', String(nFS), nFS ? 'fs' : '');
   }catch(e){ console.warn('[esp] fiche vie de classe', e); }
   // 4. Prochains cours
   const cC=_espCarteFiche(g, '🗓 Prochains cours');
@@ -15144,12 +15151,13 @@ function _espSignaux(d, se){
   if(Array.isArray(x.evals) && x.evals.length) out.push({cle:'eval', niv:'a', txt:'éval. manquée', det:'non rattrapée : '+x.evals.join(', ')});
   if(S2.particip>0 && (x.sansPartic|0)>=S2.particip) out.push({cle:'partic', niv:'b', txt:'ne participe pas', det:'aucune participation sur ses '+x.sansPartic+' derniers cours'});
   if(S2.tirage && x.jamaisTire) out.push({cle:'tirage', niv:'b', txt:'jamais interrogé', det:'jamais tiré au sort (interrogation)'});
+  if(x.fs) out.push({cle:'fs', niv:'v', txt:'fiche de suivi', det:'sous fiche de suivi depuis le '+x.fs});   // V11.5.16
   return out;
 }
 /** Comptes par élève pour une classe et une période. */
 function _espComptesEleves(cls, du, t, se){
   const uids=_espUidsClasse(cls), c=String(cls).toLowerCase(), R={};
-  uids.forEach(u=>R[u]={oublis:0, avert:0, sanctions:0, evals:[], sansPartic:-1, jamaisTire:false});
+  uids.forEach(u=>{ const f=_fsActive(S.ficheSuivi, u); R[u]={oublis:0, avert:0, sanctions:0, evals:[], sansPartic:-1, jamaisTire:false, fs:f ? _fsDate(f.depuis) : ''}; });
   // statuts
   const ST=S.statutsCours||{}, absent={};
   Object.keys(ST).forEach(k=>{ const p=k.split('|'); if(String(p[1]||'').toLowerCase()!==c) return; const d=String(p[0]).slice(0,10);
@@ -15214,7 +15222,7 @@ function _espRendreEleves(zone, corps){
     let R={}; try{ R=_espComptesEleves(cls, du, t, se); }catch(e){ console.warn('[esp] élèves '+cls, e); }
     Object.keys(R).forEach(u=>{ const sg=_espSignaux(R[u], se); if(sg.length) L.push({u, cls, sg}); else calmes++; });
   });
-  const poids=(x)=>x.sg.reduce((s,g)=>s+({r:3, a:2, b:1}[g.niv]||0), 0);
+  const poids=(x)=>x.sg.reduce((s,g)=>s+({r:3, a:2, v:2, b:1}[g.niv]||0), 0);
   L.sort((a,b)=>(poids(b)-poids(a)) || _espNomEleve(a.u).localeCompare(_espNomEleve(b.u), 'fr'));
   const carte=_espEl('section', 'esp-carte'); corps.appendChild(carte);
   if(!L.length){ carte.appendChild(_espEl('div', 'esp-vide', 'Aucun élève ne dépasse les seuils ✓')); }
@@ -15225,7 +15233,7 @@ function _espRendreEleves(zone, corps){
       const tr=_espEl('tr');
       tr.appendChild(_espEl('td', 'esp-cls', _espNomEleve(x.u)));
       tr.appendChild(_espEl('td', '', String(x.cls).toUpperCase()));
-      const tdS=_espEl('td', 'esp-sig'); x.sg.forEach(g=>tdS.appendChild(_espEl('span', 'esp-pill esp-'+({r:'rouge', a:'ambre', b:'bleu'}[g.niv]), g.txt))); tr.appendChild(tdS);
+      const tdS=_espEl('td', 'esp-sig'); x.sg.forEach(g=>tdS.appendChild(_espEl('span', 'esp-pill esp-'+({r:'rouge', a:'ambre', b:'bleu', v:'fs'}[g.niv]), g.txt))); tr.appendChild(tdS);
       tr.appendChild(_espEl('td', 'esp-det', x.sg.map(g=>g.det).join(' · ')));
       const tdA=_espEl('td', 'esp-act'); tdA.appendChild(_espBtn('Fiche classe', 'esp-pill esp-gris', ()=>{ _esp.onglet='classes'; _esp.cls=x.cls; _espRendre(); })); tr.appendChild(tdA);
       tb.appendChild(tr);
@@ -37639,6 +37647,7 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
   // V035-v181.15.12 — icône besoins (visible dans tout contexte : propriété élève)
   closeStBesoinPopup();
   _refreshStBesoinIcon();
+  try{ _fsBouton(name); }catch(e){ console.warn('[fs]', e); }   // V11.5.16 — fiche de suivi
   // V035-V11.3.21 — icône épingle (visible si l'élève occupe un siège dans le plan actif)
   _refreshStPinIcon();
   const activeKeys=getStatutKeys(name);
@@ -39351,6 +39360,67 @@ function showBesoinPopup(uid, anchorEl, evt){
   _modalFermer();   // V11.3.98 — C1/C2 : rien à annuler, clic extérieur
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   V11.5.16 — FICHE DE SUIVI (FS) d'un élève (demande du 03/11)
+   Marque DURABLE (pas un statut de cours) : posée depuis la fenêtre de l'élève
+   (bouton « FS »), elle reste de cours en cours et ne se retire QUE par
+   l'enseignant (même bouton, en deux temps). Sur la tuile : petit « FS »
+   discret en haut à gauche. S.ficheSuivi[uid] = {depuis} ; à la levée, la
+   période part dans S.ficheSuiviHist[uid] = [{depuis, jusqua}].
+   ════════════════════════════════════════════════════════════════════ */
+var _fsConfirmer='';
+/** Fiche de suivi active d'un élève : {depuis} ou null. Pure. */
+function _fsActive(fs, uid){ const f=fs && uid && fs[uid]; return (f && f.depuis) ? f : null; }
+/** Pose / lève la fiche de suivi. Renvoie true si posée, false si levée. */
+function _fsBasculer(uid, aujourdhui){
+  if(!uid) return false;
+  if(!S.ficheSuivi || typeof S.ficheSuivi!=='object') S.ficheSuivi={};
+  const f=_fsActive(S.ficheSuivi, uid);
+  if(f){
+    if(!S.ficheSuiviHist || typeof S.ficheSuiviHist!=='object') S.ficheSuiviHist={};
+    (S.ficheSuiviHist[uid]=Array.isArray(S.ficheSuiviHist[uid]) ? S.ficheSuiviHist[uid] : []).push({depuis:f.depuis, jusqua:aujourdhui});
+    delete S.ficheSuivi[uid];
+    return false;
+  }
+  S.ficheSuivi[uid]={depuis:aujourdhui};
+  return true;
+}
+function _fsDate(d){ try{ return new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}); }catch(e){ return d; } }
+/** Bouton « FS » dans l'en-tête de la fenêtre de l'élève (createElement). */
+function _fsBouton(uid){
+  const head=document.getElementById('stp-name'); if(!head) return;
+  let b=document.getElementById('stp-fs-btn');
+  if(!b){
+    b=document.createElement('button'); b.type='button'; b.id='stp-fs-btn'; b.className='stp-cstr-btn stp-fs-btn';
+    const ref=document.getElementById('stp-besoin-btn');
+    if(ref) head.insertBefore(b, ref); else head.appendChild(b);
+    b.onclick=(e)=>{ e.stopPropagation(); _fsClic(); };
+  }
+  if(_fsConfirmer && _fsConfirmer!==uid) _fsConfirmer='';
+  const f=_fsActive(S.ficheSuivi, uid);
+  b.classList.toggle('on', !!f);
+  b.classList.toggle('confirmer', !!f && _fsConfirmer===uid);
+  b.textContent=(f && _fsConfirmer===uid) ? 'Retirer la FS ?' : 'FS';
+  b.title=f ? 'Fiche de suivi depuis le '+_fsDate(f.depuis)+' — cliquer deux fois pour la retirer' : 'Mettre l’élève sous fiche de suivi (reste de cours en cours jusqu’à ce que vous la retiriez)';
+}
+function _fsClic(){
+  const uid=popupCurrentName; if(!uid) return;
+  const f=_fsActive(S.ficheSuivi, uid);
+  if(f && _fsConfirmer!==uid){ _fsConfirmer=uid; _fsBouton(uid); setTimeout(()=>{ if(_fsConfirmer===uid){ _fsConfirmer=''; try{ _fsBouton(uid); }catch(e){} } }, 4000); return; }
+  _fsConfirmer='';
+  const pose=_fsBasculer(uid, _appToday());
+  saveS(); renderApp();
+  try{ showDropToast(pose ? '📋 Fiche de suivi posée : '+getFullName(uid) : '📋 Fiche de suivi retirée : '+getFullName(uid)); }catch(e){}
+  const anchor=document.querySelector('[data-popup-anchor="'+CSS.escape(uid)+'"]');
+  if(anchor) openStatusPopup(uid, anchor, {stopPropagation:()=>{}}, true); else _fsBouton(uid);
+}
+/** Petit « FS » sur la tuile de l'élève. */
+function _fsBadgeSiege(seat, uid){
+  const f=_fsActive(S.ficheSuivi, uid); if(!seat || !f) return;
+  const b=document.createElement('span'); b.className='seat-fs'; b.textContent='FS';
+  b.title='Fiche de suivi depuis le '+_fsDate(f.depuis);
+  seat.appendChild(b);
+}
 function makeSeat(idx,name,extraCls){
   const seat=document.createElement('div');
   // En mode "Mes Plans de classe" (sans contexte EDT), les statuts cours sont masqués
@@ -39388,6 +39458,7 @@ function makeSeat(idx,name,extraCls){
     nm.className='seat-nm'+(nlen>13?' long':'')+(nlen>17?' vlong':'');
     nm.textContent=displayName; seat.appendChild(nm);
     try{ _delBadgeSiege(seat, name); }catch(e){}   // V11.4.0 — délégués / responsabilités
+    try{ _fsBadgeSiege(seat, name); }catch(e){}    // V11.5.16 — fiche de suivi
     // Status badges in normal flow (no absolute) — tight under the name
     if(keys.length>0){
       const shownKeys=keys.includes('absent')?['absent']:keys;
