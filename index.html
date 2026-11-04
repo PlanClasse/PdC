@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.20';
+const APP_VERSION = 'v11.5.21';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -17309,12 +17309,17 @@ function _docsEtatSeance(taskRows){
   recus.forEach(l=>non.delete(l.toLowerCase()));
   return {non, recus};
 }
-/** V11.5.17 — Applique _docsEtatSeance à une liste de documents prévus. Pure. */
+/** Documents RÉELLEMENT distribués à un cours enregistré. Pure.
+ *  V11.5.21 — la liste à cocher du modal fait foi : les documents cochés « Faite »
+ *  (bibliothèque, tapés dans « Saisir mes cours », reçus d'un cours précédent).
+ *  Avant (v11.5.17), on partait du PRÉVU de la bibliothèque, moins les reportés :
+ *  un cours dont l'entrée n'a plus ses lignes listait des documents jamais
+ *  distribués et oubliait ceux tapés dans le cours (5E1 28/09 : « Fiche élève 1 »).
+ *  Séance sans liste à cocher (ancienne) : le prévu, inchangé. */
 function _docsReellementDistribues(docs, taskRows){
-  const de=_docsEtatSeance(taskRows);
-  const out=(Array.isArray(docs)?docs:[]).filter(d=>!de.non.has(_impNorm(d)));
-  de.recus.forEach(d=>{ if(!out.some(x=>_impNorm(x)===d.toLowerCase())) out.push(d); });
-  return out;
+  const rows=(Array.isArray(taskRows)?taskRows:[]).filter(Boolean);
+  if(!rows.length) return Array.isArray(docs) ? docs.slice() : [];
+  return _impDocsDeSeance(rows);
 }
 /** Stock d'un document. rec={evts:[{ts,n,mode}]}, distribs=[{ts,n}]. Pure.
  *  null = aucun stock déclaré. Départ : la dernière déclaration « remplace le
@@ -45723,6 +45728,20 @@ function _vdChainePrecedents(premier, estAnnule, precedent, max){
   }
   return out;
 }
+/** V11.5.21 — Volet › Contexte, cours passé ENREGISTRÉ : ses lignes faites ou commencées
+ *  (tâches, documents, TAF…), dans l'ordre du modal. null = pas de liste à cocher (ancien
+ *  enregistrement : on garde le prévu). Mêmes règles que Sc.Préc. (_scprecEtatVu). Pure. */
+function _vdRealise(taskRows){
+  const rows=(Array.isArray(taskRows)?taskRows:[]).filter(Boolean);
+  if(!rows.length) return null;
+  const out=[];
+  rows.forEach(tr=>{
+    const e=_scprecEtatVu(tr.stateLabel, tr.remainingMn); if(!e) return;
+    const l=String(tr.label||'').replace(/^\s*\[[^\]]*\]\s*/,'').replace(/\s*\(\d+\s*mn\)\s*$/i,'').trim(); if(!l) return;
+    out.push({icon:tr.icon||'', label:l, partiel:e==='commencee', reste:(e==='commencee' && tr.remainingMn!=='' && tr.remainingMn!=null) ? Number(tr.remainingMn)||0 : 0});
+  });
+  return out;
+}
 function renderVdContexte(inner, slotKey, clsCode){
   const lv=clsCode.replace(/\d+$/,'')||'5e';
   const prog=getProgression(lv)||[];
@@ -45857,7 +45876,22 @@ function renderVdContexte(inner, slotKey, clsCode){
     // Phase 2c session 12 — Option A : grp résolu depuis le prev-slot lui-même.
     const _grpPrev = (typeof getCurrentGrpId==='function') ? getCurrentGrpId(clsCode, prevSlotKey) : '';
     const pc=readSeanceCoches(prevSlotKey, clsCode, _grpPrev, prevSlotKey.split('_')[0]);
-    if(pl) renderItems(pl.items, s1, pc);
+    // V11.5.21 — cours ENREGISTRÉ : ce qui a été RÉALISÉ (fait, commencé), pas le prévu.
+    const _real=(recorded && typeof _vdRealise==='function') ? _vdRealise(recorded.taskRows) : null;
+    if(_real){
+      if(!_real.length){ const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Rien de coché comme fait'; s1.appendChild(e); }
+      _real.forEach(t=>{
+        const row=document.createElement('div'); row.className='vd-ctx-item'+(t.partiel?'':' done');
+        const ico=document.createElement('span'); ico.className='vd-ctx-ico'; ico.textContent=t.partiel?'◐':'✓';
+        const lbl=document.createElement('span'); lbl.className='vd-ctx-lbl'; lbl.textContent=(t.icon && t.icon!=='⚙️' ? t.icon+' ' : '')+t.label; lbl.title=t.label;
+        const dur=document.createElement('span'); dur.className='vd-ctx-dur'; dur.textContent=t.partiel ? (t.reste ? 'reste '+t.reste+'mn' : 'commencée') : '';
+        row.appendChild(ico); row.appendChild(lbl); row.appendChild(dur); s1.appendChild(row);
+      });
+    }
+    else if(pl){
+      renderItems(pl.items, s1, pc);
+      const n=document.createElement('div'); n.className='vd-ctx-empty'; n.textContent=recorded?'(prévu)':'Prévu — cours non enregistré'; s1.appendChild(n);
+    }
     else { const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Aucun contenu'; s1.appendChild(e); }
     if(recorded&&recorded.commentaire){
       const c=document.createElement('div');
