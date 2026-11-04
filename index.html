@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.19';
+const APP_VERSION = 'v11.5.20';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20164,7 +20164,7 @@ function _palOpen(){
   const ic=document.createElement('span'); ic.textContent='🔎'; inRow.appendChild(ic);
   const inp=document.createElement('input');
   inp.type='text'; inp.id='pal-input';
-  inp.placeholder='Aller à… / Rechercher une action…';
+  inp.placeholder='Aller à… / une action / chercher dans vos données…';   // V11.5.20
   inp.style.cssText='flex:1;border:none;outline:none;font-size:15px;background:transparent;color:var(--tx);min-width:0';
   inp.oninput=()=>_palRender(inp.value);
   inp.onkeydown=(e)=>{
@@ -20201,6 +20201,9 @@ function _palRender(query){
   list.innerHTML='';
   const q=(query||'').trim();
   _palEntries=q?_palFilter(q):_palSuggest();
+  // V11.5.20 — « Dans vos données » (élèves, journal, cahier de texte, bibliothèque…) dès 3 caractères.
+  let _palDataTotal=0;
+  if(q && typeof _rchPalette==='function'){ try{ const D=_rchPalette(q); if(D.length){ _palDataTotal=D._total; _palEntries=_palEntries.concat(D); } }catch(e){ console.warn('[palette] données', e); } }
   _palSel=0;
   while(_palEntries[_palSel]&&_palEntries[_palSel].off) _palSel++;
   if(!_palEntries.length){
@@ -20212,7 +20215,7 @@ function _palRender(query){
   }
   let lastGrp=null;
   _palEntries.forEach((en,i)=>{
-    const grp=q?_PAL_GRP_LABEL[en.type]:(en.type==='action'?'Actions':'Destinations fréquentes');
+    const grp=q?(en.type==='data'?'Dans vos données · '+_palDataTotal:_PAL_GRP_LABEL[en.type]):(en.type==='action'?'Actions':'Destinations fréquentes');
     if(grp!==lastGrp){
       lastGrp=grp;
       const g=document.createElement('div');
@@ -20240,7 +20243,7 @@ function _palRender(query){
     }
     row.appendChild(mid);
     const bd=document.createElement('span');
-    bd.textContent=en.type==='action'?'⚡ action':(en.type==='screen'?'écran':'section');
+    bd.textContent=en.type==='action'?'⚡ action':(en.type==='screen'?'écran':(en.type==='data'?((typeof RCH_GENRES!=='undefined' && RCH_GENRES[en.genre]) ? RCH_GENRES[en.genre].l.toLowerCase() : 'tout voir'):'section'));
     bd.style.cssText='margin-left:auto;font-size:9px;color:var(--tx3);border:1px solid var(--brd);border-radius:99px;padding:1px 7px;white-space:nowrap;background:var(--sur2);flex-shrink:0';
     row.appendChild(bd);
     if(!en.off){
@@ -20284,6 +20287,7 @@ function _palCloseSurfaces(){
       const el=document.getElementById(id);
       if(el&&el.classList.contains('open')&&typeof window[fn]==='function') window[fn]();
     });
+    try{ if(typeof closeRecherche==='function') closeRecherche(); if(typeof closeReunions==='function') closeReunions(); }catch(e){}   // V11.5.20
     const app=document.getElementById('app');
     if(app&&app.style.display==='flex'&&typeof backToMenu==='function') backToMenu();
   }catch(e){}
@@ -59060,6 +59064,205 @@ function _reuTuileAccueil(){
   ref.parentNode.insertBefore(b, ref.nextSibling);
 }
 try{ _reuTuileAccueil(); }catch(e){ console.warn('[réunions] tuile', e); }
+/* ═══ V11.5.20 — RECHERCHE DANS VOS DONNÉES (lot 3, demande du 04/11) ═════════
+   Ctrl+K / 🔎 : dès 3 caractères, une rubrique « Dans vos données » sous les
+   écrans, puis « Tout voir » → page de résultats (filtres type, classe, période).
+   Sources : élèves, journal, observations, réunions, cahier de texte (séances
+   enregistrées), cours préparés (Saisir mes cours), bibliothèque (progressions),
+   notes de semaine. Aucun index stocké : construit à la demande, gardé 20 s.
+   Accents et casse ignorés (_paramsNorm), tous les mots (≥ 2 lettres) requis.
+   Écran classe ouvert : élèves, journal et observations ne sont pas montrés. */
+const RCH_GENRES={
+  eleve:  {ic:'👤', l:'Élèves'},          journal:{ic:'🗒', l:'Journal'},
+  obs:    {ic:'📝', l:'Observations'},    reunion:{ic:'🗣', l:'Réunions'},
+  cahier: {ic:'📅', l:'Cahier de texte'}, cours:  {ic:'🗓️', l:'Cours préparés'},
+  biblio: {ic:'📚', l:'Bibliothèque'},    notes:  {ic:'✏️', l:'Notes de semaine'}
+};
+const RCH_ORDRE=['eleve','journal','obs','reunion','cahier','cours','biblio','notes'];
+const RCH_NOMINATIFS={eleve:1, journal:1, obs:1};
+function _rchNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function _rchTokens(q){ return _rchNorm(q).trim().split(/\s+/).filter(t=>t.length>=2); }
+function _rchJour(d){ const p=String(d||'').split('-'); return p.length===3 ? p[2]+'/'+p[1] : String(d||''); }
+/** Index des données. Pure sur `src` :
+ *  {classes:[{cls, students}], nom(uid), J, obsCours, seances:[{cls, se}], cdt(se, cls), drafts,
+ *   progs:{lv: prog}, agenda:{date: texte}, reunions, typeReu(id)}.
+ *  Entrée : {genre, titre, texte, date, cls, uid, slotKey, lv, reuId}. */
+function _rchIndexer(src){
+  src=src||{}; const out=[]; const nom=src.nom||(u=>u);
+  (src.classes||[]).forEach(c=>(c.students||[]).forEach(u=>out.push({genre:'eleve', titre:nom(u), texte:'', date:'', cls:c.cls, uid:u})));
+  const J=src.J||{};
+  Object.keys(J).forEach(u=>(J[u]||[]).forEach(n=>{ if(!n || !n.texte) return;
+    out.push({genre:'journal', titre:nom(u)+' · '+(src.typeJnl ? src.typeJnl(n.type) : n.type), texte:n.texte, date:n.date||'', cls:n.cls||'', uid:u}); }));
+  const vus=new Set();
+  const obs=(slotKey, cls, u, t)=>{ t=String(t||'').trim(); if(!t || !u) return; const k=slotKey+'|'+u+'|'+t; if(vus.has(k)) return; vus.add(k);
+    out.push({genre:'obs', titre:nom(u), texte:t, date:String(slotKey).slice(0,10), cls, uid:u, slotKey}); };
+  Object.keys(src.obsCours||{}).forEach(key=>{
+    const p=key.split('|'); if(p.length<2 || /^grp:/.test(p[1])) return;
+    const m=src.obsCours[key]||{}; Object.keys(m).forEach(u=>obs(p[0], p[1], u, m[u]));
+  });
+  (src.seances||[]).forEach(x=>{
+    const se=x && x.se; if(!se || !se.slotKey) return;
+    Object.keys(se.observations||{}).forEach(u=>obs(se.slotKey, x.cls, u, se.observations[u]));
+    let t=''; try{ t=src.cdt ? src.cdt(se, x.cls) : (se.contenu||''); }catch(e){ t=se.contenu||''; }
+    if(String(t||'').trim()) out.push({genre:'cahier', titre:String(x.cls).toUpperCase()+' · '+_rchJour(String(se.slotKey).slice(0,10))+' '+(String(se.slotKey).split('_')[1]||''),
+      texte:t, date:String(se.slotKey).slice(0,10), cls:x.cls, slotKey:se.slotKey});
+  });
+  Object.keys(src.drafts||{}).forEach(k=>{
+    const d=src.drafts[k]; const t=String((d && d.saisie)||'').trim(); if(!t) return;
+    const i=k.indexOf('|'); if(i<0) return; const cls=k.slice(0,i), slotKey=k.slice(i+1);
+    if(!/^\d{4}-\d{2}-\d{2}/.test(slotKey)) return;
+    out.push({genre:'cours', titre:String(cls).toUpperCase()+' · '+_rchJour(slotKey.slice(0,10))+' '+(slotKey.split('_')[1]||''), texte:t, date:slotKey.slice(0,10), cls, slotKey});
+  });
+  Object.keys(src.progs||{}).forEach(lv=>(src.progs[lv]||[]).forEach((q, qi)=>{
+    if(!q) return; const num=String(q.num||'').trim()||String(qi+1);
+    out.push({genre:'biblio', titre:lv+' · CH'+num+' '+(q.titre||''), texte:q.titre||'', date:'', lv});
+    (q.seances||[]).forEach((sn, si)=>{
+      if(!sn) return;
+      const L=[sn.titre].concat(sn.modeOp||[], sn.docs||[], sn.ressources||[], sn.tafs||(sn.taf?[sn.taf]:[])).map(x=>String(x||'').trim()).filter(Boolean);
+      if(L.length) out.push({genre:'biblio', titre:lv+' · CH'+num+' · Séance '+(si+1)+(sn.titre?' : '+sn.titre:''), texte:L.join(' · '), date:'', lv});
+    });
+  }));
+  Object.keys(src.agenda||{}).forEach(k=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+    String(src.agenda[k]||'').split('\n').map(l=>l.trim()).filter(Boolean).forEach(l=>out.push({genre:'notes', titre:'Semaine du '+_rchJour(k), texte:l, date:k}));
+  });
+  (src.reunions||[]).forEach(r=>{
+    if(!r) return; const ty=src.typeReu ? src.typeReu(r.type) : {ic:'🗣', l:''};
+    const t=[r.lieu, r.odj].concat((r.notes||[]).map(n=>n && n.texte)).filter(Boolean).join(' · ');
+    out.push({genre:'reunion', titre:ty.ic+' '+r.titre+' · '+_rchJour(r.date), texte:t, date:r.date||'', reuId:r.id});
+  });
+  return out;
+}
+/** Résultats : tous les mots requis ; filtres {genre, cls, du, au, sansNoms}. Tri : ordre des
+ *  genres, score (mots dans le titre), date décroissante. Pure. */
+function _rchChercher(index, q, f){
+  f=f||{}; const T=_rchTokens(q); if(!T.length) return [];
+  const out=[];
+  (index||[]).forEach(e=>{
+    if(f.genre && f.genre!=='tout' && e.genre!==f.genre) return;
+    if(f.sansNoms && RCH_NOMINATIFS[e.genre]) return;
+    if(f.cls && e.cls && String(e.cls).toLowerCase()!==String(f.cls).toLowerCase()) return;
+    if(f.cls && !e.cls && e.genre!=='biblio') return;
+    if(f.cls && e.genre==='biblio' && e.lv && String(f.cls).toLowerCase().indexOf(String(e.lv).toLowerCase())!==0) return;
+    if(e.date && ((f.du && e.date<f.du) || (f.au && e.date>f.au))) return;
+    const hT=_rchNorm(e.titre), hay=hT+' '+_rchNorm(e.texte)+' '+_rchNorm(e.cls);
+    if(!T.every(t=>hay.indexOf(t)>=0)) return;
+    out.push(Object.assign({score:T.reduce((s,t)=>s+(hT.indexOf(t)>=0?10:1),0)}, e));
+  });
+  out.sort((a,b)=>(RCH_ORDRE.indexOf(a.genre)-RCH_ORDRE.indexOf(b.genre)) || (b.score-a.score) || String(b.date).localeCompare(String(a.date)));
+  return out;
+}
+/** Extrait d'une ligne autour du premier mot trouvé. Pure. */
+function _rchExtrait(texte, q, n){
+  n=n||90; const t=String(texte||'').replace(/\s+/g,' ').trim(); if(!t) return '';
+  const T=_rchTokens(q), h=_rchNorm(t);
+  let i=-1; T.forEach(x=>{ const k=h.indexOf(x); if(k>=0 && (i<0 || k<i)) i=k; });
+  if(i<0 || t.length<=n) return t.length<=n ? t : t.slice(0,n-1)+'…';
+  let d=Math.max(0, i-Math.floor(n/3)); if(d>0){ const sp=t.indexOf(' ', d); if(sp>0 && sp<i) d=sp+1; }   // début de mot
+  const f=Math.min(t.length, d+n);
+  return (d>0?'…':'')+t.slice(d, f)+(f<t.length?'…':'');
+}
+function _rchComptes(res){ const c={tout:res.length}; res.forEach(e=>{ c[e.genre]=(c[e.genre]||0)+1; }); return c; }
+
+/* ── Branchement sur les données ────────────────────────────────────────── */
+let _rchCache={t:0, idx:null};
+function _rchIndex(){
+  if(_rchCache.idx && Date.now()-_rchCache.t<20000) return _rchCache.idx;
+  const classes=_reuClasses().map(cls=>({cls, students:((S.cl[cls]||{}).students||[]).slice()}));
+  const seances=[]; classes.forEach(c=>{ try{ _getSavedSeanceEntriesForClsCode(c.cls).forEach(x=>{ if(x && x.se) seances.push({cls:c.cls, se:x.se}); }); }catch(e){} });
+  const progs={}; try{ LEVELS.forEach(lv=>{ if(S.en && S.en[lv]){ const p=getProgression(lv); if(Array.isArray(p) && p.length) progs[lv]=p; } }); }catch(e){}
+  _rchCache={t:Date.now(), idx:_rchIndexer({classes, nom:(u)=>getFullName(u), J:S.journalEleves||{}, typeJnl:(t)=>_jnlType(t).l,
+    obsCours:S.obsCours||{}, seances, cdt:(se, cls)=>buildCahierTexteSeance(se, cls), drafts:S.seanceContentDraft||{}, progs,
+    agenda:((S.agendaNotes||{})._global)||{}, reunions:S.reunions||[], typeReu:(id)=>_reuTypeDe(id)})};
+  return _rchCache.idx;
+}
+function _rchSansNoms(){ return !!document.getElementById('ea-bg'); }
+/** Ouvre un résultat. Les cibles « page » ferment d'abord la recherche. */
+function _rchOuvrir(e){
+  if(!e) return;
+  if(RCH_NOMINATIFS[e.genre]){ _jnlOuvrirFiche(e.uid, e.cls); return; }
+  if(e.genre==='reunion'){ closeRecherche(); openReunions(e.reuId); return; }
+  if(e.genre==='cahier'){ try{ openCourseSummaryModal(e.slotKey, e.cls); }catch(x){} return; }
+  closeRecherche();
+  if(e.genre==='cours'){ openSaisieCours({cls:e.cls, slotKey:e.slotKey}); return; }
+  if(e.genre==='biblio'){ openProgression(); return; }
+  if(e.genre==='notes'){ openProgression(); try{ showProgTab('agenda'); }catch(x){} return; }
+}
+/** Palette : entrées « Dans vos données » (6 au plus) + « Tout voir ». */
+function _rchPalette(q){
+  if(String(q||'').trim().length<3) return [];
+  let res=[]; try{ res=_rchChercher(_rchIndex(), q, {sansNoms:_rchSansNoms()}); }catch(e){ console.warn('[recherche]', e); return []; }
+  if(!res.length) return [];
+  const L=res.slice(0,6).map(e=>({type:'data', icon:RCH_GENRES[e.genre].ic, label:e.titre, sub:_rchExtrait(e.texte, q, 80), genre:e.genre, run:()=>_rchOuvrir(e)}));
+  L.push({type:'data', icon:'→', label:'Tout voir ('+res.length+') dans la recherche', sub:'', genre:'tout', run:()=>openRecherche(q)});
+  L._total=res.length;
+  return L;
+}
+
+/* ── Page de résultats ─────────────────────────────────────────────────── */
+let _rch={q:'', genre:'tout', cls:'', periode:'all'};
+function openRecherche(q){
+  if(q!=null) _rch.q=String(q);
+  let pg=document.getElementById('rch-page');
+  if(!pg){ pg=document.createElement('div'); pg.id='rch-page'; pg.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:400;display:flex;flex-direction:column;color:var(--tx)'; document.body.appendChild(pg); }
+  _rchRendre(true);
+}
+function closeRecherche(){ const pg=document.getElementById('rch-page'); if(pg) pg.remove(); }
+function _rchRendre(focus){
+  const pg=document.getElementById('rch-page'); if(!pg) return;
+  const el=(t,css,x)=>{ const e=document.createElement(t); if(css) e.style.cssText=css; if(x!=null) e.textContent=x; return e; };
+  pg.textContent='';
+  const hd=el('div','display:flex;align-items:center;justify-content:space-between;padding:12px 22px;background:var(--sur);border-bottom:1px solid var(--brd)'); pg.appendChild(hd);
+  hd.appendChild(el('div','font-family:Georgia,serif;font-size:22px','🔎 Recherche'));
+  const hr=el('div','display:flex;align-items:center;gap:12px'); hd.appendChild(hr);
+  hr.appendChild(el('span','font-size:11px;color:var(--tx3)', _rchSansNoms() ? 'Écran classe ouvert : élèves, journal et observations masqués' : 'Dans toutes vos données'));
+  const bh=el('button','padding:6px 10px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);cursor:pointer;font-size:16px','🏠'); bh.type='button'; bh.title='Fermer'; bh.onclick=closeRecherche; hr.appendChild(bh);
+  const b1=el('div','display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:9px 18px;background:var(--sur);border-bottom:1px solid var(--brd)'); pg.appendChild(b1);
+  const inp=el('input','width:min(380px,100%);padding:7px 11px;border:1px solid var(--brd);border-radius:9px;background:var(--bg);color:var(--tx);font-size:14px;font-family:inherit');
+  inp.type='search'; inp.placeholder='Mots à chercher…'; inp.value=_rch.q; b1.appendChild(inp);
+  const pills=el('span','display:contents'); b1.appendChild(pills);
+  const b2=el('div','display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 18px'); pg.appendChild(b2);
+  b2.appendChild(el('span','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)','Classe'));
+  const sc=el('select','padding:4px 8px;border:1px solid var(--brd);border-radius:999px;font-size:12px;background:var(--sur);color:var(--tx2)');
+  sc.appendChild(new Option('Toutes','')); _reuClasses().forEach(c=>sc.appendChild(new Option(String(c).toUpperCase(), c))); sc.value=_rch.cls;
+  sc.onchange=()=>{ _rch.cls=sc.value; _rchRendre(); }; b2.appendChild(sc);
+  b2.appendChild(el('span','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin-left:10px','Période'));
+  [{v:'all',l:'Année'},{v:'t1',l:'Trim. 1'},{v:'t2',l:'Trim. 2'},{v:'t3',l:'Trim. 3'}].forEach(x=>{ const b=el('button',null,x.l); b.type='button'; b.className='fp-tab'+(_rch.periode===x.v?' act':''); b.onclick=()=>{ _rch.periode=x.v; _rchRendre(); }; b2.appendChild(b); });
+  const corps=el('div','flex:1;overflow:auto;padding:8px 18px 18px;display:grid;gap:12px;align-content:start'); pg.appendChild(corps);
+  const dessiner=()=>{
+    pills.textContent=''; corps.textContent='';
+    let du='', au=''; if(_rch.periode!=='all'){ try{ const b=computeVgDateBounds(_rch.periode,'',''); du=b.dateFrom||''; au=b.dateTo||''; }catch(e){} }
+    const base=_rchChercher(_rchIndex(), _rch.q, {cls:_rch.cls, du, au, sansNoms:_rchSansNoms()});
+    const nb=_rchComptes(base);
+    [['tout','Tout']].concat(RCH_ORDRE.map(g=>[g, RCH_GENRES[g].ic+' '+RCH_GENRES[g].l])).forEach(([g,l])=>{
+      if(g!=='tout' && RCH_NOMINATIFS[g] && _rchSansNoms()) return;
+      if(g!=='tout' && !nb[g] && _rch.genre!==g) return;   // types sans résultat : pas de pastille
+      const b=el('button',null,l+' · '+(nb[g]||0)); b.type='button'; b.className='fp-tab'+(_rch.genre===g?' act':''); b.onclick=()=>{ _rch.genre=g; dessiner(); }; pills.appendChild(b); });
+    if(_rchTokens(_rch.q).length===0){ corps.appendChild(el('div','color:var(--tx3);font-size:13px;padding:14px 2px','Tapez au moins un mot de 2 lettres.')); return; }
+    const res=base.filter(e=>_rch.genre==='tout' || e.genre===_rch.genre);
+    if(!res.length){ corps.appendChild(el('div','color:var(--tx3);font-size:13px;padding:14px 2px','Aucun résultat.')); return; }
+    RCH_ORDRE.forEach(g=>{
+      const L=res.filter(e=>e.genre===g); if(!L.length) return;
+      const carte=el('div','background:var(--sur);border:1px solid var(--brd);border-radius:12px;overflow:hidden'); corps.appendChild(carte);
+      carte.appendChild(el('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);padding:9px 14px', RCH_GENRES[g].ic+' '+RCH_GENRES[g].l+' · '+L.length));
+      L.slice(0,60).forEach(e=>{
+        const r=el('div','display:grid;grid-template-columns:110px 1fr auto;gap:10px;padding:8px 14px;border-top:1px solid var(--brd);align-items:start;font-size:13px;cursor:pointer');
+        r.onclick=()=>_rchOuvrir(e);
+        r.appendChild(el('span','font-size:11.5px;font-weight:700;color:var(--tx3)', [e.date?_rchJour(e.date):'', e.cls?String(e.cls).toUpperCase():(e.lv||'')].filter(Boolean).join(' · ')));
+        const z=el('span','min-width:0'); r.appendChild(z);
+        const t=el('div','font-weight:700'); t.innerHTML=_paramsHighlight(e.titre, _rch.q); z.appendChild(t);
+        const ex=_rchExtrait(e.texte, _rch.q, 140);
+        if(ex){ const x=el('div','color:var(--tx2);font-size:12.5px'); x.innerHTML=_paramsHighlight(ex, _rch.q); z.appendChild(x); }
+        r.appendChild(el('span','font-size:12px;color:var(--tx3);white-space:nowrap','ouvrir ↗'));
+        carte.appendChild(r);
+      });
+      if(L.length>60) carte.appendChild(el('div','padding:8px 14px;border-top:1px solid var(--brd);font-size:12px;color:var(--tx3)','… et '+(L.length-60)+' autres : précisez la recherche.'));
+    });
+  };
+  let tmr=0; inp.oninput=()=>{ _rch.q=inp.value; clearTimeout(tmr); tmr=setTimeout(dessiner, 200); };
+  dessiner();
+  if(focus) setTimeout(()=>{ try{ inp.focus(); }catch(e){} }, 30);
+}
 
 /* ── Gestion des demandes ── */
 function renderDemandesCls(){
