@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.21';
+const APP_VERSION = 'v11.5.22';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -31219,6 +31219,17 @@ function _fdjGetEvalsPosees(slotKey, cls){
 // Shape : [{doc, students:[{uid, label}, ...]}, ...]
 function _fdjGetDocsARemettre(slotKey, cls){
   if(!cls || !slotKey) return [];
+  // V11.5.22 — même source que le volet et le modal : par élève, cumulés, hors « remis ».
+  if(typeof _docsDus==='function'){
+    try{
+      const D=_docsDus(cls, slotKey), par=new Map();
+      Object.keys(D).forEach(uid=>D[uid].forEach(it=>{ if(it.remisIci) return;
+        if(!par.has(it.doc)) par.set(it.doc, new Map());
+        const sd=(S.studentData && S.studentData[uid]) || {}; const pr=(sd.prenoms && sd.prenoms[0]) || '', no=(sd.noms && sd.noms[0]) || '';
+        par.get(it.doc).set(uid, pr+' '+no.charAt(0)+'.'); }));
+      return [...par.entries()].map(([doc, m])=>({doc, students:[...m.entries()].map(([uid,label])=>({uid,label}))}));
+    }catch(e){ console.warn('[fdj docs]', e); }
+  }
 
   // ── 1. Liste des candidate prev slots ────────────────────────────
   const candidates = [];  // [{slotKey, grp}]
@@ -33087,6 +33098,89 @@ function _docsDistribuesAuCours(slotKey, cls){
     }
   }catch(e){}
   return out;
+}
+/* ═══ V11.5.22 — DOCUMENTS À REMETTRE AUX ABSENTS : par élève, cumulés (demande du 04/11) ══
+   AVANT : un seul « cours précédent » pour toute la classe (le dernier qui avait eu lieu) :
+   en demi-groupes, les absents de l'autre groupe n'étaient jamais vus (4E3 : P2 à 08:10,
+   P1 à 09:10, classe entière le lendemain → rien pour les absents de P2).
+   MAINTENANT : pour chaque élève du cours, les documents distribués aux cours
+   ENREGISTRÉS où il était attendu et absent, depuis S.docsAbsDepuis, s'ajoutent tant
+   qu'ils ne sont pas cochés « remis » (volet droit, modal Séance) : encore absent au
+   cours suivant → toujours dû. S.docsRemis[uid][<slotKey d'origine>|<doc>] = {slotKey, ts}.
+   Un document coché remis à CE cours reste affiché (coché) ici, pour pouvoir le décocher. */
+/** Pure. src = {slots:[{slotKey, gids:[]|null}] (passés, non annulés, triés), cur, depuis,
+ *  absents(slotKey) → [uid], docs(slotKey) → [libellés] (null = cours non enregistré),
+ *  membresDe(slot) → Set|null (null = classe entière), membres:Set (élèves du cours courant), remis}.
+ *  Renvoie {uid: [{cle, doc, origine, remisIci}]} dans l'ordre chronologique. */
+function _docsDusCalcul(src){
+  const out={}, R=src.remis||{}, M=src.membres instanceof Set ? src.membres : new Set(src.membres||[]);
+  (src.slots||[]).forEach(sl=>{
+    if(!sl || !sl.slotKey || sl.slotKey>=src.cur || (src.depuis && sl.slotKey.slice(0,10)<src.depuis)) return;
+    const docs=src.docs(sl.slotKey); if(!docs || !docs.length) return;
+    const attendus=src.membresDe ? src.membresDe(sl) : null;
+    (src.absents(sl.slotKey)||[]).forEach(u=>{
+      if(!M.has(u) || (attendus && !attendus.has(u))) return;
+      docs.forEach(d=>{
+        const cle=sl.slotKey+'|'+String(d).toLowerCase().replace(/\s+/g,' ').trim();
+        const r=(R[u]||{})[cle];
+        if(r && r.slotKey!==src.cur) return;           // remis à un autre cours : plus dû
+        (out[u]=out[u]||[]).push({cle, doc:d, origine:sl.slotKey, remisIci:!!r});
+      });
+    });
+  });
+  return out;
+}
+function _docsDusDepuis(){
+  // Point de départ fixé au premier calcul : 7 jours avant (pas de rattrapage de toute l'année).
+  if(!S.docsAbsDepuis){ const d=new Date(_appToday()+'T12:00:00'); d.setDate(d.getDate()-7); S.docsAbsDepuis=toDateStr(d); try{ saveS(); }catch(e){} }
+  return S.docsAbsDepuis;
+}
+function _docsDusMembres(slot, cls){
+  if(!slot || typeof isDemiClsSlot!=='function' || !isDemiClsSlot(slot)) return null;
+  const s=new Set();
+  ((typeof getSlotGroupes==='function') ? (getSlotGroupes(slot)||[]) : []).forEach(g=>{
+    const G=S.groupes && S.groupes[g]; ((G && G.students)||[]).forEach(x=>s.add(x && typeof x==='object' ? x.uid : x)); });
+  return s.size ? s : null;
+}
+function _docsDusAbsents(sk, cls, slot){
+  const ids=new Set();
+  const add=(m)=>Object.keys(m||{}).forEach(u=>{ const v=m[u]; if(Array.isArray(v) ? v.indexOf('absent')>=0 : v==='absent') ids.add(u); });
+  add((S.statutsCours||{})[sk+'|'+cls]);
+  ((typeof getSlotGroupes==='function' && slot) ? (getSlotGroupes(slot)||[]) : []).forEach(g=>add((S.statutsCours||{})[sk+'|'+cls+'|'+g]));
+  try{ readAllSeancesForClass(cls).filter(se=>se && se.slotKey===sk).forEach(se=>add(se.statuts)); }catch(e){}
+  return [...ids];
+}
+/** Documents dus aux élèves du cours (cls, slotKey). {uid: [{cle, doc, origine, remisIci}]}. */
+function _docsDus(cls, slotKey){
+  if(!cls || !slotKey) return {};
+  let slots=[]; try{ slots=(buildYearSlots(cls)||[]).filter(s=>s && s.slotKey<slotKey && !(typeof isSlotCancelled==='function' && isSlotCancelled(s.dateStr, s.debut, cls))); }catch(e){ slots=[]; }
+  const cur=(buildYearSlots(cls)||[]).find(s=>s && s.slotKey===slotKey);
+  const mCur=_docsDusMembres(cur, cls) || new Set(((S.cl[cls]||{}).students||[]));
+  const enreg={}; try{ readAllSeancesForClass(cls).forEach(se=>{ if(se && se.slotKey) enreg[se.slotKey]=se; }); }catch(e){}
+  return _docsDusCalcul({slots, cur:slotKey, depuis:_docsDusDepuis(), membres:mCur, remis:S.docsRemis||{},
+    absents:(sk)=>_docsDusAbsents(sk, cls, slots.find(s=>s.slotKey===sk)),
+    docs:(sk)=>enreg[sk] ? (_docsDistribuesAuCours(sk, cls)||[]) : null,
+    membresDe:(sl)=>_docsDusMembres(sl, cls)});
+}
+/** Coche « remis » (volet droit et modal Séance partagent ce magasin). */
+function _docsRemisBasculer(uid, cle, slotKey, oui){
+  if(!S.docsRemis || typeof S.docsRemis!=='object') S.docsRemis={};
+  const R=S.docsRemis[uid]=S.docsRemis[uid]||{};
+  if(oui) R[cle]={slotKey, ts:Date.now()}; else { delete R[cle]; if(!Object.keys(R).length) delete S.docsRemis[uid]; }
+  saveS();
+}
+/** Une ligne « élève · 📄 document (du JJ/MM) » avec sa case. createElement. */
+function _docsDusLigne(uid, it, slotKey, apres){
+  const row=document.createElement('div'); row.className='vd-priority-item';
+  const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=it.remisIci; cb.title='Cocher quand le document est remis';
+  cb.onchange=()=>{ _docsRemisBasculer(uid, it.cle, slotKey, cb.checked); if(typeof apres==='function') apres(); };
+  const nm=document.createElement('span'); nm.className='vd-pi-name'; const n=getFullName(uid)||uid; nm.textContent=n; nm.title=n;
+  const bd=document.createElement('span'); bd.className='vd-pi-badge'; bd.style.background='#EEF2FF'; bd.style.color='#3730A3';
+  const p=String(it.origine).slice(0,10).split('-');
+  bd.textContent='📄 '+String(it.doc).slice(0,16)+' · '+(p.length===3 ? p[2]+'/'+p[1] : '');
+  bd.title=it.doc+' — distribué le '+(p.length===3 ? p[2]+'/'+p[1] : it.origine)+' (élève absent)';
+  row.appendChild(cb); row.appendChild(nm); row.appendChild(bd);
+  return row;
 }
 /** V11.3.84 — « Documents à remettre » aux absents du cours PRÉCÉDENT : ce qui a
  *  été distribué à CE cours-là (avant : la séance du cours courant). Volet de
@@ -45780,7 +45874,7 @@ function renderVdContexte(inner, slotKey, clsCode){
     return sn+se+(sean?' · '+sean.titre.slice(0,18):'');
   };
 
-  const renderItems=(items, wrap, coches)=>{
+  const renderItems=(items, wrap, coches, sansBarrer)=>{
     if(!items||!items.length){ const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Aucun contenu planifié'; wrap.appendChild(e); return; }
     let lastSean=null;
     items.forEach(it=>{
@@ -45797,7 +45891,7 @@ function renderVdContexte(inner, slotKey, clsCode){
           }
         }
         const done=coches?!!coches['mo_'+it.taskIdx]:false;
-        const row=document.createElement('div'); row.className='vd-ctx-item'+(done?' done':'');
+        const row=document.createElement('div'); row.className='vd-ctx-item'+(done&&!sansBarrer?' done':'');
         const ico=document.createElement('span'); ico.className='vd-ctx-ico'; ico.textContent=done?'✓':'▪';
         const lbl=document.createElement('span'); lbl.className='vd-ctx-lbl'; lbl.textContent=it.label; lbl.title=it.label;
         const dur=document.createElement('span'); dur.className='vd-ctx-dur'; dur.textContent=it.dureeSlot+'mn'+(it.isEnd?'':'→');
@@ -45881,7 +45975,7 @@ function renderVdContexte(inner, slotKey, clsCode){
     if(_real){
       if(!_real.length){ const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Rien de coché comme fait'; s1.appendChild(e); }
       _real.forEach(t=>{
-        const row=document.createElement('div'); row.className='vd-ctx-item'+(t.partiel?'':' done');
+        const row=document.createElement('div'); row.className='vd-ctx-item';   // V11.5.22 — réalisé : pas barré
         const ico=document.createElement('span'); ico.className='vd-ctx-ico'; ico.textContent=t.partiel?'◐':'✓';
         const lbl=document.createElement('span'); lbl.className='vd-ctx-lbl'; lbl.textContent=(t.icon && t.icon!=='⚙️' ? t.icon+' ' : '')+t.label; lbl.title=t.label;
         const dur=document.createElement('span'); dur.className='vd-ctx-dur'; dur.textContent=t.partiel ? (t.reste ? 'reste '+t.reste+'mn' : 'commencée') : '';
@@ -45889,7 +45983,7 @@ function renderVdContexte(inner, slotKey, clsCode){
       });
     }
     else if(pl){
-      renderItems(pl.items, s1, pc);
+      renderItems(pl.items, s1, pc, true);   // V11.5.22 — cours passé : coché sans barrer
       const n=document.createElement('div'); n.className='vd-ctx-empty'; n.textContent=recorded?'(prévu)':'Prévu — cours non enregistré'; s1.appendChild(n);
     }
     else { const e=document.createElement('div'); e.className='vd-ctx-empty'; e.textContent='Aucun contenu'; s1.appendChild(e); }
@@ -46243,14 +46337,15 @@ function renderVoletDroit(){
   }
   const _ebepPhotoUids = (typeof _ebepWithPhotocopiesForCls==='function') ? _ebepWithPhotocopiesForCls(clsCode) : [];
   const _showTracesSub = (_traceLabels.length > 0 && _ebepPhotoUids.length > 0);
-  const _showDocsAbs   = (absentsPrev.length && docsSeance.length);
+  // V11.5.22 — par élève, cumulés jusqu'à « remis » (_docsDus).
+  let _dus={}; try{ _dus=_docsDus(clsCode, slotKey); }catch(e){ console.warn('[docs dus]', e); }
+  const _dusU=Object.keys(_dus).sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+  const _showDocsAbs   = _dusU.length>0;
 
   if(_showDocsAbs || _showTracesSub){
-    const {wrap, body}=mkSection('vd-docs','📄','Documents à remettre', _showDocsAbs ? absentsPrev.length : 0);
+    const {wrap, body}=mkSection('vd-docs','📄','Documents à remettre', _showDocsAbs ? _dusU.filter(u=>_dus[u].some(x=>!x.remisIci)).length : 0);
     if(_showDocsAbs){
-      docsSeance.forEach((doc,di)=>{
-        absentsPrev.forEach(nom=>{ body.appendChild(_makePriorityItem('prev_doc_'+nom+'_'+di, getFullName(nom)||nom,'📄 '+doc.slice(0,16),'#EEF2FF','#3730A3')); });
-      });
+      _dusU.forEach(u=>_dus[u].forEach(it=>body.appendChild(_docsDusLigne(u, it, slotKey, null))));
     }
     // V019-v161 — Sous-volet traces EBEP (replié par défaut)
     if(_showTracesSub){
@@ -52018,12 +52113,14 @@ function openSaveSeance(){
     const _reportedHereEarly = (typeof getReportedTafVerifsForSlot==='function')
       ? getReportedTafVerifsForSlot(slotKey, curCls) : [];
 
-    if(!items.length && !_verifsHereEarly.length && !_reportedHereEarly.length && !_evalFis.length) return;
+    // V11.5.22 — des documents restent à remettre : la liste s'affiche même sans tâche prévue.
+    let _dusAvant=false; try{ _dusAvant=typeof _docsDus==='function' && Object.keys(_docsDus(curCls, slotKey)).length>0; }catch(e){}
+    if(!items.length && !_verifsHereEarly.length && !_reportedHereEarly.length && !_evalFis.length && !_dusAvant) return;
     // Si on a uniquement des vérifs (pas d'items séance), sauter la section séance
     // et descendre directement à la section "À vérifier" (placée plus bas).
     // Note : checkboxes est déclaré ici (hors du if) car référencé en fin de fonction (tachesWrap._checkboxes=checkboxes).
     const checkboxes=[];
-    if(items.length || _evalFis.length){
+    if(items.length || _evalFis.length || _dusAvant){
 
     // ── Section séance header ──
     const shdr=document.createElement('div');
@@ -52460,27 +52557,27 @@ function openSaveSeance(){
     // ── Documents à remettre (absents cours préc.) ──
     // Phase 2b session 11 — 3e arg grp pour filtrer par groupe courant
     const _grpPrev3 = (typeof getCurrentGrpId==='function') ? getCurrentGrpId(curCls, slotKey) : '';
-    const abPrev=getAbsentsPrevSlot(curCls, slotKey, _grpPrev3);
-    if(abPrev.length){   // V11.3.84 — plus besoin de sean2 : les docs sont ceux du cours précédent
-      // V11.3.84 — docs distribués au cours PRÉCÉDENT ; même liste que le volet de droite (clés prev_doc_<nom>_<i> partagées).
-      const docs2b=_docsARemettreAbsents(slotKey, curCls, _grpPrev3);
-      if(docs2b.length){
+    // V11.5.22 — par élève, cumulés jusqu'à « remis » (même magasin que le volet droit).
+    let _dus2={}; try{ _dus2=_docsDus(curCls, slotKey); }catch(e){ console.warn('[docs dus]', e); }
+    const _dus2U=Object.keys(_dus2).sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+    if(_dus2U.length){
+      {
         const docHdr=document.createElement('div');
         docHdr.style.cssText='font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 6px;padding-top:8px;border-top:1px solid var(--brd)';
-        docHdr.textContent='📄 Documents à remettre — absents cours préc.';
+        docHdr.textContent='📄 Documents à remettre — élèves absents quand ils ont été distribués';
         tachesWrap.appendChild(docHdr);
-        docs2b.forEach((doc,di)=>{
-          abPrev.forEach(nom=>{
-            const k='prev_doc_'+nom+'_'+di;
+        _dus2U.forEach(nom=>_dus2[nom].forEach(it=>{
             const row2=document.createElement('div'); row2.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--brd);border-radius:var(--r1);background:#EEF2FF;margin-bottom:4px';
-            const cb2=document.createElement('input'); cb2.type='checkbox'; cb2.checked=!!coches2[k]; cb2.style.cssText='flex-shrink:0;accent-color:#6366F1;width:14px;height:14px';
-            cb2.onchange=()=>{ toggleCoche(slotKey,curCls,k,cb2.checked); };
+            const cb2=document.createElement('input'); cb2.type='checkbox'; cb2.checked=it.remisIci; cb2.style.cssText='flex-shrink:0;accent-color:#6366F1;width:14px;height:14px';
+            cb2.title='Cocher quand le document est remis';
+            cb2.onchange=()=>{ _docsRemisBasculer(nom, it.cle, slotKey, cb2.checked); };
             const nm=document.createElement('span'); nm.style.cssText='flex:1;font-size:11px;font-weight:600;color:var(--tx)'; nm.textContent=getFullName(nom)||nom;
-            const bd=document.createElement('span'); bd.style.cssText='font-size:10px;background:#C7D2FE;color:#3730A3;padding:1px 6px;border-radius:3px;flex-shrink:0'; bd.textContent='📄 '+doc.slice(0,16);
+            const p=String(it.origine).slice(0,10).split('-');
+            const bd=document.createElement('span'); bd.style.cssText='font-size:10px;background:#C7D2FE;color:#3730A3;padding:1px 6px;border-radius:3px;flex-shrink:0'; bd.textContent='📄 '+String(it.doc).slice(0,16)+(p.length===3?' · '+p[2]+'/'+p[1]:'');
+            bd.title=it.doc;
             row2.appendChild(cb2); row2.appendChild(nm); row2.appendChild(bd);
             tachesWrap.appendChild(row2);
-          });
-        });
+        }));
       }
     }
     } // ── fin if(items.length) — section séance + docs absents
