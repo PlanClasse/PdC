@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.17';
+const APP_VERSION = 'v11.5.18';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -37743,6 +37743,7 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
   closeStBesoinPopup();
   _refreshStBesoinIcon();
   try{ _fsBouton(name); }catch(e){ console.warn('[fs]', e); }   // V11.5.16 — fiche de suivi
+  try{ _jnlBoutonPopup(name); }catch(e){ console.warn('[journal]', e); }   // V11.5.18 — journal de l'élève
   // V035-V11.3.21 — icône épingle (visible si l'élève occupe un siège dans le plan actif)
   _refreshStPinIcon();
   const activeKeys=getStatutKeys(name);
@@ -58162,7 +58163,8 @@ function _obsLigneTout(e){
 function _obsTexteCopie(nom, cls, liste){
   return [nom+' ('+String(cls||'').toUpperCase()+')'].concat((liste||[]).map(o=>{
     const d=String(o.dateStr||''), jj=d.slice(8,10)+'/'+d.slice(5,7);
-    return jj+' : '+(o.statuts ? _obsLigneTout(o) : String(o.texte||'').replace(/\n+/g,' · '));
+    const ty=(o.jnl && typeof _jnlType==='function') ? _jnlType(o.jnl.type).l+' · ' : '';   // V11.5.18
+    return jj+' : '+ty+(o.statuts ? _obsLigneTout(o) : String(o.texte||'').replace(/\n+/g,' · '));
   })).join('\n');
 }
 function _obsOngletAssurer(){
@@ -58170,7 +58172,7 @@ function _obsOngletAssurer(){
   const modele=document.getElementById('rupn-tab-demandes'), page=document.getElementById('suivi-page');
   if(!modele || !page) return;
   const b=document.createElement('button'); b.id='rupn-tab-obs'; b.type='button';
-  b.style.cssText=modele.style.cssText; b.textContent='📝 Observations';
+  b.style.cssText=modele.style.cssText; b.textContent='🗒 Journal';   // V11.5.18 — était « 📝 Observations »
   b.onclick=()=>showRupnTab('obs');
   modele.parentNode.insertBefore(b, modele.nextSibling);
   const pane=document.createElement('div'); pane.id='rupn-pane-obs';
@@ -58188,12 +58190,15 @@ function _obsDonneesClasse(cls){
   const membres=(S.cl[cls]&&S.cl[cls].students)||[];
   const notes={}; Object.keys(S.observations||{}).forEach(k=>{ const i=k.indexOf('|'); if(i>0 && k.slice(0,i).toLowerCase()===cls.toLowerCase()) notes[k.slice(i+1)]=S.observations[k]; });
   let seances=[]; try{ seances=_getSavedSeanceEntriesForClsCode(cls).map(x=>x.se); }catch(e){ seances=[]; }
+  let par;
   if(obsSuivi.mode==='tout'){   // V11.3.105
     let def=[]; try{ def=getStatuts(); }catch(e){ def=[]; }
-    return {par:_obsCollecterTout({obsCours:S.obsCours, statutsCours:S.statutsCours, participations:S.participations,
-      tafCoches:S.tafCoches, seances, statutsDef:def}, cls, membres, dateFrom, dateTo, notes), notes};
-  }
-  return {par:_obsCollecter(S.obsCours, seances, cls, membres, dateFrom, dateTo, notes), notes};
+    par=_obsCollecterTout({obsCours:S.obsCours, statutsCours:S.statutsCours, participations:S.participations,
+      tafCoches:S.tafCoches, seances, statutsDef:def}, cls, membres, dateFrom, dateTo, notes);
+  } else par=_obsCollecter(S.obsCours, seances, cls, membres, dateFrom, dateTo, notes);
+  // V11.5.18 — les notes du journal de l'élève, dans les deux modes.
+  try{ if(typeof _jnlEntrees==='function') _jnlFusionner(par, _jnlEntrees(S.journalEleves, membres, dateFrom, dateTo)); }catch(e){}
+  return {par, notes};
 }
 function renderObsSuivi(){
   _obsOngletAssurer();
@@ -58207,9 +58212,10 @@ function renderObsSuivi(){
   classes.forEach(k=>{
     const n=Object.keys(_obsDonneesClasse(k).par).length;
     const b=el('button',null,k.toUpperCase()+(n?' · '+n:'')); b.className='fp-tab'+(k===obsSuivi.cls?' act':'');
-    b.onclick=()=>{ obsSuivi.cls=k; renderObsSuivi(); };
+    b.onclick=()=>{ obsSuivi.cls=k; obsSuivi.sel=[]; renderObsSuivi(); };
     tabs.appendChild(b);
   });
+  if(!Array.isArray(obsSuivi.sel)) obsSuivi.sel=[];   // V11.5.18 — élèves cochés
   // Période + recherche
   const bar=el('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:.45rem 1.2rem;border-bottom:1px solid var(--brd);background:var(--sur)');
   pane.appendChild(bar);
@@ -58237,12 +58243,25 @@ function renderObsSuivi(){
   }
   const q=el('input','margin-left:auto;padding:4px 8px;border:1px solid var(--brd);border-radius:var(--r1);font-size:12px;background:var(--bg);color:var(--tx);min-width:160px');
   q.type='search'; q.placeholder='Rechercher (élève, mot)…'; q.value=obsSuivi.q||'';
+  // V11.5.18 — journal : tous les élèves (pour écrire à qui n'a rien), sélection, note.
+  const bTous=el('button',null,'👥 Tous les élèves'); bTous.type='button'; bTous.className='fp-tab'+(obsSuivi.tous?' act':'');
+  bTous.title='Afficher aussi les élèves sans rien sur la période'; bTous.onclick=()=>{ obsSuivi.tous=!obsSuivi.tous; renderObsSuivi(); };
+  bar.appendChild(el('span','width:1px;height:18px;background:var(--brd);margin:0 4px')); bar.appendChild(bTous);
+  const nSel=el('span','font-size:11.5px;color:var(--tx3);margin-left:6px'); bar.appendChild(nSel);
+  const bNote=el('button','padding:4px 12px;border-radius:var(--r1);border:1px solid #166534;background:#166534;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit','＋ Note pour la sélection');
+  bNote.type='button'; bNote.id='jnl-note-sel';
+  bNote.onclick=()=>{ if(!obsSuivi.sel.length) return; _jnlComposer({uids:obsSuivi.sel.slice(), cls:obsSuivi.cls, apres:()=>renderObsSuivi()}); };
+  bar.appendChild(bNote);
+  const majSel=()=>{ const n=obsSuivi.sel.length; nSel.textContent=n ? n+' coché'+(n>1?'s':'') : 'Cochez des élèves'; bNote.disabled=!n; bNote.style.opacity=n?'1':'.45'; };
+  majSel();
   bar.appendChild(q);
   const corps=el('div','flex:1;overflow:auto;padding:12px 1.2rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;align-content:start');
   pane.appendChild(corps);
   const cls=obsSuivi.cls;
   if(!cls){ corps.appendChild(el('div','color:var(--tx3);font-size:13px','Aucune classe.')); return; }
   const {par, notes}=_obsDonneesClasse(cls);
+  const _tousU=obsSuivi.tous ? ((S.cl[cls]&&S.cl[cls].students)||[]).filter(u=>!par[u]) : [];   // V11.5.18
+  _tousU.forEach(u=>{ par[u]=[]; });
   const uids=Object.keys(par).sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
   const dessiner=()=>{
     corps.textContent='';
@@ -58252,11 +58271,25 @@ function renderObsSuivi(){
       const nom=getFullName(uid), liste=par[uid];
       if(f && nom.toLowerCase().indexOf(f)<0 && !liste.some(o=>(o.statuts?_obsLigneTout(o):o.texte).toLowerCase().indexOf(f)>=0)) return;
       n++;
-      const carte=el('div','background:var(--sur);border:1px solid var(--brd);border-radius:12px;padding:10px 12px;min-width:0');
+      const coche=obsSuivi.sel.indexOf(uid)>=0;
+      const carte=el('div','background:var(--sur);border:'+(coche?'2px solid #166534':'1px solid var(--brd)')+';border-radius:12px;padding:10px 12px;min-width:0');
       const hd=el('div','display:flex;align-items:baseline;gap:8px');
-      hd.appendChild(el('span','font-size:14px;font-weight:700;color:var(--tx)',nom));
-      hd.appendChild(el('span','font-size:11px;color:var(--tx3)',liste.length+(obsSuivi.mode==='tout'?' cours':' obs.')));
-      const cp=el('button','margin-left:auto;font-size:11px;padding:2px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','📋 Copier');
+      // V11.5.18 — case à cocher (note pour plusieurs élèves) + fiche complète
+      const cb=el('input','flex:none;width:15px;height:15px;accent-color:#166534;cursor:pointer;align-self:center'); cb.type='checkbox'; cb.checked=coche;
+      cb.title='Cocher pour écrire une note à plusieurs élèves';
+      cb.onchange=()=>{ const i=obsSuivi.sel.indexOf(uid); if(cb.checked && i<0) obsSuivi.sel.push(uid); if(!cb.checked && i>=0) obsSuivi.sel.splice(i,1);
+        carte.style.border=cb.checked?'2px solid #166534':'1px solid var(--brd)'; majSel(); };
+      hd.appendChild(cb);
+      const bNom=el('button','font-size:14px;font-weight:700;color:var(--tx);background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-align:left',nom);
+      bNom.type='button'; bNom.title='Ouvrir le journal complet'; bNom.onclick=()=>_jnlOuvrirFiche(uid, cls);
+      hd.appendChild(bNom);
+      if(typeof _fsActive==='function' && _fsActive(S.ficheSuivi, uid)) hd.appendChild(el('span','font-size:10px;font-weight:800;padding:0 5px;border-radius:4px;background:#E0E7FF;color:#3730A3','FS'));
+      const _nJ=liste.filter(o=>o.jnl).length, _nC=liste.length-_nJ;
+      hd.appendChild(el('span','font-size:11px;color:var(--tx3)',(_nC?_nC+(obsSuivi.mode==='tout'?' cours':' obs.'):'')+(_nC&&_nJ?' · ':'')+(_nJ?_nJ+' note'+(_nJ>1?'s':''):'')+(!liste.length?'—':'')));
+      const ouv=el('button','margin-left:auto;font-size:11px;padding:2px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur);color:var(--tx2);cursor:pointer;font-family:inherit','Ouvrir ↗');
+      ouv.type='button'; ouv.title='Journal complet : notes, observations, statuts, évaluations, fiche de suivi'; ouv.onclick=()=>_jnlOuvrirFiche(uid, cls);
+      hd.appendChild(ouv);
+      const cp=el('button','font-size:11px;padding:2px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','📋 Copier');
       cp.type='button'; cp.title='Copier les observations de la période (sans la note permanente)';
       cp.onclick=()=>{
         const t=_obsTexteCopie(nom, cls, liste);
@@ -58269,6 +58302,14 @@ function renderObsSuivi(){
       liste.forEach(o=>{
         const r=el('div','font-size:12px;line-height:1.5;padding:3px 0;border-top:1px solid var(--brd);display:flex;gap:6px;align-items:baseline');
         let dl=o.dateStr; try{ dl=new Date(o.dateStr+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'}); }catch(e){}
+        if(o.jnl){   // V11.5.18 — note du journal : pas un cours
+          r.appendChild(el('span','flex:none;font-size:11px;color:var(--tx3)',dl+(o.heure?' '+o.heure:'')));
+          const t=_jnlType(o.jnl.type);
+          const z=el('span','flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:3px 5px;align-items:baseline');
+          z.appendChild(el('span','font-size:10px;font-weight:700;padding:0 5px;border-radius:3px;background:'+t.bg+';color:'+t.fg,t.ic+' '+t.l));
+          z.appendChild(el('span','color:var(--tx);white-space:pre-wrap',o.texte));
+          r.appendChild(z); carte.appendChild(r); return;
+        }
         const d=el('button','flex:none;background:none;border:none;padding:0;font:inherit;font-size:11px;color:var(--tx3);cursor:pointer;text-decoration:underline dotted',dl+(o.heure?' '+o.heure:''));
         d.type='button'; d.title='Résumé de ce cours';
         d.onclick=()=>{ try{ openCourseSummaryModal(o.slotKey, cls); }catch(e){ console.warn('[obs] résumé', e); } };
@@ -58293,6 +58334,298 @@ function renderObsSuivi(){
   q.oninput=()=>{ obsSuivi.q=q.value; dessiner(); };
   dessiner();
 }
+
+/* ═══ V11.5.18 — JOURNAL DE L'ÉLÈVE (lot 1, demande du 04/11) ═══════════════
+   L'onglet « 📝 Observations » du Suivi devient « 🗒 Journal » : on y ajoute des
+   NOTES horodatées par élève (réunion parents, conseil, appel, équipe éducative…),
+   pour un ou plusieurs élèves cochés, et une FICHE complète par élève (notes,
+   observations, statuts, participation, TAF non faits, compétences évaluées,
+   fiche de suivi, EBEP). Accès : tuile d'accueil, onglet du Suivi, bouton
+   « 🗒 Journal » de la fenêtre de l'élève dans le PdC.
+   Données : S.journalEleves[uid] = [{id, date:'AAAA-MM-JJ', heure:'HH:MM', type,
+   texte, cls, ts, majTs?}] — par élève, toutes classes (comme S.ficheSuivi).
+   Les observations, statuts… restent où ils sont : le journal les LIT. */
+const JNL_TYPES=[
+  {id:'parents', ic:'🗣', l:'Réunion parents', bg:'#DBEAFE', fg:'#1D4ED8'},
+  {id:'conseil', ic:'🏛', l:'Conseil',         bg:'#FCE7F3', fg:'#9D174D'},
+  {id:'appel',   ic:'📞', l:'Appel / échange', bg:'#E0F2FE', fg:'#0369A1'},
+  {id:'equipe',  ic:'🧩', l:'Équipe éducative',bg:'#DCFCE7', fg:'#166534'},
+  {id:'autre',   ic:'✎',  l:'Autre',           bg:'#F3F4F6', fg:'#4B5563'}
+];
+function _jnlType(id){ return JNL_TYPES.find(t=>t.id===id) || JNL_TYPES[JNL_TYPES.length-1]; }
+function _jnlStore(){
+  if(!S.journalEleves || typeof S.journalEleves!=='object' || Array.isArray(S.journalEleves)) S.journalEleves={};
+  return S.journalEleves;
+}
+/** Ajoute la même note à chaque élève de `uids`. Modifie J. Renvoie le nombre ajouté. */
+function _jnlAjouter(J, uids, n, ts){
+  const t=String((n && n.texte) || '').trim();
+  if(!J || !t || !n.date) return 0;
+  let k=0;
+  (Array.isArray(uids) ? uids : []).forEach((u, i)=>{
+    if(!u) return;
+    const L=Array.isArray(J[u]) ? J[u] : (J[u]=[]);
+    L.push({id:'j'+Number(ts).toString(36)+i+Math.random().toString(36).slice(2,6), date:n.date, heure:n.heure||'',
+      type:_jnlType(n.type).id, texte:t, cls:n.cls||'', ts:Number(ts)||0});
+    k++;
+  });
+  return k;
+}
+function _jnlModifier(J, uid, id, patch, ts){
+  const L=J && J[uid]; const x=Array.isArray(L) ? L.find(e=>e && e.id===id) : null;
+  if(!x || !patch) return false;
+  if(patch.texte!==undefined){ const t=String(patch.texte).trim(); if(!t) return false; x.texte=t; }
+  if(patch.date) x.date=patch.date;
+  if(patch.heure!==undefined) x.heure=patch.heure;
+  if(patch.type) x.type=_jnlType(patch.type).id;
+  x.majTs=Number(ts)||0;
+  return true;
+}
+function _jnlSupprimer(J, uid, id){
+  const L=J && J[uid]; if(!Array.isArray(L)) return false;
+  const i=L.findIndex(e=>e && e.id===id); if(i<0) return false;
+  L.splice(i, 1); if(!L.length) delete J[uid];
+  return true;
+}
+/** Notes de la période des élèves de `membres`, au format des entrées du Suivi
+ *  ({slotKey:'', dateStr, heure, texte, jnl}). Pure. */
+function _jnlEntrees(J, membres, du, au){
+  const M=membres instanceof Set ? membres : new Set(membres||[]); const out={};
+  Object.keys(J||{}).forEach(u=>{
+    if(!M.has(u) || !Array.isArray(J[u])) return;
+    J[u].forEach(n=>{
+      if(!n || !n.date || (du && n.date<du) || (au && n.date>au)) return;
+      (out[u]=out[u]||[]).push({slotKey:'', dateStr:n.date, heure:n.heure||'', texte:n.texte, jnl:n});
+    });
+  });
+  return out;
+}
+/** Range les notes parmi les entrées du Suivi, du plus récent au plus ancien. Modifie `par`. */
+function _jnlFusionner(par, jn){
+  const cle=(e)=>String(e.dateStr||'')+' '+String(e.heure||'');
+  Object.keys(jn||{}).forEach(u=>{
+    par[u]=(par[u]||[]).concat(jn[u]);
+    par[u].sort((a,b)=>cle(b).localeCompare(cle(a)));
+  });
+  return par;
+}
+const JNL_NIV={1:'NA', 2:'EC', 3:'A', 4:'E'};
+/** Tout le suivi d'UN élève, du plus récent au plus ancien. Pure.
+ *  src = {J, obsCours, statutsCours, participations, tafCoches, seances, statutsDef, fs, fsHist, libComp(cid)}.
+ *  Renvoie [{genre:'note'|'cours'|'eval'|'fs', dateStr, heure, …}]. */
+function _jnlFicheEntrees(src, uid, cls, du, au){
+  src=src||{}; const out=[];
+  const dans=(d)=>!!d && (!du || d>=du) && (!au || d<=au);
+  ((src.J||{})[uid]||[]).forEach(n=>{ if(n && dans(n.date)) out.push({genre:'note', dateStr:n.date, heure:n.heure||'', note:n}); });
+  let par={}; try{ par=_obsCollecterTout(src, cls, [uid], du, au, {}); }catch(e){ par={}; }
+  (par[uid]||[]).forEach(e=>out.push({genre:'cours', dateStr:e.dateStr, heure:e.heure, slotKey:e.slotKey,
+    texte:e.texte||'', statuts:e.statuts||[], partic:e.partic||0, tnf:e.tnf||0}));
+  (src.seances||[]).forEach(se=>{
+    const m=se && se.evalComps && se.evalComps[uid];
+    if(!m || !se.slotKey || !dans(String(se.slotKey).slice(0,10))) return;
+    const comps=Object.keys(m).filter(c=>m[c]>0).map(c=>({cid:c, label:(src.libComp ? src.libComp(c) : c), niv:JNL_NIV[m[c]]||String(m[c])}));
+    if(!comps.length) return;
+    const h=/_(\d{2}:\d{2})/.exec(String(se.slotKey));
+    out.push({genre:'eval', dateStr:String(se.slotKey).slice(0,10), heure:h?h[1]:'', slotKey:se.slotKey, comps});
+  });
+  ((src.fsHist||{})[uid]||[]).forEach(p=>{
+    if(p && dans(p.depuis)) out.push({genre:'fs', dateStr:p.depuis, heure:'', texte:'Fiche de suivi posée'});
+    if(p && dans(p.jusqua)) out.push({genre:'fs', dateStr:p.jusqua, heure:'', texte:'Fiche de suivi retirée'});
+  });
+  const f=(src.fs||{})[uid];
+  if(f && dans(f.depuis)) out.push({genre:'fs', dateStr:f.depuis, heure:'', texte:'Fiche de suivi posée'});
+  const cle=(e)=>String(e.dateStr||'')+' '+String(e.heure||'');
+  out.sort((a,b)=>cle(b).localeCompare(cle(a)));
+  return out;
+}
+/** Texte copiable d'une fiche (lignes « JJ/MM HH:MM · type · texte »). Pure. */
+function _jnlTexteFiche(nom, cls, entrees){
+  const L=[nom+(cls?' ('+String(cls).toUpperCase()+')':'')];
+  (entrees||[]).forEach(e=>{
+    const p=String(e.dateStr||'').split('-'); const d=(p.length===3 ? p[2]+'/'+p[1] : e.dateStr)+(e.heure?' '+e.heure:'');
+    let t='';
+    if(e.genre==='note') t=_jnlType(e.note.type).l+' · '+e.note.texte;
+    else if(e.genre==='cours') t=[e.statuts.join(', '), e.partic?'✋ '+e.partic:'', e.tnf?e.tnf+' TAF non fait'+(e.tnf>1?'s':''):'', e.texte].filter(Boolean).join(' · ');
+    else if(e.genre==='eval') t='Compétences · '+e.comps.map(c=>c.label+' '+c.niv).join(' · ');
+    else t=e.texte||'';
+    if(t) L.push(d+' · '+t);
+  });
+  return L.join('\n');
+}
+function _jnlMaintenantHHMM(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function _jnlEl(tag, css, txt){ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
+function _jnlPuce(txt, bg, fg){ return _jnlEl('span','font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:4px;white-space:nowrap;background:'+bg+';color:'+fg, txt); }
+
+/** Fenêtre de saisie d'une note (ajout pour `uids`, ou modification de `note`). */
+function _jnlComposer(opts){
+  opts=opts||{};
+  const uids=(opts.uids||[]).filter(Boolean), note=opts.note||null;
+  if(!note && !uids.length) return;
+  const ancien=document.getElementById('jnl-comp'); if(ancien) ancien.remove();
+  const ov=_jnlEl('div','position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:470;display:flex;align-items:center;justify-content:center;padding:16px');
+  ov.id='jnl-comp';
+  const box=_jnlEl('div','background:var(--sur);color:var(--tx);border-radius:14px;box-shadow:var(--sh2);width:min(520px,100%);padding:16px 18px;display:flex;flex-direction:column;gap:10px');
+  ov.appendChild(box);
+  const noms=uids.map(u=>getFullName(u));
+  box.appendChild(_jnlEl('div','font-family:Georgia,serif;font-size:18px', note ? '✎ Modifier la note' : ('＋ Note pour '+(uids.length>1 ? uids.length+' élèves' : noms[0]))));
+  if(!note && uids.length>1) box.appendChild(_jnlEl('div','font-size:11.5px;color:var(--tx3);line-height:1.4', noms.join(' · ')));
+  let type=note ? note.type : (opts.type || 'parents');
+  const types=_jnlEl('div','display:flex;flex-wrap:wrap;gap:5px'); box.appendChild(types);
+  const dessinerTypes=()=>{ types.textContent=''; JNL_TYPES.forEach(t=>{
+    const b=_jnlEl('button','padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid '+(t.id===type?t.fg:'var(--brd)')+';background:'+(t.id===type?t.bg:'var(--sur)')+';color:'+(t.id===type?t.fg:'var(--tx2)'), t.ic+' '+t.l);
+    b.type='button'; b.onclick=()=>{ type=t.id; dessinerTypes(); }; types.appendChild(b); }); };
+  dessinerTypes();
+  const quand=_jnlEl('div','display:flex;gap:8px;align-items:center;font-size:12px;color:var(--tx3)'); box.appendChild(quand);
+  const inD=_jnlEl('input','padding:4px 6px;border:1px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:12px'); inD.type='date'; inD.value=note ? note.date : _appToday();
+  const inH=_jnlEl('input','padding:4px 6px;border:1px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:12px'); inH.type='time'; inH.value=note ? (note.heure||'') : _jnlMaintenantHHMM();
+  quand.appendChild(_jnlEl('span',null,'Le')); quand.appendChild(inD); quand.appendChild(_jnlEl('span',null,'à')); quand.appendChild(inH);
+  const ta=_jnlEl('textarea','width:100%;min-height:96px;padding:8px 10px;border:1px solid var(--brd);border-radius:9px;background:var(--bg);color:var(--tx);font:inherit;font-size:13px;resize:vertical');
+  ta.placeholder='Ce qui a été dit, décidé, à suivre…'; ta.value=note ? note.texte : ''; box.appendChild(ta);
+  const act=_jnlEl('div','display:flex;justify-content:flex-end;gap:8px'); box.appendChild(act);
+  const fermer=()=>{ ov.remove(); document.removeEventListener('keydown', esc, true); };
+  const esc=(e)=>{ if(e.key==='Escape'){ e.stopPropagation(); fermer(); } };
+  document.addEventListener('keydown', esc, true);
+  const bA=_jnlEl('button',null,'Annuler'); bA.type='button'; bA.className='bs'; bA.onclick=fermer;
+  const bO=_jnlEl('button','background:#166534;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;font-family:inherit', 'Enregistrer'); bO.type='button';
+  bO.onclick=()=>{
+    const t=ta.value.trim(); if(!t){ ta.focus(); return; }
+    const J=_jnlStore();
+    const ok=note ? _jnlModifier(J, opts.uid, note.id, {texte:t, date:inD.value||note.date, heure:inH.value, type}, Date.now())
+                  : _jnlAjouter(J, uids, {texte:t, date:inD.value||_appToday(), heure:inH.value, type, cls:opts.cls||''}, Date.now());
+    if(!ok) return;
+    saveS(); fermer();
+    try{ showDropToast(note ? 'Note modifiée' : ('Note ajoutée'+(uids.length>1?' pour '+uids.length+' élèves':''))); }catch(e){}
+    if(typeof opts.apres==='function') opts.apres();
+  };
+  act.appendChild(bA); act.appendChild(bO);
+  document.body.appendChild(ov);
+  setTimeout(()=>ta.focus(), 30);
+}
+
+let _jnlFiltre='tout', _jnlSupprimerId='';
+/** Fiche complète d'un élève (par-dessus le Suivi ou le PdC). */
+function _jnlOuvrirFiche(uid, cls){
+  if(!uid) return;
+  try{ if(typeof closeStatusPopup==='function') closeStatusPopup(); }catch(e){}
+  let ov=document.getElementById('jnl-fiche');
+  if(!ov){
+    ov=_jnlEl('div','position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:460;display:flex;align-items:center;justify-content:center;padding:16px');
+    ov.id='jnl-fiche';
+    ov.addEventListener('click', e=>{ if(e.target===ov) _jnlFermerFiche(); });   // C2 : consultation
+    document.body.appendChild(ov);
+  }
+  ov.dataset.uid=uid; ov.dataset.cls=cls||'';
+  _jnlRendreFiche();
+}
+function _jnlFermerFiche(){
+  const ov=document.getElementById('jnl-fiche'); if(ov) ov.remove();
+  _jnlSupprimerId='';
+  try{ if(document.getElementById('suivi-page') && document.getElementById('suivi-page').classList.contains('open')) renderObsSuivi(); }catch(e){}
+}
+function _jnlSourcesFiche(cls){
+  let seances=[]; try{ seances=_getSavedSeanceEntriesForClsCode(cls).map(x=>x.se); }catch(e){ seances=[]; }
+  let def=[]; try{ def=getStatuts(); }catch(e){ def=[]; }
+  return {J:S.journalEleves||{}, obsCours:S.obsCours, statutsCours:S.statutsCours, participations:S.participations, tafCoches:S.tafCoches,
+    seances, statutsDef:def, fs:S.ficheSuivi||{}, fsHist:S.ficheSuiviHist||{},
+    libComp:(c)=>{ try{ const l=String(getCompLabelForCourse(c, cls)||c); return l.length>48 ? l.slice(0,47)+'…' : l; }catch(e){ return c; } }};
+}
+function _jnlRendreFiche(){
+  const ov=document.getElementById('jnl-fiche'); if(!ov) return;
+  const uid=ov.dataset.uid, cls=ov.dataset.cls;
+  ov.textContent='';
+  const box=_jnlEl('div','background:var(--sur);color:var(--tx);border-radius:14px;box-shadow:var(--sh2);width:min(860px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden');
+  ov.appendChild(box);
+  const nom=getFullName(uid);
+  const hd=_jnlEl('div','display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border-bottom:1px solid var(--brd)'); box.appendChild(hd);
+  const gauche=_jnlEl('div','flex:1;min-width:0'); hd.appendChild(gauche);
+  gauche.appendChild(_jnlEl('div','font-family:Georgia,serif;font-size:20px', nom+(cls?' · '+String(cls).toUpperCase():'')));
+  const badges=_jnlEl('div','display:flex;flex-wrap:wrap;gap:5px;margin-top:5px'); gauche.appendChild(badges);
+  const f=_fsActive(S.ficheSuivi, uid); if(f) badges.appendChild(_jnlPuce('Fiche de suivi depuis le '+_fsDate(f.depuis),'#E0E7FF','#3730A3'));
+  let eb=[]; try{ eb=getEbepInfoParts(uid, cls)||[]; }catch(e){ eb=[]; }
+  if(eb.length) badges.appendChild(_jnlPuce('EBEP · '+eb.join(', '),'#DCFCE7','#166534'));
+  const note=String(((S.observations||{})[cls+'|'+uid])||'').trim();
+  const {dateFrom, dateTo}=computeVgDateBounds(obsSuivi.periode, obsSuivi.du, obsSuivi.au);
+  const tout=_jnlFicheEntrees(_jnlSourcesFiche(cls), uid, cls, dateFrom, dateTo);
+  const btn=(t, css, fn, titre)=>{ const b=_jnlEl('button','padding:6px 12px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);color:var(--tx);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;'+(css||''), t); b.type='button'; if(titre) b.title=titre; b.onclick=fn; return b; };
+  const cp=btn('📋 Copier','', ()=>{ const t=_jnlTexteFiche(nom, cls, vues());
+    try{ navigator.clipboard.writeText(t).then(()=>{ cp.textContent='✔ Copié'; setTimeout(()=>{ cp.textContent='📋 Copier'; },1500); }); }catch(e){} }, 'Copier ce qui est affiché');
+  hd.appendChild(cp);
+  hd.appendChild(btn('＋ Note','background:var(--acc);color:#fff;border-color:var(--acc)', ()=>_jnlComposer({uids:[uid], cls, apres:_jnlRendreFiche})));
+  hd.appendChild(btn('✕','', _jnlFermerFiche, 'Fermer'));
+  const FILTRES=[{v:'tout',l:'Tout'},{v:'note',l:'Mes notes'},{v:'obs',l:'Observations'},{v:'statut',l:'Statuts'},{v:'eval',l:'Évaluations'},{v:'fs',l:'Fiche de suivi'}];
+  const garde=(e)=>_jnlFiltre==='tout' || (_jnlFiltre==='note' && e.genre==='note') || (_jnlFiltre==='eval' && e.genre==='eval') || (_jnlFiltre==='fs' && e.genre==='fs')
+    || (_jnlFiltre==='obs' && e.genre==='cours' && !!e.texte) || (_jnlFiltre==='statut' && e.genre==='cours' && (e.statuts.length || e.partic || e.tnf));
+  const vues=()=>tout.filter(garde);
+  const fb=_jnlEl('div','display:flex;flex-wrap:wrap;gap:5px;padding:9px 16px;border-bottom:1px solid var(--brd);align-items:center'); box.appendChild(fb);
+  FILTRES.forEach(x=>{ const b=_jnlEl('button',null,x.l); b.type='button'; b.className='fp-tab'+(_jnlFiltre===x.v?' act':''); b.onclick=()=>{ _jnlFiltre=x.v; _jnlRendreFiche(); }; fb.appendChild(b); });
+  fb.appendChild(_jnlEl('span','margin-left:auto;font-size:11px;color:var(--tx3)', 'Période du Suivi : '+({all:'année',s1:'semestre 1',s2:'semestre 2',t1:'trimestre 1',t2:'trimestre 2',t3:'trimestre 3',custom:'dates choisies'}[obsSuivi.periode]||'année')));
+  const corps=_jnlEl('div','overflow:auto;flex:1;padding:4px 0 10px'); box.appendChild(corps);
+  if(note){ const nb=_jnlEl('div','margin:8px 16px 4px;padding:5px 9px;border-radius:7px;background:#FEF3C7;color:#92400E;font-size:12px;white-space:pre-wrap','Note permanente : '+note); corps.appendChild(nb); }
+  const liste=vues();
+  if(!liste.length) corps.appendChild(_jnlEl('div','padding:16px;color:var(--tx3);font-size:13px','Rien sur cette période.'));
+  liste.forEach(e=>{
+    const r=_jnlEl('div','display:grid;grid-template-columns:96px 1fr auto;gap:10px;padding:8px 16px;border-top:1px solid var(--brd);align-items:start;font-size:13px;line-height:1.45');
+    let dl=e.dateStr; try{ dl=new Date(e.dateStr+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'}); }catch(x){}
+    r.appendChild(_jnlEl('span','font-size:11.5px;font-weight:700;color:var(--tx3)', dl+(e.heure?' '+e.heure:'')));
+    const z=_jnlEl('span','min-width:0;display:flex;flex-wrap:wrap;gap:4px 6px;align-items:baseline'); r.appendChild(z);
+    const a=_jnlEl('span','display:flex;gap:6px;font-size:12px;color:var(--tx3);white-space:nowrap'); r.appendChild(a);
+    if(e.genre==='note'){
+      const t=_jnlType(e.note.type); z.appendChild(_jnlPuce(t.ic+' '+t.l, t.bg, t.fg));
+      z.appendChild(_jnlEl('span','white-space:pre-wrap;color:var(--tx)', e.note.texte));
+      const bm=_jnlEl('button','background:none;border:none;cursor:pointer;font-size:13px;color:var(--tx3)','✎'); bm.type='button'; bm.title='Modifier';
+      bm.onclick=()=>_jnlComposer({uid, note:e.note, cls, apres:_jnlRendreFiche});
+      const conf=_jnlSupprimerId===e.note.id;
+      const bs=_jnlEl('button','background:none;border:none;cursor:pointer;font-size:'+(conf?'11.5px;font-weight:700;color:#B91C1C':'13px;color:var(--tx3)'), conf?'Supprimer ?':'🗑'); bs.type='button'; bs.title='Supprimer (deux clics)';
+      bs.onclick=()=>{ if(!conf){ _jnlSupprimerId=e.note.id; _jnlRendreFiche(); setTimeout(()=>{ if(_jnlSupprimerId===e.note.id){ _jnlSupprimerId=''; _jnlRendreFiche(); } }, 4000); return; }
+        _jnlSupprimerId=''; if(_jnlSupprimer(_jnlStore(), uid, e.note.id)){ saveS(); } _jnlRendreFiche(); };
+      a.appendChild(bm); a.appendChild(bs);
+    } else if(e.genre==='cours'){
+      if(e.texte) z.appendChild(_jnlPuce('📝 Observation','#F3F4F6','#4B5563'));
+      e.statuts.forEach(s=>{ let col=''; try{ const st=getStatuts().find(x=>x.label===s); col=st?st.col:''; }catch(x){}
+        z.appendChild(col==='pos' ? _jnlPuce(s,'#DCFCE7','#166534') : col==='neg-r' ? _jnlPuce(s,'#FFEDD5','#9A3412') : _jnlPuce(s,'#E5E7EB','#374151')); });
+      if(e.partic) z.appendChild(_jnlPuce('✋ '+e.partic,'#DCFCE7','#166534'));
+      if(e.tnf) z.appendChild(_jnlPuce(e.tnf+' TAF non fait'+(e.tnf>1?'s':''),'#FEE2E2','#991B1B'));
+      if(e.texte) z.appendChild(_jnlEl('span','white-space:pre-wrap;color:var(--tx)', e.texte));
+    } else if(e.genre==='eval'){
+      z.appendChild(_jnlPuce('🎯 Compétences','#CCFBF1','#115E59'));
+      e.comps.forEach(c=>z.appendChild(_jnlEl('span','color:var(--tx)', c.label+' ')).appendChild(_jnlEl('b',null,c.niv)));
+    } else {
+      z.appendChild(_jnlPuce('FS','#E0E7FF','#3730A3')); z.appendChild(_jnlEl('span','color:var(--tx)', e.texte));
+    }
+    if(e.slotKey){ const bc=_jnlEl('button','background:none;border:none;cursor:pointer;font-size:12px;color:var(--tx3);text-decoration:underline dotted','cours ↗'); bc.type='button'; bc.title='Résumé de ce cours';
+      bc.onclick=()=>{ try{ openCourseSummaryModal(e.slotKey, cls); }catch(x){} }; a.appendChild(bc); }
+    corps.appendChild(r);
+  });
+}
+/** PdC : bouton « 🗒 Journal · N » dans l'en-tête de la fenêtre de l'élève. */
+function _jnlBoutonPopup(uid){
+  const head=document.getElementById('stp-name'); if(!head) return;
+  let b=document.getElementById('stp-jnl-btn');
+  if(!b){
+    b=document.createElement('button'); b.type='button'; b.id='stp-jnl-btn'; b.className='stp-cstr-btn stp-fs-btn';
+    const ref=document.getElementById('stp-fs-btn');
+    if(ref) head.insertBefore(b, ref); else head.appendChild(b);
+    b.onclick=(e)=>{ e.stopPropagation(); const u=popupCurrentName; const c=(typeof curCls!=='undefined') ? curCls : ''; if(u) _jnlOuvrirFiche(u, c); };
+  }
+  const L=((S.journalEleves||{})[uid])||[];
+  b.textContent='🗒'+(L.length ? ' '+L.length : '');
+  const der=L.slice().sort((x,y)=>(String(y.date)+' '+String(y.heure||'')).localeCompare(String(x.date)+' '+String(x.heure||'')))[0];
+  b.title='Journal de l’élève'+(der ? ' — dernière note le '+_fsDate(der.date)+' : '+String(der.texte).slice(0,80) : '');
+}
+/** Accueil : tuile « 🗒 Journal des élèves » (nouvelle ligne, createElement). */
+function _jnlTuileAccueil(){
+  if(document.getElementById('jnl-tile')) return;
+  const ref=document.getElementById('sdc-tile'); if(!ref || !ref.parentNode) return;
+  const b=document.createElement('button'); b.id='jnl-tile'; b.className='htile'; b.type='button'; b.style.gridColumn='1';
+  const ic=document.createElement('span'); ic.className='htile-ic'; ic.textContent='🗒';
+  const tx=document.createElement('span'); tx.className='htile-tx';
+  const t=document.createElement('span'); t.className='htile-t'; t.textContent='Journal des élèves';
+  const s=document.createElement('span'); s.className='htile-s'; s.textContent='Notes, réunions, tout le suivi';
+  tx.appendChild(t); tx.appendChild(s); b.appendChild(ic); b.appendChild(tx);
+  b.onclick=()=>{ openSuivi(); showRupnTab('obs'); };
+  ref.parentNode.appendChild(b);
+}
+try{ _jnlTuileAccueil(); }catch(e){ console.warn('[journal] tuile', e); }
 
 /* ── Gestion des demandes ── */
 function renderDemandesCls(){
