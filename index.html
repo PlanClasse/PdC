@@ -4054,7 +4054,7 @@ function _refreshDemoPubUI(){
     const tile = document.getElementById('demo-pub-tile');
     const btn = document.getElementById('demo-pub-btn');
     const banner = document.getElementById('demo-pub-banner');
-    if(tile) tile.style.display = active ? 'none' : 'flex';
+    if(tile) tile.style.display = 'none';   // V11.5.23 — le mode démo est dans Paramètres › Données (demande du 06/11)
     if(btn) btn.style.display = active ? 'none' : 'inline-block';
     if(banner) banner.style.display = active ? 'flex' : 'none';
     // V020-v176.1 — En mode démo, désactiver la sync Dropbox pour éviter
@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.22';
+const APP_VERSION = 'v11.5.23';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -14051,6 +14051,8 @@ let _hwnUserToggled=false; // Flag : l'utilisateur a manuellement ouvert/fermé 
 function renderHomeWeekNote(){
   const cont = document.getElementById('home-week-note');
   if(!cont) return;
+  // V11.5.23 — la note de semaine est remplacée par le Bloc-notes (tuile d'accueil) : bandeau masqué.
+  if(typeof openBlocNotes==='function'){ cont.style.display='none'; cont.textContent=''; return; }
   const lundiStr = _hwnLundiStr();
   if(!S.agendaNotes) S.agendaNotes={};
   if(!S.agendaNotes._global) S.agendaNotes._global={};
@@ -14441,11 +14443,13 @@ function _reuParseLine(line){
    Trié par heure de début. Pas de dédoublonnage (si la même réunion est saisie 2 fois
    dans 2 semaines différentes, elle apparaît 2 fois — peu probable en pratique). */
 function _reuGetForDate(dateStr){
-  if(!S.agendaNotes || !S.agendaNotes._global) return [];
+  // V11.5.23 — les @REU du Bloc-notes comptent aussi.
+  const _src=Object.assign({}, (S.agendaNotes && S.agendaNotes._global) || {});
+  try{ const T=(S.blocNotes && S.blocNotes.textes) || {}; Object.keys(T).forEach(k=>{ _src['bn:'+k]=T[k]; }); }catch(e){}
   const out = [];
-  Object.keys(S.agendaNotes._global).forEach(key=>{
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(key) && !/^pause_\d{4}-\d{2}-\d{2}$/.test(key)) return;
-    const txt = S.agendaNotes._global[key] || '';
+  Object.keys(_src).forEach(key=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(key) && !/^pause_\d{4}-\d{2}-\d{2}$/.test(key) && key.indexOf('bn:')!==0) return;
+    const txt = _src[key] || '';
     String(txt).split('\n').forEach(line=>{
       const r = _reuParseLine(line);
       if(r && r.dateStr===dateStr){
@@ -16312,6 +16316,7 @@ function _profEdtExtras(slotKey, clsCode, dateStr){
 
 function renderRappelsBandeau(){
   try{ _impEnsureTuile(); _impMajTuileDiff(); }catch(e){}   // V11.4.38 — tuile « Gestion des impressions »
+  try{ if(typeof _accueilOrdonner==='function') _accueilOrdonner(); }catch(e){}   // V11.5.23 — ordre des tuiles, bloc-notes
   const bandeau = document.getElementById('rappels-bandeau');
   if(!bandeau) return;
   try{ _syncPendingPlanningAlertsFromSeances(); }catch(e){}  // ════════════════════════════════════════════════════════════
@@ -20033,6 +20038,7 @@ const _PAL_ACTIONS = [
 // V11.4.34 — Écrans arrivés après la v11.2 et absents du lanceur prof (qui
 // reste tel quel : il dessine aussi les tuiles). Même forme que le lanceur.
 const _PAL_ECRANS_EXTRA = [
+  {ic:'🗒', full:'Bloc-notes · À faire, à rendre, rappels, notes', kw:'bloc notes carnet a faire rendre rappel note semaine tdl', fn:()=>{ openBlocNotes(); }},   // V11.5.23
   {ic:'👁️', full:'Espace prof · Ma semaine est-elle prête ?',
    kw:'espace prof supervision semaine prête calendrier 5 jours préparer tableau de bord mode prof',
    fn:()=>{ openEspaceProf(); }},
@@ -21436,6 +21442,7 @@ function renderParamsDonnees(){
   pane.appendChild(_paramsSection('params-pane-stockage', renderParamsStockage, '💾', 'Données, sauvegardes et synchronisation', 'Stockage local, import/export JSON et emplacements de synchronisation.', 'psec-stockage', null));
   pane.appendChild(_paramsSection('params-pane-divers', renderParamsDivers, '⚙️', 'Réglages divers', 'Comptage des réinitialisations et règles du planning d’affectation.', 'psec-divers', null));
   // V020-v166 — Mode démo techno
+  try{ pane.appendChild(_demoPubParamsBloc()); }catch(e){}   // V11.5.23 — ex-tuile « Mode démo » de l'accueil
   pane.appendChild(_paramsSection('params-pane-mode-demo', renderParamsModeDemo, '🎬', 'Mode démo (techno)', 'Charger un jeu de données fictif riche pour démonstration. Sauvegarde automatique avant installation, restauration en un clic.', 'psec-mode-demo', null));
 }
 
@@ -36476,7 +36483,7 @@ function openGroupeInterPlan(gid, slotKey){
 function renderTbRow2Context(){
   const ctx=document.getElementById('tb-r2-ctx');
   if(!ctx) return;
-  if(!curSlotKey||!curCls){ ctx.innerHTML=''; ctx.title=''; try{ _eaBoutonPdc(); }catch(e){} return; }
+  if(!curSlotKey||!curCls){ ctx.innerHTML=''; ctx.title=''; try{ _eaBoutonPdc(); }catch(e){} try{ if(typeof _bnBoutonPdc==='function') _bnBoutonPdc(); }catch(e){} return; }
   const parts=String(curSlotKey).split('_');
   const dateStr=parts[0]||'';
   const hhmm=parts[1]||'';
@@ -36542,6 +36549,7 @@ function renderTbRow2Context(){
   const flat=[dateLabel,hhmm,clsLabel,seqTitle,seanTitle].filter(Boolean).join(' · ');
   ctx.title=flat;
   try{ _eaBoutonPdc(); }catch(e){}   // V11.4.14 — ▶ de l'écran projeté
+  try{ if(typeof _bnBoutonPdc==='function') _bnBoutonPdc(); }catch(e){}   // V11.5.23 — 🗒 bloc-notes de la classe
 }
 /* ── Fin V018-v147 ───────────────────────────────────────────── */
 function openCoursPrec(){
@@ -58489,6 +58497,7 @@ const JNL_TYPES=[
 ];
 function _jnlType(id){
   // V11.5.19 — note prise en réunion : type 'reu:<type de réunion>'.
+  if(id==='bn') return {id:'bn', ic:'🗒', l:'Bloc-notes', bg:'#FEF9C3', fg:'#854D0E'};   // V11.5.23
   if(typeof id==='string' && id.indexOf('reu:')===0 && typeof _reuTypeDe==='function'){ const t=_reuTypeDe(id.slice(4)); return {id, ic:t.ic, l:t.l, bg:'#DBEAFE', fg:'#1D4ED8'}; }
   return JNL_TYPES.find(t=>t.id===id) || JNL_TYPES[JNL_TYPES.length-1];
 }
@@ -58711,6 +58720,7 @@ function _jnlRendreFiche(){
     if(e.genre==='note'){
       const t=_jnlType(e.note.type); z.appendChild(_jnlPuce(t.ic+' '+t.l, t.bg, t.fg));
       z.appendChild(_jnlEl('span','white-space:pre-wrap;color:var(--tx)', e.note.texte));
+      if(e.note.bnCle){ a.appendChild(_jnlEl('span','font-size:11px;color:var(--tx3)','depuis le bloc-notes')); corps.appendChild(r); return; }   // V11.5.23 — se modifie dans le bloc-notes
       const bm=_jnlEl('button','background:none;border:none;cursor:pointer;font-size:13px;color:var(--tx3)','✎'); bm.type='button'; bm.title='Modifier';
       bm.onclick=()=>_jnlComposer({uid, note:e.note, cls, apres:_jnlRendreFiche});
       const conf=_jnlSupprimerId===e.note.id;
@@ -58803,7 +58813,8 @@ function _reuDevinerType(titre, types){
 function _reuCle(x){ return [x.date||x.dateStr, x.debut||x.debutStr, x.titre, x.lieu||''].join('|'); }
 /** Toutes les @REU des notes d'agenda, sans doublon. Pure (parse par _reuParseLine). */
 function _reuAgenda(agendaNotes){
-  const out=[], vus=new Set(), G=(agendaNotes && agendaNotes._global) || {};
+  const out=[], vus=new Set(), G=Object.assign({}, (agendaNotes && agendaNotes._global) || {});
+  try{ const T=(typeof S!=='undefined' && S && S.blocNotes && S.blocNotes.textes) || {}; Object.keys(T).forEach(k=>{ G['bn:'+k]=T[k]; }); }catch(e){}   // V11.5.23
   Object.keys(G).forEach(k=>String(G[k]||'').split('\n').forEach(line=>{
     let r=null; try{ r=_reuParseLine(line); }catch(e){ r=null; }
     if(!r) return; const c=_reuCle(r); if(vus.has(c)) return; vus.add(c);
@@ -59195,6 +59206,423 @@ function _reuTuileAccueil(){
   ref.parentNode.insertBefore(b, ref.nextSibling);
 }
 try{ _reuTuileAccueil(); }catch(e){ console.warn('[réunions] tuile', e); }
+/* ═══ V11.5.23 — BLOC-NOTES (remplace la note de semaine et les codes TDL, demande du 06/11) ═══
+   Un TEXTE LIBRE par onglet (Général + onglets personnalisables), comme « Saisir mes cours » :
+   le texte fait foi, l'aperçu est rangé à partir de lui. Repères (insérés par des boutons ou tapés) :
+     en tête de ligne : ☐ à faire · ☑ fait · 📥 à rendre (par moi) · 🔔 rappel · 📌 épinglé ;
+     dans la ligne    : 📅 ven. 13/11 [8h30] · #5E1 (classe) · @[NOM Prénom] (élève) ;
+     @REU[…] : une réunion (lue par Réunions et la Vue hebdo) ; une ligne sans repère = une note.
+   Une ligne avec @[élève] part aussi dans son JOURNAL (type 'bn', bnCle) à la fermeture.
+   S.blocNotes = {onglets:[{id, l, ic}], textes:{id: texte}, ranges:[{texte, ts, onglet}], migre}.
+   Migration (une fois) : les TDL non faits des anciennes notes de semaine → « ☐ … 📅 jj/mm » dans
+   Général ; les notes de semaine restent lisibles (🗄 Archives), en lecture seule. */
+const BN_JOURS=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
+const BN_TYPES={afaire:{ic:'☐', l:'À faire'}, arendre:{ic:'📥', l:'À rendre'}, rappel:{ic:'🔔', l:'Rappel'}, note:{ic:'✎', l:'Note'}, reu:{ic:'🗣', l:'Réunion'}};
+function _bnNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
+function _bnAjouterJours(d, n){ const x=new Date(d+'T12:00:00'); x.setDate(x.getDate()+n); return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); }
+/** « 📅 ven. 13/11 » (+ « 8h30 »). Pure. */
+function _bnDateTexte(dateStr, heure){
+  const d=new Date(String(dateStr)+'T12:00:00'); if(isNaN(d)) return '';
+  const p=String(dateStr).split('-');
+  return '📅 '+BN_JOURS[d.getDay()]+' '+p[2]+'/'+p[1]+(heure ? ' '+String(heure).replace(/^0?(\d{1,2}):(\d{2})$/, (m,h,mi)=>h+'h'+(mi==='00'?'':mi)) : '');
+}
+const BN_RE_DATE=/📅\s*(?:(?:lun|mar|mer|jeu|ven|sam|dim)\.?\s*)?(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?(?:\s+(\d{1,2})\s*[h:]\s*(\d{0,2}))?/i;
+/** Date d'un repère 📅 ; sans année : l'année la plus proche d'aujourd'hui. Pure. */
+function _bnLireDate(txt, today){
+  const m=BN_RE_DATE.exec(String(txt||'')); if(!m) return null;
+  const dd=+m[1], mm=+m[2]; if(!(dd>=1 && dd<=31 && mm>=1 && mm<=12)) return null;
+  let yy=m[3] ? +m[3] : +String(today).slice(0,4); if(yy<100) yy+=2000;
+  const f=(y)=>y+'-'+String(mm).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+  let d=f(yy);
+  if(!m[3]){ const ecart=(a,b)=>(new Date(a+'T12:00:00')-new Date(b+'T12:00:00'))/864e5;
+    if(ecart(d, today)<-183) d=f(yy+1); else if(ecart(d, today)>183) d=f(yy-1); }
+  const heure=m[4]!=null && m[4]!=='' ? String(+m[4]).padStart(2,'0')+':'+String(m[5]||'00').padEnd(2,'0') : '';
+  return {date:d, heure, brut:m[0]};
+}
+/** Une ligne lue. ctx = {classes:Set (minuscules), eleves:Map(nom normalisé → uid), today}. Pure. */
+function _bnLigne(brut, ctx){
+  ctx=ctx||{}; const L=String(brut||''); const o={brut:L, type:'note', fait:false, epingle:false, classes:[], tags:[], eleves:[], noms:[], date:'', heure:'', texte:''};
+  if(!L.trim()){ o.type='vide'; return o; }
+  if(/^\s*@REU\s*\[/i.test(L)){ o.type='reu'; o.texte=L.trim(); return o; }
+  let r=L.replace(/^\s+/,''), box=false, vu=true;
+  while(vu){ vu=false;
+    for(const m of ['☑','☐','📥','🔔','📌']){ if(r.indexOf(m)===0){ r=r.slice(m.length).replace(/^\s+/,''); vu=true;
+      if(m==='☑'){ box=true; o.fait=true; } else if(m==='☐'){ box=true; } else if(m==='📥') o.type='arendre'; else if(m==='🔔') o.type='rappel'; else o.epingle=true; } } }
+  if(box && o.type==='note') o.type='afaire';
+  const dt=_bnLireDate(r, ctx.today||''); if(dt){ o.date=dt.date; o.heure=dt.heure; r=r.replace(dt.brut,''); }
+  r=r.replace(/@\[([^\]]+)\]/g, (m, n)=>{ const u=ctx.eleves ? ctx.eleves.get(_bnNorm(n)) : null; o.noms.push(n.trim()); if(u) o.eleves.push(u); return ''; });
+  r=r.replace(/#([0-9A-Za-zÀ-ÿ_-]+)/g, (m, t)=>{ if(ctx.classes && ctx.classes.has(t.toLowerCase())) o.classes.push(t.toLowerCase()); else o.tags.push(t); return ''; });
+  o.texte=r.replace(/\s{2,}/g,' ').trim();
+  return o;
+}
+function _bnLignes(texte, ctx){ return String(texte||'').split('\n').map((l,i)=>Object.assign(_bnLigne(l, ctx), {i})); }
+/** Coche / décoche la ligne i (☐ ↔ ☑ ; 📥 / 🔔 : « ☑ » ajouté ou retiré). Les notes ne bougent pas. Pure. */
+function _bnBasculer(texte, i){
+  const L=String(texte||'').split('\n'); const l=L[i]; if(l==null) return String(texte||'');
+  const ind=(/^\s*/.exec(l)||[''])[0], r=l.slice(ind.length);
+  if(r.indexOf('☐')===0) L[i]=ind+'☑'+r.slice(1);
+  else if(r.indexOf('☑')===0){ const s=r.slice(1).replace(/^\s+/,''); L[i]=ind+((s.indexOf('📥')===0 || s.indexOf('🔔')===0) ? s : '☐'+r.slice(1)); }
+  else if(r.indexOf('📥')===0 || r.indexOf('🔔')===0) L[i]=ind+'☑ '+r;
+  return L.join('\n');
+}
+/** Aperçu rangé. Pure. */
+function _bnClasser(lignes, today){
+  const out={retard:[], auj:[], semaine:[], plusTard:[], sansDate:[], notes:[], faits:[], reunions:[]};
+  const fin=_bnAjouterJours(today, 7);
+  (lignes||[]).forEach(l=>{
+    if(l.type==='vide') return;
+    if(l.type==='reu'){ out.reunions.push(l); return; }
+    if(l.type==='note'){ out.notes.push(l); return; }
+    if(l.fait){ out.faits.push(l); return; }
+    if(!l.date) out.sansDate.push(l); else if(l.date<today) out.retard.push(l); else if(l.date===today) out.auj.push(l); else if(l.date<=fin) out.semaine.push(l); else out.plusTard.push(l);
+  });
+  const parDate=(a,b)=>(a.date+(a.heure||'')).localeCompare(b.date+(b.heure||''));
+  ['retard','auj','semaine','plusTard'].forEach(k=>out[k].sort(parDate));
+  out.notes.sort((a,b)=>(b.epingle?1:0)-(a.epingle?1:0));
+  return out;
+}
+/** Ranger les faits : retire les lignes faites du texte. Pure. */
+function _bnRangerFaits(texte, ctx){
+  const L=String(texte||'').split('\n'), garde=[], faits=[];
+  L.forEach(l=>{ const x=_bnLigne(l, ctx); if(x.fait && x.type!=='note') faits.push(l); else garde.push(l); });
+  return {texte:garde.join('\n').replace(/\n{3,}/g,'\n\n'), faits};
+}
+/** TDL non faits des anciennes notes de semaine → lignes « ☐ texte 📅 jour jj/mm ». Pure (parse : _tdlParseLine). */
+function _bnMigrationTexte(G){
+  const vus=new Set(), out=[];
+  Object.keys(G||{}).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort().forEach(k=>String(G[k]||'').split('\n').forEach(line=>{
+    let p=null; try{ p=_tdlParseLine(line); }catch(e){ p=null; }
+    if(!p || !p.text || p.tag==='FAIT') return;
+    const c=p.dateStr+'|'+_bnNorm(p.text); if(vus.has(c)) return; vus.add(c);
+    out.push('☐ '+p.text+' '+_bnDateTexte(p.dateStr));
+  }));
+  return out.join('\n');
+}
+/** Lignes avec @[élève] → cibles du journal (clé stable : la ligne sans case ni ☑). Pure. */
+function _bnCiblesJournal(textes, ctx){
+  const out=[];
+  Object.keys(textes||{}).forEach(id=>_bnLignes(textes[id], ctx).forEach(l=>{
+    if(!l.eleves.length) return;
+    const cle='bn:'+_bnNorm(l.brut.replace(/^\s*[☐☑]\s*/,''));
+    l.eleves.forEach(u=>out.push({uid:u, cle, texte:(BN_TYPES[l.type] && l.type!=='note' ? BN_TYPES[l.type].l+' : ' : '')+l.texte, date:l.date, cls:l.classes[0]||''}));
+  }));
+  return out;
+}
+
+/* ── Données ───────────────────────────────────────────────────────────── */
+function _bnStore(){
+  if(!S.blocNotes || typeof S.blocNotes!=='object') S.blocNotes={};
+  const B=S.blocNotes;
+  if(!Array.isArray(B.onglets) || !B.onglets.length) B.onglets=[{id:'general', l:'Général', ic:'🗒'}];
+  if(!B.textes || typeof B.textes!=='object') B.textes={};
+  if(!Array.isArray(B.ranges)) B.ranges=[];
+  if(!B.migre){
+    B.migre=_appToday();
+    try{ const t=_bnMigrationTexte(((S.agendaNotes||{})._global)||{}); if(t) B.textes.general=(B.textes.general ? B.textes.general.replace(/\s+$/,'')+'\n' : '')+t; }catch(e){ console.warn('[bloc-notes] migration', e); }
+    try{ saveS(); }catch(e){}
+  }
+  return B;
+}
+function _bnCtx(){
+  const classes=new Set(), eleves=new Map();
+  try{ _reuClasses().forEach(c=>{ classes.add(String(c).toLowerCase()); ((S.cl[c]||{}).students||[]).forEach(u=>{ const n=_bnNorm(getFullName(u)); if(n && !eleves.has(n)) eleves.set(n, u); }); }); }catch(e){}
+  return {classes, eleves, today:_appToday()};
+}
+function _bnTousTextes(){ const B=_bnStore(); const o={}; B.onglets.forEach(t=>{ o[t.id]=B.textes[t.id]||''; }); return o; }
+/** Journal : ajoute les lignes @[élève] nouvelles, retire celles disparues du bloc-notes. */
+function _bnSyncJournal(){
+  try{
+    const C=_bnCiblesJournal(_bnTousTextes(), _bnCtx()), J=_jnlStore(), garder=new Set(C.map(c=>c.uid+'|'+c.cle));
+    let modif=false;
+    Object.keys(J).forEach(u=>{ const L=J[u]; if(!Array.isArray(L)) return; const n=L.filter(x=>!(x && x.bnCle && !garder.has(u+'|'+x.bnCle))); if(n.length!==L.length){ J[u]=n; modif=true; if(!n.length) delete J[u]; } });
+    C.forEach(c=>{ const L=J[c.uid]||[]; if(L.some(x=>x && x.bnCle===c.cle)) return;
+      if(_jnlAjouter(J, [c.uid], {texte:c.texte, date:c.date||_appToday(), heure:'', type:'bn', cls:c.cls}, Date.now())){ const M=J[c.uid]; M[M.length-1].bnCle=c.cle; modif=true; } });
+    if(modif) saveS();
+  }catch(e){ console.warn('[bloc-notes] journal', e); }
+}
+/** Prochain cours d'une classe (après maintenant). */
+function _bnProchainCours(cls){
+  const t=_appToday(), h=_jnlMaintenantHHMM();
+  try{ return (buildYearSlots(cls)||[]).find(s=>s && (s.dateStr>t || (s.dateStr===t && (s.debut||'')>h)) && !(typeof isSlotCancelled==='function' && isSlotCancelled(s.dateStr, s.debut, cls)))||null; }catch(e){ return null; }
+}
+
+/* ── Fenêtre ───────────────────────────────────────────────────────────── */
+let _bn={onglet:'general', cls:'', archives:false, renommer:false, supprimer:''};
+function _bnEl(t, css, x){ const e=document.createElement(t); if(css) e.style.cssText=css; if(x!=null) e.textContent=x; return e; }
+function _bnBtn(t, css, fn, titre){ const b=_bnEl('button','padding:5px 10px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);color:var(--tx);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;'+(css||''), t); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }
+function openBlocNotes(opts){
+  opts=opts||{}; const B=_bnStore();
+  _bn.cls=opts.cls||''; _bn.archives=false; _bn.renommer=false; _bn.supprimer='';
+  if(!B.onglets.some(t=>t.id===_bn.onglet)) _bn.onglet=B.onglets[0].id;
+  let ov=document.getElementById('bn-modal'); if(ov) ov.remove();
+  ov=_bnEl('div','position:fixed;inset:0;background:rgba(20,18,10,.45);z-index:470;display:flex;align-items:center;justify-content:center;padding:14px'); ov.id='bn-modal';
+  ov.addEventListener('mousedown', e=>{ if(e.target===ov) closeBlocNotes(); });   // C2 : rien à perdre, le texte est enregistré à la frappe
+  ov._esc=(e)=>{ if(e.key==='Escape'){ const p=document.getElementById('bn-pop'); if(p){ p.remove(); } else closeBlocNotes(); e.stopPropagation(); } };
+  document.addEventListener('keydown', ov._esc, true);
+  document.body.appendChild(ov);
+  _bnRendre();
+}
+function closeBlocNotes(){
+  const ov=document.getElementById('bn-modal'); if(!ov) return;
+  document.removeEventListener('keydown', ov._esc, true); ov.remove();
+  _bnSyncJournal();
+  try{ if(typeof renderTbRow2Context==='function' && typeof curSlotKey!=='undefined' && curSlotKey) _bnBoutonPdc(); }catch(e){}
+}
+function _bnRendre(){
+  const ov=document.getElementById('bn-modal'); if(!ov) return;
+  const B=_bnStore(); ov.textContent='';
+  const box=_bnEl('div','background:var(--sur);color:var(--tx);border-radius:14px;box-shadow:var(--sh2);width:min(1220px,100%);height:min(88vh,860px);display:flex;flex-direction:column;overflow:hidden'); ov.appendChild(box);
+  if(_bn.cls){ _bnRendreClasse(box); return; }
+  // En-tête : onglets
+  const hd=_bnEl('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--brd)'); box.appendChild(hd);
+  hd.appendChild(_bnEl('span','font-family:Georgia,serif;font-size:20px;margin-right:8px','🗒 Bloc-notes'));
+  B.onglets.forEach(t=>{
+    const on=t.id===_bn.onglet && !_bn.archives;
+    if(on && _bn.renommer){
+      const i=_bnEl('input','padding:4px 8px;border:1px solid var(--acc);border-radius:8px;font-size:13px;width:150px;font-family:inherit'); i.value=t.l;
+      const ok=()=>{ const v=i.value.trim(); if(v) t.l=v; _bn.renommer=false; saveS(); _bnRendre(); };
+      i.onkeydown=(e)=>{ if(e.key==='Enter') ok(); if(e.key==='Escape'){ e.stopPropagation(); _bn.renommer=false; _bnRendre(); } }; i.onblur=ok;
+      hd.appendChild(i); setTimeout(()=>{ i.focus(); i.select(); }, 20); return;
+    }
+    const b=_bnEl('button',null,(t.ic?t.ic+' ':'')+t.l); b.type='button'; b.className='fp-tab'+(on?' act':'');
+    b.onclick=()=>{ if(on){ _bn.renommer=true; } else { _bn.onglet=t.id; _bn.archives=false; } _bnRendre(); };
+    b.title=on?'Cliquer pour renommer':''; hd.appendChild(b);
+    if(on && t.id!=='general'){
+      const conf=_bn.supprimer===t.id, vide=!String(B.textes[t.id]||'').trim();
+      hd.appendChild(_bnBtn(conf?'Supprimer ?':'🗑', conf?'color:#B91C1C;padding:3px 8px':'padding:3px 8px', ()=>{
+        if(!vide && !conf){ _bn.supprimer=t.id; _bnRendre(); setTimeout(()=>{ if(_bn.supprimer===t.id){ _bn.supprimer=''; _bnRendre(); } }, 4000); return; }
+        B.onglets=B.onglets.filter(x=>x.id!==t.id); delete B.textes[t.id]; _bn.onglet='general'; _bn.supprimer=''; saveS(); _bnRendre(); }, vide?'Supprimer cet onglet':'Supprimer cet onglet et son texte (deux clics)'));
+    }
+  });
+  hd.appendChild(_bnBtn('＋','padding:3px 9px', ()=>{ const id='o'+Date.now().toString(36); B.onglets.push({id, l:'Nouvel onglet', ic:''}); B.textes[id]=''; _bn.onglet=id; _bn.renommer=true; saveS(); _bnRendre(); }, 'Ajouter un onglet'));
+  hd.appendChild(_bnEl('span','flex:1'));
+  hd.appendChild(_bnEl('span','font-size:11px;color:var(--tx3)','Enregistré pendant la frappe'));
+  hd.appendChild(_bnBtn(_bn.archives?'← Bloc-notes':'🗄 Archives','', ()=>{ _bn.archives=!_bn.archives; _bnRendre(); }, 'Anciennes notes de semaine et lignes rangées'));
+  hd.appendChild(_bnBtn('✕','', closeBlocNotes, 'Fermer'));
+  if(_bn.archives){ _bnRendreArchives(box); return; }
+  const grille=_bnEl('div','flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px'); box.appendChild(grille);
+  const g=_bnEl('div','display:flex;flex-direction:column;min-height:0;padding:8px 14px 12px;border-right:1px solid var(--brd);position:relative'); grille.appendChild(g);
+  const d=_bnEl('div','overflow:auto;background:var(--sur2)'); grille.appendChild(d);
+  const tb=_bnEl('div','display:flex;flex-wrap:wrap;gap:5px;padding:4px 0 8px'); g.appendChild(tb);
+  const ta=_bnEl('textarea','flex:1;min-height:0;width:100%;resize:none;border:1px solid #E6D9A8;border-radius:10px;padding:4px 14px;font:13px/26px ui-monospace,Consolas,monospace;color:#2B2410;background:repeating-linear-gradient(#FFFDF3 0 25px,#EFE7C9 25px 26px);background-attachment:local;outline:none');
+  ta.id='bn-texte'; ta.spellcheck=true; ta.value=B.textes[_bn.onglet]||'';
+  ta.placeholder='Écrivez librement… Une ligne par chose. Les boutons ci-dessus ajoutent ☐ à faire, 📅 une date, #classe, @élève.';
+  g.appendChild(ta);
+  g.appendChild(_bnEl('div','font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.5','Repères : ☐ ☑ 📥 🔔 📌 en début de ligne, 📅 date, #classe ou #mot, @[élève] (part aussi dans son journal), @REU[…] pour une réunion. Une ligne sans repère est une note.'));
+  let tA=0, tS=0;
+  const enreg=()=>{ B.textes[_bn.onglet]=ta.value; clearTimeout(tS); tS=setTimeout(()=>{ try{ saveS(); }catch(e){} }, 400); clearTimeout(tA); tA=setTimeout(()=>_bnRendreApercu(d, ta), 250); };
+  ta.oninput=enreg;
+  const ligneCourante=()=>{ const v=ta.value, p=ta.selectionStart; const a=v.lastIndexOf('\n', p-1)+1; let b=v.indexOf('\n', p); if(b<0) b=v.length; return {a, b, t:v.slice(a,b)}; };
+  const remplacer=(a, b, txt, curseur)=>{ ta.focus(); ta.setRangeText(txt, a, b, 'end'); if(curseur!=null) ta.setSelectionRange(curseur, curseur); enreg(); };
+  const marquer=(m)=>{ const l=ligneCourante(); let r=l.t.replace(/^\s*/,'');
+    if(m==='📌'){ r=r.indexOf('📌')===0 ? r.slice(2).replace(/^\s+/,'') : '📌 '+r; }
+    else { let pin=''; if(r.indexOf('📌')===0){ pin='📌 '; r=r.slice(2).replace(/^\s+/,''); }
+      r=r.replace(/^(?:[☐☑]\s*)?(?:(?:📥|🔔)\s*)?/u,''); r=pin+m+' '+r; }
+    remplacer(l.a, l.b, r, l.a+r.length); };
+  const inserer=(txt)=>{ const p=ta.selectionStart, v=ta.value; const av=(p>0 && !/\s/.test(v[p-1])) ? ' ' : ''; remplacer(p, ta.selectionEnd, av+txt+' '); };
+  const classesLigne=()=>{ const l=_bnLigne(ligneCourante().t, _bnCtx()); return l.classes; };
+  [['☐ À faire','#F5F3FF','#5B21B6',()=>marquer('☐'),'Ligne à faire'],['📥 À rendre','#FFFBEB','#92400E',()=>marquer('📥'),'Ce que je dois rendre'],['🔔 Rappel','#EFF6FF','#1D4ED8',()=>marquer('🔔'),'Rappel daté'],['📌 Épingler','','',()=>marquer('📌'),'Épingler / désépingler la ligne']]
+    .forEach(([t,bg,fg,fn,ti])=>tb.appendChild(_bnBtn(t, bg?'background:'+bg+';color:'+fg:'', fn, ti)));
+  tb.appendChild(_bnEl('span','width:8px'));
+  tb.appendChild(_bnBtn('📅 Date…','', (e)=>_bnPopDate(g, e.currentTarget, inserer, classesLigne()), 'Insérer une échéance'));
+  tb.appendChild(_bnBtn('⏭ Prochain cours','', (e)=>{ const c=classesLigne(); if(c.length===1){ const s=_bnProchainCours(c[0]); if(s) inserer(_bnDateTexte(s.dateStr, s.debut)); return; } _bnPopClasses(g, e.currentTarget, (L)=>{ const s=L[0] && _bnProchainCours(L[0]); inserer('#'+String(L[0]||'').toUpperCase()+(s?' '+_bnDateTexte(s.dateStr, s.debut):'')); }, true); }, 'Date du prochain cours de la classe de la ligne'));
+  tb.appendChild(_bnBtn('🏫 Classe…','', (e)=>_bnPopClasses(g, e.currentTarget, (L)=>inserer(L.map(c=>'#'+String(c).toUpperCase()).join(' ')), false), 'Insérer une ou plusieurs classes'));
+  tb.appendChild(_bnBtn('👤 Élève(s)…','', (e)=>_bnPopEleves(g, e.currentTarget, (U, cls)=>{ const deja=classesLigne().indexOf(cls)>=0; inserer(U.map(u=>'@['+getFullName(u)+']').join(' ')+(deja||!cls?'':' #'+String(cls).toUpperCase())); }), 'Insérer des élèves (la ligne part aussi dans leur journal)'));
+  tb.appendChild(_bnBtn('🗣 Réunion','', ()=>{ const p=_appToday().split('-'); const l=ligneCourante(); const txt=(l.t.trim()?'\n':'')+'@REU['+p[2]+'/'+p[1]+';17h-18h;] Titre de la réunion'; const fin=(l.t.trim()?l.b:l.a); remplacer(fin, fin, txt, null); const deb=ta.value.indexOf('Titre de la réunion', fin); if(deb>=0) ta.setSelectionRange(deb, deb+19); }, 'Insérer une réunion (date ; horaire ; lieu)'));
+  _bnRendreApercu(d, ta);
+  setTimeout(()=>{ try{ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }catch(e){} }, 30);
+}
+function _bnPuce(t, bg, fg){ return _bnEl('span','font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px;border:1px solid var(--brd);white-space:nowrap;background:'+(bg||'var(--sur)')+';color:'+(fg||'var(--tx2)'), t); }
+function _bnLigneApercu(l, onCoche, onClic){
+  const today=_appToday();
+  const r=_bnEl('div','display:grid;grid-template-columns:20px 1fr auto;gap:8px;padding:7px 14px;border-top:1px solid var(--brd);align-items:start;font-size:13px');
+  if(l.type==='note'){ r.appendChild(_bnEl('span',null,l.epingle?'📌':'✎')); }
+  else { const cb=_bnEl('input','accent-color:#166534;cursor:pointer;margin-top:3px'); cb.type='checkbox'; cb.checked=l.fait; cb.onchange=()=>onCoche(l); r.appendChild(cb); }
+  const z=_bnEl('span','min-width:0;cursor:pointer;display:flex;flex-wrap:wrap;gap:3px 5px;align-items:baseline'); z.onclick=()=>onClic(l); r.appendChild(z);
+  z.appendChild(_bnEl('span',(l.type!=='note'?'font-weight:700;':'')+(l.fait?'text-decoration:line-through;color:var(--tx3)':''), ((l.type==='arendre'||l.type==='rappel')?BN_TYPES[l.type].ic+' ':'')+(l.texte||'(sans texte)')));
+  l.classes.forEach(c=>z.appendChild(_bnPuce(String(c).toUpperCase())));
+  l.noms.forEach(n=>z.appendChild(_bnPuce('👤 '+n,'#EFF6FF','#1D4ED8')));
+  l.tags.forEach(t=>z.appendChild(_bnPuce('#'+t)));
+  let du=null; if(l.date){ const p=l.date.split('-'); const lb=l.date===today?'auj.':(p[2]+'/'+p[1])+(l.heure?' '+l.heure.replace(':','h'):'');
+    const c=l.fait?['#F3F4F6','#6B7280']:l.date<today?['#FEE2E2','#991B1B']:l.date===today?['#FEF3C7','#92400E']:l.date<=_bnAjouterJours(today,7)?['#E0F2FE','#0369A1']:['#F3F4F6','#4B5563'];
+    du=_bnEl('span','font-size:11px;font-weight:800;padding:1px 7px;border-radius:5px;white-space:nowrap;background:'+c[0]+';color:'+c[1], lb); }
+  r.appendChild(du||_bnEl('span'));
+  return r;
+}
+function _bnRendreApercu(d, ta){
+  d.textContent='';
+  const ctx=_bnCtx(), L=_bnLignes(ta.value, ctx), C=_bnClasser(L, ctx.today);
+  d.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);padding:10px 14px 4px','Aperçu · rangé depuis le texte'));
+  const coche=(l)=>{ const v=_bnBasculer(ta.value, l.i); const p=ta.selectionStart; ta.value=v; try{ ta.setSelectionRange(p,p); }catch(e){} ta.dispatchEvent(new Event('input')); };
+  const clic=(l)=>{ const lines=ta.value.split('\n'); let a=0; for(let k=0;k<l.i;k++) a+=lines[k].length+1; ta.focus(); ta.setSelectionRange(a, a+(lines[l.i]||'').length); const h=26; ta.scrollTop=Math.max(0, l.i*h-ta.clientHeight/3); };
+  const bloc=(titre, col, arr)=>{ if(!arr.length) return; d.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:9px 14px 4px;color:'+col, titre+' · '+arr.length)); arr.forEach(l=>d.appendChild(_bnLigneApercu(l, coche, clic))); };
+  bloc('En retard','#991B1B',C.retard); bloc("Aujourd'hui",'#92400E',C.auj); bloc('Cette semaine','#0369A1',C.semaine); bloc('Plus tard','var(--tx3)',C.plusTard); bloc('Sans date','var(--tx3)',C.sansDate);
+  if(C.reunions.length){ d.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:9px 14px 4px;color:var(--tx3)','Réunions · '+C.reunions.length));
+    C.reunions.forEach(l=>{ let r=null; try{ r=_reuParseLine(l.brut); }catch(e){} const row=_bnEl('div','display:flex;gap:8px;padding:7px 14px;border-top:1px solid var(--brd);font-size:13px;cursor:pointer', '🗣 '+(r ? r.titre+' · '+r.dateStr.slice(8,10)+'/'+r.dateStr.slice(5,7)+' '+r.debutStr : l.brut+' (format à vérifier)'));
+      row.title='Ouvrir dans Réunions'; row.onclick=()=>{ closeBlocNotes(); try{ openReunions(); }catch(e){} }; d.appendChild(row); }); }
+  bloc('Notes','var(--tx3)',C.notes); bloc('Fait','var(--tx3)',C.faits);
+  if(C.faits.length){ const b=_bnBtn('🗄 Ranger '+(C.faits.length>1?'les '+C.faits.length+' lignes faites':'la ligne faite'),'margin:8px 14px', ()=>{ const B=_bnStore(); const r=_bnRangerFaits(ta.value, ctx); r.faits.forEach(f=>B.ranges.push({texte:f, ts:Date.now(), onglet:_bn.onglet})); ta.value=r.texte; ta.dispatchEvent(new Event('input')); }, 'Retirer les lignes faites du texte (consultables dans 🗄 Archives)'); d.appendChild(b); }
+  if(!L.some(l=>l.type!=='vide')) d.appendChild(_bnEl('div','padding:16px 14px;color:var(--tx3);font-size:12.5px','Rien pour l’instant. Écrivez à gauche.'));
+}
+function _bnFermerPop(){ const p=document.getElementById('bn-pop'); if(p) p.remove(); }
+function _bnPop(host, ancre, largeur){
+  _bnFermerPop();
+  const p=_bnEl('div','position:absolute;z-index:3;background:var(--sur);border:1px solid var(--brd);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.22);padding:10px 12px;width:'+(largeur||300)+'px'); p.id='bn-pop';
+  const hr=host.getBoundingClientRect(), ar=ancre.getBoundingClientRect();
+  p.style.left=Math.max(4, Math.min(ar.left-hr.left, hr.width-(largeur||300)-8))+'px'; p.style.top=(ar.bottom-hr.top+4)+'px';
+  host.appendChild(p);
+  setTimeout(()=>{ const f=(e)=>{ if(!p.isConnected){ document.removeEventListener('mousedown', f, true); return; } if(!p.contains(e.target) && e.target!==ancre){ p.remove(); document.removeEventListener('mousedown', f, true); } }; document.addEventListener('mousedown', f, true); }, 0);
+  return p;
+}
+function _bnPopDate(host, ancre, inserer, classes){
+  const p=_bnPop(host, ancre, 280), t=_appToday();
+  p.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin-bottom:6px','📅 Pour quand'));
+  const z=_bnEl('div','display:flex;flex-direction:column;gap:4px'); p.appendChild(z);
+  const choix=(l, d, h)=>z.appendChild(_bnBtn(l,'text-align:left', ()=>{ _bnFermerPop(); inserer(_bnDateTexte(d, h)); }));
+  choix("Aujourd'hui", t); choix('Demain', _bnAjouterJours(t,1)); choix('Dans 1 semaine', _bnAjouterJours(t,7));
+  (classes||[]).slice(0,3).forEach(c=>{ const s=_bnProchainCours(c); if(s) choix('Prochain cours '+String(c).toUpperCase()+' · '+_bnDateTexte(s.dateStr).slice(3), s.dateStr, s.debut); });
+  const l2=_bnEl('div','display:flex;gap:6px;margin-top:8px;align-items:center'); p.appendChild(l2);
+  const iD=_bnEl('input','flex:1;padding:4px 6px;border:1px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--tx)'); iD.type='date'; iD.value=t;
+  const iH=_bnEl('input','width:86px;padding:4px 6px;border:1px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--tx)'); iH.type='time';
+  l2.appendChild(iD); l2.appendChild(iH);
+  p.appendChild(_bnBtn('Insérer','margin-top:8px;width:100%;background:var(--acc);color:#fff;border-color:var(--acc)', ()=>{ if(!iD.value) return; _bnFermerPop(); inserer(_bnDateTexte(iD.value, iH.value)); }));
+}
+function _bnNiveauxClasses(){ const N={}; _reuClasses().forEach(c=>{ const lv=String(c).replace(/\d+$/,''); (N[lv]=N[lv]||[]).push(c); }); return N; }
+function _bnPopClasses(host, ancre, inserer, une){
+  const p=_bnPop(host, ancre, 320), N=_bnNiveauxClasses(), sel=[];
+  p.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin-bottom:6px', une?'🏫 Quelle classe ?':'🏫 Classe(s)'));
+  Object.keys(N).forEach(lv=>{ const r=_bnEl('div','display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px'); r.appendChild(_bnEl('span','font-size:11px;color:var(--tx3);width:24px',lv));
+    N[lv].forEach(c=>{ const b=_bnBtn(String(c).toUpperCase(),'padding:3px 9px;border-radius:999px', ()=>{ if(une){ _bnFermerPop(); inserer([c]); return; } const i=sel.indexOf(c); if(i<0) sel.push(c); else sel.splice(i,1); b.style.background=sel.indexOf(c)>=0?'var(--acc)':'var(--sur)'; b.style.color=sel.indexOf(c)>=0?'#fff':'var(--tx)'; }); r.appendChild(b); });
+    p.appendChild(r); });
+  if(!une) p.appendChild(_bnBtn('Insérer','margin-top:6px;width:100%;background:var(--acc);color:#fff;border-color:var(--acc)', ()=>{ if(!sel.length) return; _bnFermerPop(); inserer(sel); }));
+}
+function _bnAbsentsDernierCours(cls){
+  const t=_appToday(), h=_jnlMaintenantHHMM();
+  try{ const L=(buildYearSlots(cls)||[]).filter(s=>s && (s.dateStr<t || (s.dateStr===t && (s.debut||'')<=h)));
+    const s=L[L.length-1]; return s ? _docsDusAbsents(s.slotKey, cls, s) : []; }catch(e){ return []; }
+}
+function _bnPopEleves(host, ancre, inserer){
+  const p=_bnPop(host, ancre, 340), N=_bnNiveauxClasses(); let cls='', sel=[];
+  const dess=()=>{
+    p.textContent='';
+    p.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin-bottom:6px','👤 Élève(s)'));
+    Object.keys(N).forEach(lv=>{ const r=_bnEl('div','display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px'); r.appendChild(_bnEl('span','font-size:11px;color:var(--tx3);width:24px',lv));
+      N[lv].forEach(c=>r.appendChild(_bnBtn(String(c).toUpperCase(),'padding:3px 9px;border-radius:999px;'+(c===cls?'background:var(--acc);color:#fff;border-color:var(--acc)':''), ()=>{ cls=c; sel=[]; dess(); }))); p.appendChild(r); });
+    if(!cls) return;
+    const U=((S.cl[cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+    const ab=_bnAbsentsDernierCours(cls);
+    if(ab.length) p.appendChild(_bnBtn('☐ Absents du dernier cours ('+ab.length+')','margin:4px 0;font-size:12px', ()=>{ ab.forEach(u=>{ if(sel.indexOf(u)<0) sel.push(u); }); dess(); }));
+    const g=_bnEl('div','display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;max-height:220px;overflow:auto;margin-top:4px;font-size:12.5px'); p.appendChild(g);
+    U.forEach(u=>{ const l=_bnEl('label','display:flex;gap:5px;align-items:center;cursor:pointer'); const cb=_bnEl('input'); cb.type='checkbox'; cb.checked=sel.indexOf(u)>=0;
+      cb.onchange=()=>{ const i=sel.indexOf(u); if(cb.checked && i<0) sel.push(u); if(!cb.checked && i>=0) sel.splice(i,1); };
+      l.appendChild(cb); l.appendChild(_bnEl('span',null,getFullName(u))); g.appendChild(l); });
+    p.appendChild(_bnBtn('Insérer','margin-top:8px;width:100%;background:var(--acc);color:#fff;border-color:var(--acc)', ()=>{ if(!sel.length) return; _bnFermerPop(); inserer(sel.slice(), cls); }));
+  };
+  dess();
+}
+function _bnRendreArchives(box){
+  const B=_bnStore(), w=_bnEl('div','flex:1;overflow:auto;padding:12px 16px;display:grid;gap:12px;align-content:start'); box.appendChild(w);
+  if(B.ranges.length){ const c=_bnEl('div','background:var(--sur2);border:1px solid var(--brd);border-radius:12px;padding:10px 14px'); w.appendChild(c);
+    c.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin-bottom:6px','Lignes faites rangées · '+B.ranges.length));
+    B.ranges.slice().reverse().forEach(x=>c.appendChild(_bnEl('div','font:12.5px/1.6 ui-monospace,Consolas,monospace;color:var(--tx2);white-space:pre-wrap', new Date(x.ts).toLocaleDateString('fr-FR')+' · '+x.texte))); }
+  const G=((S.agendaNotes||{})._global)||{};
+  const K=Object.keys(G).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k) && String(G[k]||'').trim()).sort().reverse();
+  w.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3)','Anciennes notes de semaine · '+K.length+' · lecture seule'));
+  K.forEach(k=>{ const c=_bnEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:12px;padding:10px 14px'); w.appendChild(c);
+    c.appendChild(_bnEl('div','font-weight:700;margin-bottom:4px','Semaine du '+k.slice(8,10)+'/'+k.slice(5,7)+'/'+k.slice(0,4)));
+    c.appendChild(_bnEl('div','font:12.5px/1.6 ui-monospace,Consolas,monospace;color:var(--tx2);white-space:pre-wrap', G[k])); });
+  if(!K.length && !B.ranges.length) w.appendChild(_bnEl('div','color:var(--tx3);font-size:13px','Rien d’archivé.'));
+}
+/** Vue d'une classe (depuis le plan de classe) : ses lignes, cochables, et une saisie qui ajoute à « Général » avec #classe. */
+function _bnRendreClasse(box){
+  const B=_bnStore(), cls=_bn.cls, ctx=_bnCtx();
+  const hd=_bnEl('div','display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--brd)'); box.appendChild(hd);
+  hd.appendChild(_bnEl('span','font-family:Georgia,serif;font-size:20px','🗒 Bloc-notes · '+String(cls).toUpperCase()));
+  hd.appendChild(_bnEl('span','flex:1'));
+  hd.appendChild(_bnBtn('Tout le bloc-notes ↗','', ()=>{ _bn.cls=''; _bnRendre(); }));
+  hd.appendChild(_bnBtn('✕','', closeBlocNotes, 'Fermer'));
+  const w=_bnEl('div','flex:1;overflow:auto'); box.appendChild(w);
+  const lignes=[]; B.onglets.forEach(t=>_bnLignes(B.textes[t.id]||'', ctx).forEach(l=>{ if(l.classes.indexOf(String(cls).toLowerCase())>=0) lignes.push(Object.assign(l, {onglet:t.id})); }));
+  const C=_bnClasser(lignes, ctx.today);
+  const coche=(l)=>{ B.textes[l.onglet]=_bnBasculer(B.textes[l.onglet]||'', l.i); saveS(); _bnRendre(); };
+  const clic=(l)=>{ _bn.cls=''; _bn.onglet=l.onglet; _bnRendre(); const ta=document.getElementById('bn-texte'); if(ta){ const L=ta.value.split('\n'); let a=0; for(let k=0;k<l.i;k++) a+=L[k].length+1; ta.focus(); ta.setSelectionRange(a, a+(L[l.i]||'').length); } };
+  const bloc=(titre, col, arr)=>{ if(!arr.length) return; w.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:9px 14px 4px;color:'+col, titre+' · '+arr.length)); arr.forEach(l=>w.appendChild(_bnLigneApercu(l, coche, clic))); };
+  bloc('En retard','#991B1B',C.retard); bloc("Aujourd'hui",'#92400E',C.auj); bloc('Cette semaine','#0369A1',C.semaine); bloc('Plus tard','var(--tx3)',C.plusTard); bloc('Sans date','var(--tx3)',C.sansDate); bloc('Notes','var(--tx3)',C.notes);
+  if(!lignes.some(l=>l.type!=='vide' && !l.fait)) w.appendChild(_bnEl('div','padding:16px 14px;color:var(--tx3);font-size:12.5px','Rien pour '+String(cls).toUpperCase()+'.'));
+  // Saisie rapide
+  const z=_bnEl('div','border-top:1px solid var(--brd);padding:10px 14px;display:flex;flex-direction:column;gap:7px;background:var(--sur2)'); box.appendChild(z);
+  let type='☐', quand='prochain';
+  const tp=_bnEl('div','display:flex;flex-wrap:wrap;gap:5px;align-items:center'); z.appendChild(tp);
+  const dess=()=>{ tp.textContent='';
+    [['☐','☐ À faire'],['📥','📥 À rendre'],['🔔','🔔 Rappel'],['','✎ Note']].forEach(([m,l])=>tp.appendChild(_bnBtn(l, m===type?'background:var(--acc);color:#fff;border-color:var(--acc)':'', ()=>{ type=m; dess(); })));
+    tp.appendChild(_bnEl('span','width:10px'));
+    const s=_bnProchainCours(cls);
+    [['prochain', s ? '⏭ Prochain cours ('+_bnDateTexte(s.dateStr).slice(3)+')' : '⏭ Prochain cours'],['auj',"Aujourd'hui"],['','Sans date']].forEach(([v,l])=>tp.appendChild(_bnBtn(l, v===quand?'background:#0369A1;color:#fff;border-color:#0369A1':'', ()=>{ quand=v; dess(); }))); };
+  dess();
+  const ta=_bnEl('input','padding:8px 10px;border:1px solid var(--brd);border-radius:9px;background:var(--bg);color:var(--tx);font-size:13px;font-family:inherit'); ta.placeholder='Nouvelle ligne pour '+String(cls).toUpperCase()+'… (Entrée)'; z.appendChild(ta);
+  ta.onkeydown=(e)=>{ if(e.key!=='Enter') return; const t=ta.value.trim(); if(!t) return;
+    let d=''; if(quand==='auj') d=_bnDateTexte(_appToday()); else if(quand==='prochain'){ const s=_bnProchainCours(cls); if(s) d=_bnDateTexte(s.dateStr, s.debut); }
+    const l=(type?type+' ':'')+t+' #'+String(cls).toUpperCase()+(d?' '+d:'');
+    B.textes.general=(B.textes.general ? B.textes.general.replace(/\s+$/,'')+'\n' : '')+l; saveS(); _bnRendre();
+    setTimeout(()=>{ const i=document.querySelector('#bn-modal input[placeholder^="Nouvelle ligne"]'); if(i) i.focus(); }, 30); };
+  setTimeout(()=>ta.focus(), 30);
+}
+/** Plan de classe : pastille « 🗒 N » (lignes non faites de la classe), à côté de « ▶ Écran ». */
+function _bnBoutonPdc(){
+  const zone=document.querySelector('#tb-row2 .tb-r2-actions'); if(!zone) return;
+  const vieux=document.getElementById('btn-bn-cls'); if(vieux) vieux.remove();
+  if(typeof curSlotKey==='undefined' || !curSlotKey || !curCls || (curGrpInter && S.groupes && S.groupes[curGrpInter])) return;
+  const cls=String(curCls).toLowerCase(), ctx=_bnCtx(), B=_bnStore(); let n=0;
+  B.onglets.forEach(t=>_bnLignes(B.textes[t.id]||'', ctx).forEach(l=>{ if(l.classes.indexOf(cls)>=0 && l.type!=='note' && l.type!=='vide' && l.type!=='reu' && !l.fait) n++; }));
+  const b=document.createElement('button'); b.type='button'; b.className='tb-r2-pill'; b.id='btn-bn-cls'; b.title='Bloc-notes de la classe';
+  const ic=document.createElement('span'); ic.className='tb-r2-pill-ic'; ic.textContent='🗒'; b.appendChild(ic);
+  b.appendChild(document.createTextNode(n ? ' '+n : ''));
+  b.onclick=()=>openBlocNotes({cls:curCls});
+  const ref=document.getElementById('btn-ecran-classe') || document.getElementById('btn-seance');
+  if(ref && ref.parentNode===zone) zone.insertBefore(b, ref.nextSibling); else zone.appendChild(b);
+}
+/** Accueil : tuile « Bloc-notes » (aspect bloc-notes, même taille que les autres) et ordre des tuiles (06/11). */
+function _bnTuileAccueil(){
+  if(document.getElementById('bn-tile')) return;
+  const ref=document.getElementById('sdc-tile'); if(!ref || !ref.parentNode) return;
+  const b=document.createElement('button'); b.id='bn-tile'; b.className='htile htile-bn'; b.type='button';
+  b.style.cssText='position:relative;overflow:hidden;color:#3B2F12;background:repeating-linear-gradient(#FFF8D6 0 19px,#EADFA8 19px 20px);border-color:#E2C878;box-shadow:inset 5px 0 0 #E8A0A0;padding-top:16px';
+  const sp=document.createElement('span'); sp.style.cssText='position:absolute;left:0;right:0;top:0;height:12px;background:#E9C46A;display:flex;gap:14px;justify-content:center;align-items:center';
+  for(let i=0;i<7;i++){ const d=document.createElement('span'); d.style.cssText='width:6px;height:6px;border-radius:50%;background:#7A5B14;display:block'; sp.appendChild(d); }
+  const ic=document.createElement('span'); ic.className='htile-ic'; ic.textContent='🗒';
+  const tx=document.createElement('span'); tx.className='htile-tx';
+  const t=document.createElement('span'); t.className='htile-t'; t.style.color='#3B2F12'; t.textContent='Bloc-notes';
+  const s=document.createElement('span'); s.className='htile-s'; s.style.color='#7A6A3A'; s.textContent='À faire, à rendre, notes';
+  tx.appendChild(t); tx.appendChild(s); b.appendChild(sp); b.appendChild(ic); b.appendChild(tx);
+  b.onclick=()=>openBlocNotes();
+  ref.parentNode.appendChild(b);
+}
+const ACCUEIL_ORDRE=['Vue hebdo',"Planning d'affectation",'Progression','#bn-tile','Synthèse','Suivi des cours','Plans de classe','Référentiels',
+  'Suivi RRUPN','Suivi Pix','Bilans & Export','EBEP','#sdc-tile','#imp-tile','#jnl-tile','Paramètres','#reu-tile','#help-faq-tile'];
+/** Range les tuiles (demande du 06/11) ; Mode démo quitte l'accueil (Paramètres › Données). Idempotent. */
+function _accueilOrdonner(){
+  try{
+    _bnTuileAccueil();
+    const g=document.getElementById('sdc-tile'); const grille=g && g.parentNode; if(!grille) return;
+    const T=[...grille.children];
+    const trouver=(k)=>k[0]==='#' ? document.getElementById(k.slice(1)) : T.find(x=>x.querySelector && (x.querySelector('.htile-t')||{}).textContent===k);
+    ACCUEIL_ORDRE.forEach(k=>{ const x=trouver(k); if(x && x.parentNode===grille){ x.style.gridColumn=''; x.style.gridRow=''; grille.appendChild(x); } });
+    const demo=document.getElementById('demo-pub-tile'); if(demo) demo.style.display='none';
+  }catch(e){ console.warn('[accueil] tuiles', e); }
+}
+
+/** V11.5.23 — Paramètres › Données : le mode démo (session fictive) quitte l'accueil. */
+function _demoPubParamsBloc(){
+  const w=_bnEl('div','margin-top:12px;padding:1rem 1.1rem;border:2px solid #DC2626;border-radius:var(--r2);background:#FEF2F2;display:flex;gap:12px;align-items:center;flex-wrap:wrap'); w.id='psec-demo-public';
+  const t=_bnEl('div','flex:1;min-width:240px');
+  t.appendChild(_bnEl('div','font-size:14px;font-weight:800;color:#991B1B','🎬 Mode démo — session de démonstration'));
+  t.appendChild(_bnEl('div','font-size:11.5px;color:#991B1B;opacity:.85;margin-top:3px;line-height:1.5','Bascule vers une session fictive séparée (classes, élèves, emploi du temps). Vos données ne sont pas modifiées ; on en sort à tout moment par le bandeau.'));
+  w.appendChild(t);
+  w.appendChild(_bnBtn('Activer le mode démo','background:#DC2626;color:#fff;border-color:#DC2626', ()=>{ try{ closeParams(); }catch(e){} setTimeout(()=>{ try{ _handleDemoPubClick(); }catch(e){} }, 60); }));
+  return w;
+}
+try{ _accueilOrdonner(); }catch(e){ console.warn('[accueil] tuiles', e); }
+
 /* ═══ V11.5.20 — RECHERCHE DANS VOS DONNÉES (lot 3, demande du 04/11) ═════════
    Ctrl+K / 🔎 : dès 3 caractères, une rubrique « Dans vos données » sous les
    écrans, puis « Tout voir » → page de résultats (filtres type, classe, période).
@@ -59203,11 +59631,12 @@ try{ _reuTuileAccueil(); }catch(e){ console.warn('[réunions] tuile', e); }
    notes de semaine. Aucun index stocké : construit à la demande, gardé 20 s.
    Accents et casse ignorés (_paramsNorm), tous les mots (≥ 2 lettres) requis.
    Écran classe ouvert : élèves, journal et observations ne sont pas montrés. */
+const RCH_GENRES_V=1;   // V11.5.23 : « Notes » = notes de semaine (archives) + lignes du bloc-notes
 const RCH_GENRES={
   eleve:  {ic:'👤', l:'Élèves'},          journal:{ic:'🗒', l:'Journal'},
   obs:    {ic:'📝', l:'Observations'},    reunion:{ic:'🗣', l:'Réunions'},
   cahier: {ic:'📅', l:'Cahier de texte'}, cours:  {ic:'🗓️', l:'Cours préparés'},
-  biblio: {ic:'📚', l:'Bibliothèque'},    notes:  {ic:'✏️', l:'Notes de semaine'}
+  biblio: {ic:'📚', l:'Bibliothèque'},    notes:  {ic:'🗒', l:'Bloc-notes'}
 };
 const RCH_ORDRE=['eleve','journal','obs','reunion','cahier','cours','biblio','notes'];
 const RCH_NOMINATIFS={eleve:1, journal:1, obs:1};
@@ -59257,6 +59686,7 @@ function _rchIndexer(src){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
     String(src.agenda[k]||'').split('\n').map(l=>l.trim()).filter(Boolean).forEach(l=>out.push({genre:'notes', titre:'Semaine du '+_rchJour(k), texte:l, date:k}));
   });
+  (src.bloc||[]).forEach(o=>String(o.texte||'').split('\n').map(l=>l.trim()).filter(Boolean).forEach(l=>out.push({genre:'notes', titre:'Bloc-notes · '+o.l, texte:l, date:'', bn:o.id})));   // V11.5.23
   (src.reunions||[]).forEach(r=>{
     if(!r) return; const ty=src.typeReu ? src.typeReu(r.type) : {ic:'🗣', l:''};
     const t=[r.lieu, r.odj].concat((r.notes||[]).map(n=>n && n.texte)).filter(Boolean).join(' · ');
@@ -59304,7 +59734,8 @@ function _rchIndex(){
   const progs={}; try{ LEVELS.forEach(lv=>{ if(S.en && S.en[lv]){ const p=getProgression(lv); if(Array.isArray(p) && p.length) progs[lv]=p; } }); }catch(e){}
   _rchCache={t:Date.now(), idx:_rchIndexer({classes, nom:(u)=>getFullName(u), J:S.journalEleves||{}, typeJnl:(t)=>_jnlType(t).l,
     obsCours:S.obsCours||{}, seances, cdt:(se, cls)=>buildCahierTexteSeance(se, cls), drafts:S.seanceContentDraft||{}, progs,
-    agenda:((S.agendaNotes||{})._global)||{}, reunions:S.reunions||[], typeReu:(id)=>_reuTypeDe(id)})};
+    agenda:((S.agendaNotes||{})._global)||{}, reunions:S.reunions||[],
+    bloc:((S.blocNotes||{}).onglets||[]).map(t=>({id:t.id, l:t.l, texte:((S.blocNotes.textes||{})[t.id])||''})), typeReu:(id)=>_reuTypeDe(id)})};
   return _rchCache.idx;
 }
 function _rchSansNoms(){ return !!document.getElementById('ea-bg'); }
@@ -59317,6 +59748,7 @@ function _rchOuvrir(e){
   closeRecherche();
   if(e.genre==='cours'){ openSaisieCours({cls:e.cls, slotKey:e.slotKey}); return; }
   if(e.genre==='biblio'){ openProgression(); return; }
+  if(e.genre==='notes' && e.bn){ _bn.onglet=e.bn; openBlocNotes(); return; }   // V11.5.23
   if(e.genre==='notes'){ openProgression(); try{ showProgTab('agenda'); }catch(x){} return; }
 }
 /** Palette : entrées « Dans vos données » (6 au plus) + « Tout voir ». */
