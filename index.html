@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.23';
+const APP_VERSION = 'v11.5.24';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -58874,7 +58874,7 @@ function _reuTexteCR(r, nomDe, jnl){
     }); }
   return L.join('\n');
 }
-function _reuNbAFaire(r){ return (r.notes||[]).filter(n=>n && n.afaire && !n.fait).length; }
+function _reuNbAFaire(r){ return (r.notes||[]).filter(n=>n && n.afaire && !n.fait).length+(typeof _reuNbAFaireTexte==='function' ? _reuNbAFaireTexte(r) : 0); }
 
 /* ── Interface ─────────────────────────────────────────────────────────── */
 let _reu={sel:'', filtre:'tout', cls:'', vuSeul:false, encours:'', supprimer:''};
@@ -58923,7 +58923,7 @@ function _reuRendre(){
     t.appendChild(_reuEl('div','font-weight:700;font-size:13px', a.titre));
     let sub=_reuDateLong(a.date)+(a.debut?' · '+a.debut:'');
     if(!x.r) sub+=' · @REU (à ouvrir)';
-    else { const nn=(x.r.notes||[]).length, nv=Object.keys(x.r.vus||{}).length, af=_reuNbAFaire(x.r);
+    else { const nn=(x.r.notes||[]).length+(x.r.texte ? String(x.r.texte).split('\n').filter(l=>l.replace(/^\s*\d{1,2}[:h]\d{2}\s*/,'').trim()).length : 0), nv=Object.keys(x.r.vus||{}).length, af=_reuNbAFaire(x.r);
       if(nn) sub+=' · '+nn+' note'+(nn>1?'s':''); if(nv) sub+=' · '+nv+' vu'+(nv>1?'s':''); if(af) sub+=' · ☐ '+af+' à faire'; }
     t.appendChild(_reuEl('div','font-size:11px;color:var(--tx3)', sub));
     return b;
@@ -58972,7 +58972,8 @@ function _reuRendreDetail(box, r){
   const g=_reuEl('div','flex:1;min-width:0'); hd.appendChild(g);
   g.appendChild(_reuEl('div','font-family:Georgia,serif;font-size:20px', ty.ic+' '+r.titre));
   g.appendChild(_reuEl('div','font-size:12px;color:var(--tx3);margin-top:2px', _reuDateLong(r.date)+(r.debut?' · '+r.debut+(r.fin?'–'+r.fin:''):'')+(r.lieu?' · '+r.lieu:'')+' · '+ty.l));
-  const cp=_reuBtn('📋 Copier','', ()=>{ const t=_reuTexteCR(r, (u)=>getFullName(u), S.journalEleves||{});
+  hd.appendChild(_reuBtn('⬇ .md','', ()=>{ const n=_reuTelecharger(r); try{ showDropToast('Compte rendu enregistré : '+n); }catch(e){} }, 'Télécharger le compte rendu (Markdown)'));   // V11.5.24
+  const cp=_reuBtn('📋 Copier','', ()=>{ const t=_reuMarkdown(r, (u)=>getFullName(u), S.journalEleves||{}, _bnCtx());   // V11.5.24 — Markdown
     try{ navigator.clipboard.writeText(t).then(()=>{ cp.textContent='✔ Copié'; setTimeout(()=>{ cp.textContent='📋 Copier'; },1500); }); }catch(e){} }, 'Copier le compte rendu');
   hd.appendChild(cp);
   hd.appendChild(_reuBtn('✎','', ()=>_reuEditer(r, null), 'Modifier (type, date, classes…)'));
@@ -59050,60 +59051,162 @@ function _jnlAjouterReu(r, uid, texte, heure, cls, deNote){
   if(k){ const L=J[uid]; L[L.length-1].reuId=r.id; if(deNote) L[L.length-1].deNote=true; }
   return k;
 }
+/* ═══ V11.5.24 — RÉUNIONS : prise de notes en TEXTE CONTINU + export Markdown (demande du 06/11) ═══
+   r.texte = les notes de la réunion, une ligne par note. Entrée → nouvelle ligne déjà horodatée
+   (« 18:12 »). Repères comme le bloc-notes : ☐ / ☑ à faire, @[élève] (→ son journal), 📅 date ;
+   « ## 2. Voyage » ouvre un point de l'ordre du jour. Les anciennes notes (r.notes, v11.5.19) sont
+   reprises une fois dans le texte (_reuMigrerNotes). Export : Markdown (copie et fichier .md). */
+const REU_RE_HEURE=/^\s*(\d{1,2})[:h](\d{2})\s+/;
+/** Lignes du texte d'une réunion. Pure (s'appuie sur _bnLigne). */
+function _reuLignesTexte(texte, ctx){
+  let point='';
+  return String(texte||'').split('\n').map((brut, i)=>{
+    const m=REU_RE_HEURE.exec(brut), heure=m ? String(+m[1]).padStart(2,'0')+':'+m[2] : '';
+    const reste=m ? brut.slice(m[0].length) : brut;
+    const h=/^\s*#{2,3}\s+(.*)$/.exec(reste);
+    if(h){ point=h[1].trim(); return {i, brut, heure, titre:point, point, type:'point', texte:point, fait:false, eleves:[], noms:[], classes:[], tags:[], date:''}; }
+    const l=_bnLigne(reste, ctx);
+    if(l.type==='vide' && heure) l.type='vide';
+    return Object.assign(l, {i, brut, heure, point});
+  });
+}
+/** Cocher / décocher la ligne i (l'heure en tête est gardée). Pure. */
+function _reuBasculer(texte, i){
+  const L=String(texte||'').split('\n'); const l=L[i]; if(l==null) return String(texte||'');
+  const m=REU_RE_HEURE.exec(l); const pre=m ? m[0] : '', reste=m ? l.slice(pre.length) : l;
+  if(!/^\s*[☐☑]/.test(reste)) return String(texte||'');
+  L[i]=pre+_bnBasculer(reste, 0);
+  return L.join('\n');
+}
+/** Reprise des anciennes notes (r.notes) dans le texte. Pure. */
+function _reuMigrerNotes(r, nomDe){
+  const L=(r && Array.isArray(r.notes) ? r.notes : []).filter(n=>n && n.texte).map(n=>{
+    const box=n.afaire ? (n.fait ? '☑ ' : '☐ ') : '';
+    return (n.heure ? n.heure+' ' : '')+box+(n.point ? '('+n.point+') ' : '')+n.texte+(n.uid ? ' @['+nomDe(n.uid)+']' : '');
+  });
+  return L.join('\n');
+}
+function _reuNbAFaireTexte(r){
+  try{ return _reuLignesTexte(r && r.texte, {}).filter(l=>l.type==='afaire' && !l.fait).length; }catch(e){ return 0; }
+}
+/** Compte rendu en Markdown. nomDe(uid) ; jnl = S.journalEleves (notes des élèves reçus). Pure. */
+function _reuMarkdown(r, nomDe, jnl, ctx){
+  const ty=_reuTypeDe(r.type), M=[];
+  const p=String(r.date||'').split('-'), dl=p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : (r.date||'');
+  M.push('# '+ty.ic+' '+r.titre+' — '+dl+(r.debut ? ' '+r.debut+(r.fin ? '–'+r.fin : '') : ''));
+  const meta=['**Type :** '+ty.l]; if(r.lieu) meta.push('**Lieu :** '+r.lieu);
+  if((r.classes||[]).length) meta.push('**Classes :** '+r.classes.map(c=>String(c).toUpperCase()).join(', '));
+  M.push('', meta.join(' · '));
+  const pts=_reuPoints(r.odj);
+  if(pts.length){ M.push('', '## Ordre du jour'); pts.forEach((x,i)=>M.push((i+1)+'. '+x)); }
+  const L=_reuLignesTexte(r.texte, ctx||{}).filter(l=>l.type!=='vide');
+  const af=[];
+  if(L.length){
+    M.push('', '## Notes');
+    L.forEach(l=>{
+      if(l.type==='point'){ M.push('', '### '+l.titre); return; }
+      const h=l.heure ? '**'+l.heure+'** ' : '';
+      const noms=l.noms.length ? ' _('+l.noms.join(', ')+')_' : '';
+      const cl=l.classes.length ? ' `'+l.classes.map(c=>String(c).toUpperCase()).join(' ')+'`' : '';
+      const d=l.date ? ' — pour le '+l.date.slice(8,10)+'/'+l.date.slice(5,7) : '';
+      if(l.type==='afaire'){ M.push('- ['+(l.fait?'x':' ')+'] '+h+l.texte+noms+cl+d); af.push({l, txt:l.texte+noms+d}); }
+      else if(l.type==='reu') M.push('- '+h+l.brut.trim());
+      else M.push('- '+h+(l.epingle?'📌 ':'')+(l.type==='arendre'?'📥 ':l.type==='rappel'?'🔔 ':'')+l.texte+noms+cl+d);
+    });
+  }
+  if(af.length){ M.push('', '## À faire'); af.forEach(a=>M.push('- ['+(a.l.fait?'x':' ')+'] '+a.txt+(a.l.point ? ' _('+a.l.point+')_' : ''))); }
+  const el={};
+  Object.keys(r.vus||{}).concat(r.eleves||[]).forEach(u=>{ if(u && !el[u]) el[u]=[]; });
+  Object.keys(jnl||{}).forEach(u=>(jnl[u]||[]).forEach(n=>{ if(n && n.reuId===r.id && !n.deNote && !n.reuCle && el[u]) el[u].push(n); }));
+  const us=Object.keys(el);
+  if(us.length){ M.push('', '## Élèves reçus');
+    us.sort((a,b)=>String(nomDe(a)).localeCompare(String(nomDe(b)),'fr')).forEach(u=>{
+      const v=(r.vus||{})[u]; const pres=v && v.presents && v.presents.length ? ' ('+v.presents.join(', ').toLowerCase()+')' : '';
+      const tx=el[u].map(n=>n.texte).join(' · ');
+      M.push('- **'+nomDe(u)+'**'+(v && v.heure ? ' — vu à '+v.heure : '')+pres+(tx ? ' : '+tx : ''));
+    }); }
+  return M.join('\n')+'\n';
+}
+/** Journal : lignes @[élève] du texte de la réunion (clé reuCle stable, sans heure ni case). */
+function _reuSyncJournal(r){
+  try{
+    const ctx=_bnCtx(), J=_jnlStore(), garder=new Set(), cib=[];
+    _reuLignesTexte(r.texte, ctx).forEach(l=>{ if(!l.eleves.length) return;
+      const cle='reu:'+r.id+':'+_bnNorm(l.brut.replace(REU_RE_HEURE,'').replace(/^\s*[☐☑]\s*/,''));
+      l.eleves.forEach(u=>{ garder.add(u+'|'+cle); cib.push({u, cle, l}); }); });
+    let modif=false;
+    Object.keys(J).forEach(u=>{ const L=J[u]; if(!Array.isArray(L)) return; const n=L.filter(x=>!(x && x.reuId===r.id && x.reuCle && !garder.has(u+'|'+x.reuCle))); if(n.length!==L.length){ modif=true; if(n.length) J[u]=n; else delete J[u]; } });
+    cib.forEach(c=>{ if(((J[c.u])||[]).some(x=>x && x.reuCle===c.cle)) return;
+      const t=(c.l.point ? c.l.point+' · ' : '')+(c.l.type==='afaire' ? 'À faire : ' : '')+c.l.texte;
+      if(_jnlAjouter(J, [c.u], {texte:t, date:r.date, heure:c.l.heure, type:'reu:'+r.type, cls:c.l.classes[0]||''}, Date.now())){ const M=J[c.u]; M[M.length-1].reuId=r.id; M[M.length-1].reuCle=c.cle; modif=true; } });
+    return modif;
+  }catch(e){ console.warn('[réunions] journal', e); return false; }
+}
+function _reuTelecharger(r){
+  const md=_reuMarkdown(r, (u)=>getFullName(u), S.journalEleves||{}, _bnCtx());
+  const nom=('CR-'+r.date+'-'+String(r.titre||'reunion')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9-]+/g,'-').replace(/-+/g,'-').replace(/-$/,'')+'.md';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([md], {type:'text/markdown;charset=utf-8'})); a.download=nom;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  return nom;
+}
+/** Zone de notes d'une réunion : ordre du jour (forme libre), boutons, texte continu, à faire. */
 function _reuRendreNotes(box, r, ty){
-  const w=_reuEl('div','padding:12px 16px'); box.appendChild(w);
-  const cap=(t)=>_reuEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin:6px 0','');
+  const ctx=_bnCtx();
+  // Reprise unique des anciennes notes
+  if(Array.isArray(r.notes) && r.notes.length && !r.texte){
+    r.texte=_reuMigrerNotes(r, (u)=>getFullName(u)); r.notes=[];
+    try{ const J=_jnlStore(); Object.keys(J).forEach(u=>{ J[u]=(J[u]||[]).filter(x=>!(x && x.reuId===r.id && x.deNote)); if(!J[u].length) delete J[u]; }); }catch(e){}
+    _reuSyncJournal(r); saveS();
+  }
+  const w=_reuEl('div','padding:12px 16px;position:relative'); box.appendChild(w);
+  const cap=(t)=>_reuEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin:6px 0',t);
   if(ty.forme==='libre' || r.odj){
-    const c1=cap(); c1.textContent='Ordre du jour'; w.appendChild(c1);
+    w.appendChild(cap('Ordre du jour'));
     const odj=_reuEl('textarea','width:100%;min-height:52px;padding:7px 9px;border:1px solid var(--brd);border-radius:9px;background:var(--bg);color:var(--tx);font:inherit;font-size:13px;resize:vertical');
     odj.placeholder='Un point par ligne'; odj.value=r.odj||''; odj.onchange=()=>{ r.odj=odj.value; saveS(); _reuRendre(); }; w.appendChild(odj);
   }
-  const c2=cap(); c2.textContent=ty.forme==='libre' ? 'Notes · horodatées' : 'Notes générales'; w.appendChild(c2);
-  const L=(r.notes||[]);
-  if(!L.length) w.appendChild(_reuEl('div','font-size:12px;color:var(--tx3);padding:2px 0 6px','Aucune note.'));
-  L.forEach(n=>{
-    const row=_reuEl('div','display:grid;grid-template-columns:52px 1fr auto;gap:8px;padding:7px 0;border-top:1px solid var(--brd);align-items:start;font-size:13px'); w.appendChild(row);
-    row.appendChild(_reuEl('span','font-size:11.5px;font-weight:700;color:var(--tx3)', n.heure||''));
-    const z=_reuEl('span','display:flex;flex-wrap:wrap;gap:4px 6px;align-items:baseline;min-width:0'); row.appendChild(z);
-    if(n.point) z.appendChild(_jnlPuce(n.point,'#F3F4F6','#4B5563'));
-    if(n.afaire){ const cb=_reuEl('input','accent-color:#166534;cursor:pointer'); cb.type='checkbox'; cb.checked=!!n.fait; cb.title='À faire — cocher quand c’est fait';
-      cb.onchange=()=>{ n.fait=cb.checked; saveS(); _reuRendre(); }; z.appendChild(cb); z.appendChild(_jnlPuce('À faire','#FEF3C7','#92400E')); }
-    z.appendChild(_reuEl('span','white-space:pre-wrap;'+(n.fait?'text-decoration:line-through;color:var(--tx3)':'color:var(--tx)'), n.texte));
-    if(n.uid){ const b=_reuEl('button','background:none;border:none;padding:0;cursor:pointer;font:inherit;font-size:12px;color:var(--acc);text-decoration:underline dotted','👤 '+getFullName(n.uid)); b.type='button'; b.onclick=()=>_jnlOuvrirFiche(n.uid, ''); z.appendChild(b); }
-    const conf=_reu.supprimer===n.id;
-    const bs=_reuEl('button','background:none;border:none;cursor:pointer;font-size:'+(conf?'11.5px;font-weight:700;color:#B91C1C':'13px;color:var(--tx3)'), conf?'Supprimer ?':'🗑'); bs.type='button';
-    bs.onclick=()=>{ if(!conf){ _reu.supprimer=n.id; _reuRendre(); setTimeout(()=>{ if(_reu.supprimer===n.id){ _reu.supprimer=''; _reuRendre(); } }, 4000); return; }
-      const i=r.notes.indexOf(n); if(i>=0) r.notes.splice(i,1); _reu.supprimer=''; saveS(); _reuRendre(); };
-    row.appendChild(bs);
-  });
-  // Saisie
-  const zone=_reuEl('div','margin-top:8px;padding:10px;border:1px solid var(--brd);border-radius:10px;background:var(--bg)'); w.appendChild(zone);
-  const ta=_reuEl('textarea','width:100%;min-height:52px;padding:7px 9px;border:1px solid var(--brd);border-radius:9px;background:var(--sur);color:var(--tx);font:inherit;font-size:13px;resize:vertical');
-  ta.placeholder='Note… (Ctrl+Entrée pour ajouter)'; zone.appendChild(ta);
-  const opt=_reuEl('div','display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px'); zone.appendChild(opt);
-  const pts=_reuPoints(r.odj); let point='', afaire=false, uid='', ucls='';
-  const sp=_reuEl('select','padding:3px 6px;border:1px solid var(--brd);border-radius:999px;font-size:12px;background:var(--sur);color:var(--tx2)');
-  sp.appendChild(new Option('Point…','')); pts.forEach((p,i)=>sp.appendChild(new Option((i+1)+'. '+p.slice(0,40), 'Point '+(i+1))));
-  sp.onchange=()=>{ point=sp.value; }; if(pts.length) opt.appendChild(sp);
-  const bAf=_reuPill('☐ À faire', false, null); bAf.onclick=()=>{ afaire=!afaire; bAf.textContent=(afaire?'☑':'☐')+' À faire'; bAf.style.background=afaire?'#92400E':'var(--sur)'; bAf.style.color=afaire?'#fff':'var(--tx2)'; }; opt.appendChild(bAf);
-  const sc=_reuEl('select','padding:3px 6px;border:1px solid var(--brd);border-radius:999px;font-size:12px;background:var(--sur);color:var(--tx2)');
-  const se=_reuEl('select','padding:3px 6px;border:1px solid var(--brd);border-radius:999px;font-size:12px;background:var(--sur);color:var(--tx2);display:none');
-  sc.appendChild(new Option('👤 Lier à un élève…','')); _reuClasses().forEach(c=>sc.appendChild(new Option(String(c).toUpperCase(), c)));
-  sc.onchange=()=>{ ucls=sc.value; uid=''; se.textContent=''; se.appendChild(new Option('Élève…',''));
-    ((S.cl[ucls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr')).forEach(u=>se.appendChild(new Option(getFullName(u), u)));
-    se.style.display=ucls?'':'none'; };
-  se.onchange=()=>{ uid=se.value; };
-  opt.appendChild(sc); opt.appendChild(se);
-  opt.appendChild(_reuEl('span','flex:1'));
-  const ajouter=()=>{
-    const t=ta.value.trim(); if(!t){ ta.focus(); return; }
-    const h=_jnlMaintenantHHMM();
-    _reuAjouterNote(r, {texte:t, heure:h, point, afaire, uid}, Date.now());
-    if(uid) _jnlAjouterReu(r, uid, (point?point+' · ':'')+t, h, ucls, true);
-    saveS(); _reuRendre();
-  };
-  ta.onkeydown=(e)=>{ if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); ajouter(); } };
-  opt.appendChild(_reuBtn('Ajouter','background:#166534;color:#fff;border-color:#166534', ajouter));
+  const hdr=_reuEl('div','display:flex;align-items:center;gap:8px;margin-top:8px'); w.appendChild(hdr);
+  hdr.appendChild(cap(ty.forme==='libre' ? 'Notes' : 'Notes générales'));
+  hdr.appendChild(_reuEl('span','flex:1'));
+  const auto=!(S.reglages && S.reglages.reuHeureAuto===false);
+  const bA=_reuPill('🕒 Heure auto', auto, ()=>{ if(!S.reglages) S.reglages={}; S.reglages.reuHeureAuto=!auto; saveS(); _reuRendre(); }); bA.title='Entrée commence la ligne suivante par l’heure'; hdr.appendChild(bA);
+  const tb=_reuEl('div','display:flex;flex-wrap:wrap;gap:5px;margin:4px 0 6px'); w.appendChild(tb);
+  const ta=_reuEl('textarea','width:100%;min-height:260px;padding:4px 12px;border:1px solid #E6D9A8;border-radius:10px;font:13px/26px ui-monospace,Consolas,monospace;color:#2B2410;background:repeating-linear-gradient(#FFFDF3 0 25px,#EFE7C9 25px 26px);background-attachment:local;resize:vertical;outline:none');
+  ta.id='reu-texte'; ta.value=r.texte||''; ta.placeholder='Tapez… Entrée = nouvelle ligne horodatée. ☐ à faire, @[élève], ## point.';
+  const hh=()=>_jnlMaintenantHHMM();
+  let tS=0, tJ=0;
+  const enreg=()=>{ r.texte=ta.value; clearTimeout(tS); tS=setTimeout(()=>{ try{ saveS(); }catch(e){} }, 400); clearTimeout(tJ); tJ=setTimeout(()=>{ if(_reuSyncJournal(r)) saveS(); majAF(); }, 900); };
+  ta.oninput=enreg;
+  ta.onfocus=()=>{ if(!ta.value && auto){ ta.value=hh()+' '; ta.setSelectionRange(ta.value.length, ta.value.length); enreg(); } };
+  ta.onkeydown=(e)=>{ if(e.key==='Enter' && !e.shiftKey && auto){ e.preventDefault(); ta.setRangeText('\n'+hh()+' ', ta.selectionStart, ta.selectionEnd, 'end'); enreg(); } };
+  const ligne=()=>{ const v=ta.value, p=ta.selectionStart; const a=v.lastIndexOf('\n', p-1)+1; let b=v.indexOf('\n', p); if(b<0) b=v.length; return {a, b, t:v.slice(a,b)}; };
+  const inserer=(txt)=>{ ta.focus(); const p=ta.selectionStart, v=ta.value; const av=(p>0 && !/\s/.test(v[p-1])) ? ' ' : ''; ta.setRangeText(av+txt+' ', p, ta.selectionEnd, 'end'); enreg(); };
+  const nouvelleLigne=(txt)=>{ ta.focus(); const l=ligne(); const vide=!l.t.replace(REU_RE_HEURE,'').trim();
+    if(vide){ const m=REU_RE_HEURE.exec(l.t); const pre=m ? m[0] : (auto ? hh()+' ' : ''); ta.setRangeText(pre+txt, l.a, l.b, 'end'); }
+    else { ta.setSelectionRange(l.b, l.b); ta.setRangeText('\n'+(auto ? hh()+' ' : '')+txt, l.b, l.b, 'end'); }
+    enreg(); };
+  tb.appendChild(_reuBtn('☐ À faire','background:#F5F3FF;color:#5B21B6;padding:5px 10px', ()=>{ const l=ligne(); const m=REU_RE_HEURE.exec(l.t); const pre=m ? m[0] : ''; let rs=l.t.slice(pre.length).replace(/^\s*[☐☑]\s*/,'');
+    ta.focus(); ta.setRangeText(pre+'☐ '+rs, l.a, l.b, 'end'); enreg(); }, 'La ligne devient une chose à faire'));
+  tb.appendChild(_reuBtn('👤 Élève(s)…','padding:5px 10px', (e)=>_bnPopEleves(w, e.currentTarget, (U)=>inserer(U.map(u=>'@['+getFullName(u)+']').join(' '))), 'La ligne part aussi dans le journal de l’élève'));
+  tb.appendChild(_reuBtn('📅 Date…','padding:5px 10px', (e)=>_bnPopDate(w, e.currentTarget, inserer, (r.classes||[])), 'Échéance'));
+  const pts=_reuPoints(r.odj);
+  if(pts.length){
+    const sp=_reuEl('select','padding:4px 8px;border:1px solid var(--brd);border-radius:8px;font-size:12.5px;background:var(--sur);color:var(--tx);font-weight:700');
+    sp.appendChild(new Option('## Point…','')); pts.forEach((x,i)=>sp.appendChild(new Option((i+1)+'. '+x.slice(0,40), (i+1)+'. '+x)));
+    sp.onchange=()=>{ if(!sp.value) return; nouvelleLigne('## '+sp.value); sp.value=''; ta.setRangeText('\n'+(auto ? hh()+' ' : ''), ta.selectionStart, ta.selectionStart, 'end'); enreg(); };
+    tb.appendChild(sp);
+  } else tb.appendChild(_reuBtn('## Point','padding:5px 10px', ()=>nouvelleLigne('## '), 'Nouveau point (titre)'));
+  tb.appendChild(_reuBtn('🕒','padding:5px 10px', ()=>inserer(hh()), 'Insérer l’heure'));
+  w.appendChild(ta);
+  w.appendChild(_reuEl('div','font-size:11px;color:var(--tx3);margin-top:4px','Entrée = ligne horodatée (Maj+Entrée : sans heure). ☐ / ☑ à faire, @[élève] → son journal, ## titre = un point, 📅 date. Enregistré pendant la frappe.'));
+  const zAF=_reuEl('div','margin-top:8px'); w.appendChild(zAF);
+  const majAF=()=>{ zAF.textContent=''; const L=_reuLignesTexte(ta.value, ctx).filter(l=>l.type==='afaire'); if(!L.length) return;
+    zAF.appendChild(cap('À faire · '+L.filter(l=>!l.fait).length));
+    L.forEach(l=>{ const row=_reuEl('label','display:flex;gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid var(--brd);font-size:13px;cursor:pointer');
+      const cb=_reuEl('input','accent-color:#166534'); cb.type='checkbox'; cb.checked=l.fait;
+      cb.onchange=()=>{ ta.value=_reuBasculer(ta.value, l.i); enreg(); majAF(); };
+      row.appendChild(cb); row.appendChild(_reuEl('span', l.fait?'text-decoration:line-through;color:var(--tx3)':'', (l.heure?l.heure+' · ':'')+l.texte+(l.noms.length?' ('+l.noms.join(', ')+')':'')+(l.point?' — '+l.point:''))); zAF.appendChild(row); }); };
+  majAF();
 }
 /** Créer / modifier une réunion. `pre` = valeurs proposées (depuis @REU). */
 function _reuEditer(r, pre){
