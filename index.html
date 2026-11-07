@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.27';
+const APP_VERSION = 'v11.5.28';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59895,6 +59895,8 @@ function _affSynthese(A, uids){
     jamais:U.filter(u=>A[u] !== undefined || Object.keys(A).length ? ch[u]===0 : false), reciproques:reci, rejetsReciproques:rejR,
     sansReponse:U.filter(u=>!A[u] || (!(A[u].avec||[]).length && !(A[u].pas||[]).length))};
 }
+/** Élèves liés à u par une contrainte « Associer » (quelle que soit son origine). Pure. */
+function _affAssocies(con, u){ const out=[]; ((con&&con.associer)||[]).forEach(p=>{ if(!Array.isArray(p)) return; const v=p[0]===u?p[1]:p[1]===u?p[0]:null; if(v && v!==u && out.indexOf(v)<0) out.push(v); }); return out; }
 function _affEstContrainte(con, type, a, b){ return !!(con && Array.isArray(con[type]) && con[type].some(p=>Array.isArray(p) && ((p[0]===a && p[1]===b) || (p[0]===b && p[1]===a)))); }
 
 /* ── Données ───────────────────────────────────────────────────────────── */
@@ -59914,7 +59916,8 @@ function _affEl(t, css, x){ const e=document.createElement(t); if(css) e.style.c
 function _affBtn(t, css, fn, titre){ const b=_affEl('button','padding:5px 11px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);color:var(--tx);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;'+(css||''), t); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }
 function _affChip(t, genre, fn, titre){
   const st={vert:'background:#DCFCE7;color:#166534;border:1px solid #86EFAC', rouge:'background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5',
-    cache:'background:repeating-linear-gradient(45deg,#F3F4F6 0 6px,#E5E7EB 6px 12px);color:#6B7280;border:1px dashed #9CA3AF', gris:'background:var(--sur2);color:var(--tx2);border:1px solid var(--brd)'}[genre]||'';
+    cache:'background:repeating-linear-gradient(45deg,#F3F4F6 0 6px,#E5E7EB 6px 12px);color:#6B7280;border:1px dashed #9CA3AF', gris:'background:var(--sur2);color:var(--tx2);border:1px solid var(--brd)',
+    asso:'background:#166534;color:#fff;border:1px solid #166534;box-shadow:0 0 0 2px #BBF7D0', sepa:'background:#991B1B;color:#fff;border:1px solid #991B1B;box-shadow:0 0 0 2px #FECACA'}[genre]||'';
   const b=_affEl('button','display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;margin:1px 2px;cursor:pointer;font-family:inherit;'+st, t);
   b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=(e)=>{ e.stopPropagation(); fn(e); }; return b;
 }
@@ -59962,13 +59965,15 @@ function _affRendre(){
     const c1=_affEl('div','padding:8px 12px;cursor:pointer'); c1.title='Saisir / modifier les choix'; c1.onclick=()=>{ _aff.edit=ed?'':u; _aff.menu=''; _affRendre(); };
     c1.appendChild(_affEl('div','font-weight:800;font-size:13px', getFullName(u)));
     c1.appendChild(_affEl('div','font-size:11.5px;color:var(--tx3)', A[u] ? 'choisi(e) '+syn.choisis[u]+' fois' : 'pas de réponse · choisi(e) '+syn.choisis[u]+' fois'));
+    const assoU=_affAssocies(con, u);
+    if(assoU.length){ const bd=_affEl('div','margin-top:3px'); bd.appendChild(_affChip('🤝 associé(e) · '+assoU.length, 'asso', null, 'Contrainte « Associer » : '+assoU.map(getFullName).join(', '))); c1.appendChild(bd); }
     row.appendChild(c1);
     const c2=_affEl('div','padding:7px 10px;min-width:0'); row.appendChild(c2);
     const chips=(liste, genre, type, c)=>liste.forEach(v=>{
       const reci=genre==='vert' ? !!(A[v] && (A[v].avec||[]).indexOf(u)>=0) : !!(A[v] && (A[v].pas||[]).indexOf(u)>=0);
       const cst=_affEstContrainte(con, type, u, v);
       const k=u+'|'+type+'|'+v;
-      c.appendChild(_affChip((cst?(type==='associer'?'🤝 ':'🚫 '):'')+getFullName(v)+(reci?' ⇄':''), genre, ()=>{ _aff.menu=_aff.menu===k?'':k; _affRendre(); }, reci?'Choix réciproque':''));
+      c.appendChild(_affChip((cst?(type==='associer'?'🤝 ':'🚫 '):'')+getFullName(v)+(reci?' ⇄':''), cst?(type==='associer'?'asso':'sepa'):genre, ()=>{ _aff.menu=_aff.menu===k?'':k; _affRendre(); }, (cst?(type==='associer'?'Contrainte « Associer » déjà prise en compte':'Contrainte « Séparer » déjà prise en compte'):'')+(reci?(cst?' · ':'')+'Choix réciproque':'')));
       if(_aff.menu===k){ const m=_affEl('div','display:flex;gap:5px;flex-wrap:wrap;margin:5px 2px;padding:7px;border:1px solid var(--brd);border-radius:10px;background:var(--sur);box-shadow:0 8px 20px rgba(0,0,0,.1)');
         m.appendChild(_affBtn('Retirer','padding:3px 9px', ()=>{ const L=(A[u]||{})[genre==='vert'?'avec':'pas']||[]; const i=L.indexOf(v); if(i>=0) L.splice(i,1); _aff.menu=''; saveS(); _affRendre(); }));
         if(!cst) m.appendChild(_affBtn((type==='associer'?'🤝 → contrainte « Associer »':'🚫 → contrainte « Séparer »'),'padding:3px 9px', ()=>{ con[type].push([u, v]); _aff.menu=''; saveS(); try{ if(typeof renderApp==='function' && typeof curCls!=='undefined' && curCls===cls) renderApp(); }catch(e){} _affRendre(); }, 'Devient une contrainte de placement'));
@@ -60006,8 +60011,10 @@ function _affRendreSynthese(corps, syn, U){
   const liste=(arr, f)=>{ const d=_affEl('div','display:flex;flex-wrap:wrap;gap:3px'); if(!arr.length) d.appendChild(_affEl('span','color:var(--tx3);font-size:12.5px','—')); arr.forEach(x=>d.appendChild(f(x))); return d; };
   carte('Les plus choisis', liste(syn.plus, u=>_affChip(nom(u)+' · '+syn.choisis[u], 'vert')));
   carte('Jamais choisis', liste(syn.jamais, u=>_affChip(nom(u), 'gris')), syn.jamais.length);
-  carte('Choix réciproques ⇄', liste(syn.reciproques, p=>_affChip(nom(p[0])+' ⇄ '+nom(p[1]), 'vert')), syn.reciproques.length);
-  if(_aff.voirPas) carte('Rejets réciproques', liste(syn.rejetsReciproques, p=>_affChip(nom(p[0])+' ⇄ '+nom(p[1]), 'rouge')), syn.rejetsReciproques.length);
+  const con=_affCon(_aff.cls), aso=(p)=>_affEstContrainte(con,'associer',p[0],p[1]), sep=(p)=>_affEstContrainte(con,'separer',p[0],p[1]);
+  const nA=syn.reciproques.filter(aso).length, nS=syn.rejetsReciproques.filter(sep).length;
+  carte('Choix réciproques ⇄', liste(syn.reciproques, p=>aso(p) ? _affChip('🤝 '+nom(p[0])+' ⇄ '+nom(p[1]), 'asso', null, 'Contrainte « Associer » déjà prise en compte') : _affChip(nom(p[0])+' ⇄ '+nom(p[1]), 'vert')), syn.reciproques.length+(nA?' · 🤝 '+nA+' déjà associé'+(nA>1?'s':''):''));
+  if(_aff.voirPas) carte('Rejets réciproques', liste(syn.rejetsReciproques, p=>sep(p) ? _affChip('🚫 '+nom(p[0])+' ⇄ '+nom(p[1]), 'sepa', null, 'Contrainte « Séparer » déjà prise en compte') : _affChip(nom(p[0])+' ⇄ '+nom(p[1]), 'rouge')), syn.rejetsReciproques.length+(nS?' · 🚫 '+nS+' déjà séparé'+(nS>1?'s':''):''));
   else carte('Rejets réciproques', _affChip('🔒 masqués', 'cache', _affSansNoms() ? null : ()=>{ _aff.voirPas=true; _affRendre(); }));
   carte('Sans réponse', liste(syn.sansReponse, u=>_affChip(nom(u), 'gris')), syn.sansReponse.length);
   corps.appendChild(_affEl('div','font-size:12px;color:var(--tx3);padding:4px 2px','Les affinités sont une préférence : le générateur de groupes s’en servira sans jamais les imposer, sauf celles passées en contrainte.'));
