@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.26';
+const APP_VERSION = 'v11.5.27';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59817,7 +59817,7 @@ try{ _accueilOrdonner(); }catch(e){ console.warn('[accueil] tuiles', e); }
    Import : un fichier xlsx par classe — colonne prénom, colonne « avec » (une cellule, séparateur « , »),
    colonne « pas avec » ; correspondance tolérante (accents, fautes, abréviations) à valider. */
 function _affNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim(); }
-function _affDecouper(cell){ return String(cell==null?'':cell).split(/[,;\n\/]+|\s+et\s+/i).map(x=>x.trim()).filter(x=>x && !/^(personne|aucun|aucune|rien|-|x|\?)$/i.test(x)); }
+function _affDecouper(cell){ return String(cell==null?'':cell).split(/[,;\n\/]+|\s+(?:et|ou)\s+/i).map(x=>x.trim()).filter(x=>x && !/^(personne|aucun|aucune|rien|-|x|\?)$/i.test(x)); }
 function _affLev(a, b){
   if(a===b) return 0; const m=a.length, n=b.length; if(!m || !n) return m||n;
   let prev=Array.from({length:n+1}, (_, j)=>j);
@@ -59863,7 +59863,8 @@ function _affAnalyser(lignes, cols, eleves){
   (lignes||[]).slice(1).forEach((L, i)=>{
     const pr=String((L||[])[cols.prenom]==null?'':L[cols.prenom]).trim(); if(!pr) return;
     const m=(x)=>({brut:x, m:_affCorrespondre(x, eleves)});
-    out.push({ligne:i+2, brut:pr, eleve:_affCorrespondre(pr, eleves),
+    const cel=(k)=>(k>=0 && L[k]!=null) ? String(L[k]).trim() : '';
+    out.push({ligne:i+2, brut:pr, eleve:_affCorrespondre(pr, eleves), celAvec:cel(cols.avec), celPas:cel(cols.pas),
       avec:_affDecouper(L[cols.avec]).map(m), pas:cols.pas>=0 ? _affDecouper(L[cols.pas]).map(m) : []});
   });
   return out;
@@ -60071,9 +60072,18 @@ function _affRendreImport(box){
     if(_aff.voirPas){ l.pas.forEach((x,j)=>c.appendChild(jeton(x.brut, x.m, 'p'+i+'_'+j, 'rouge'))); if(!l.pas.length) c.appendChild(_affEl('span','color:var(--tx3)','—')); }
     else { const n=l.pas.length, pb=l.pas.filter((x,j)=>{ const e=etat(x.m,'p'+i+'_'+j); return e==='amb'||e==='ko'; }).length;
       c.appendChild(_affChip('🔒 '+n+(pb?' · '+pb+' à préciser':''), 'cache', _affSansNoms()?null:()=>{ _aff.voirPas=true; _affRendre(); })); }
+    // ligne du fichier recopiée en dessous quand il reste un point à préciser (? / ✕ / ~)
+    const doute=[l.eleve].concat(l.avec.map(x=>x.m), l.pas.map(x=>x.m)).some(m=>m.etat!=='ok' || m.approx);
+    if(doute){
+      const src=_affEl('div','grid-column:1/-1;padding:3px 10px 7px;font-size:11.5px;color:var(--tx2);font-family:ui-monospace,Consolas,monospace;background:var(--sur2,#F9FAFB);border-top:1px dashed var(--brd);white-space:pre-wrap');
+      src.className='aff-src';
+      src.appendChild(_affEl('span','color:var(--tx3);font-weight:700','Ligne '+l.ligne+' du fichier · '));
+      src.appendChild(document.createTextNode(l.brut+'  |  avec : '+(l.celAvec||'—')+'  |  pas avec : '+(_aff.voirPas ? (l.celPas||'—') : (l.celPas?'🔒':'—'))));
+      row.appendChild(src);
+    }
   });
   const pied=_affEl('div','display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--brd)'); box.appendChild(pied);
-  pied.appendChild(_affEl('span','font-size:11.5px;color:var(--tx3);flex:1', '« ~ » = rapprochement approximatif (faute de frappe, abréviation) : vérifiez. Les noms « à préciser » non choisis sont ignorés. Les réponses des élèves importés remplacent les précédentes.'));
+  pied.appendChild(_affEl('span','font-size:11.5px;color:var(--tx3);flex:1', '« ~ » = rapprochement approximatif (faute de frappe, abréviation) : vérifiez. La ligne du fichier est recopiée sous chaque élève à vérifier. Les noms « à préciser » non choisis sont ignorés. Les réponses des élèves importés remplacent les précédentes.'));
   pied.appendChild(_affBtn('Annuler','', ()=>{ _aff.imp=null; _affRendre(); }));
   const R=_affConstruire(I.analyse, Object.fromEntries(Object.entries(I.choix).filter(([,v])=>v!=='?')));
   pied.appendChild(_affBtn('Importer '+Object.keys(R).length+' élève'+(Object.keys(R).length>1?'s':''),'background:#166534;color:#fff;border-color:#166534', ()=>{
