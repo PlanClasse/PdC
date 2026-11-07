@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.29';
+const APP_VERSION = 'v11.5.30';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20040,6 +20040,7 @@ const _PAL_ACTIONS = [
 // reste tel quel : il dessine aussi les tuiles). Même forme que le lanceur.
 const _PAL_ECRANS_EXTRA = [
   {ic:'💞', full:'Affinités · Avec qui travailler (sondage des élèves)', kw:'affinites affinite sondage avec qui travailler binome groupe sociogramme', fn:()=>{ openAffinites(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.26
+  {ic:'👥', full:'Groupes · Générateur de groupes de travail', kw:'groupes groupe generateur travail equipes binomes ilots roles', fn:()=>{ openGroupes(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.30
   {ic:'🗒', full:'Bloc-notes · À faire, à rendre, rappels, notes', kw:'bloc notes carnet a faire rendre rappel note semaine tdl', fn:()=>{ openBlocNotes(); }},   // V11.5.23
   {ic:'👁️', full:'Espace prof · Ma semaine est-elle prête ?',
    kw:'espace prof supervision semaine prête calendrier 5 jours préparer tableau de bord mode prof',
@@ -46332,6 +46333,10 @@ function renderVoletDroit(){
   }
 
 
+  // V11.5.30 — 👥 Groupes de travail rattachés à ce cours
+  try{ const _grtL=(typeof _grtLignesCours==='function') ? _grtLignesCours(clsCode, slotKey) : [];
+    if(_grtL.length){ const {wrap, body}=mkSection('vd-grt','👥','Groupes', _grtL.length); _grtL.forEach(x=>body.appendChild(x)); scroll.appendChild(wrap); } }catch(e){ console.warn('[groupes]', e); }
+
   // ── 2. Documents à remettre (absents cours préc.) + V019-v161 sous-volet traces EBEP ──
   // V11.3.84 — docs distribués au cours PRÉCÉDENT ; même liste que le modal Séance (clés prev_doc_<nom>_<i> partagées).
   const docsSeance=_docsARemettreAbsents(slotKey, clsCode, _grpPrev1);
@@ -59856,14 +59861,22 @@ function _accRendre(){
           : 'border:1.5px dashed var(--brd);color:var(--tx3);background:transparent;justify-content:center;font-weight:500')
       +(D.sel===i?';outline:3px solid #2563EB;outline-offset:1px':''));
     c.className='acc-case'; c.dataset.i=String(i);
-    if(k){ c.appendChild(mk('span','font-size:20px;line-height:1', t.ic)); c.appendChild(mk('span',null, t.t)); c.draggable=true; }
+    if(k){ c.appendChild(mk('span','font-size:20px;line-height:1', t.ic)); c.appendChild(mk('span',null, t.t)); }
     else c.appendChild(mk('span',null,'vide'));
-    c.addEventListener('dragstart', e=>{ D.drag=i; try{ e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed='move'; }catch(_){} c.style.opacity='.45'; });
-    c.addEventListener('dragend', ()=>{ c.style.opacity=''; });
-    c.addEventListener('dragover', e=>{ e.preventDefault(); c.style.boxShadow='0 0 0 3px #86EFAC'; });
-    c.addEventListener('dragleave', ()=>{ c.style.boxShadow=''; });
-    c.addEventListener('drop', e=>{ e.preventDefault(); const j=D.drag; D.drag=-1; if(j>=0 && j!==i){ D.L=_accueilDispoEchanger(D.L, j, i); } D.sel=-1; _accRendre(); });
-    c.addEventListener('click', ()=>{ if(D.sel<0){ if(k) D.sel=i; } else { if(D.sel!==i) D.L=_accueilDispoEchanger(D.L, D.sel, i); D.sel=-1; } _accRendre(); });
+    if(k) c.style.touchAction='none';
+    c.addEventListener('pointerdown', ev=>{   // V11.5.30 — glisser au pointeur : souris, doigt (iPad), stylet
+      if(ev.button>0) return; ev.preventDefault();
+      const r=c.getBoundingClientRect(), dx=ev.clientX-r.left, dy=ev.clientY-r.top; let gh=null, sur=null;
+      const mv=e=>{ if(!k) return;
+        if(!gh){ if(Math.hypot(e.clientX-ev.clientX, e.clientY-ev.clientY)<6) return; gh=c.cloneNode(true); gh.style.position='fixed'; gh.style.width=r.width+'px'; gh.style.zIndex='490'; gh.style.pointerEvents='none'; gh.style.boxShadow='0 10px 24px rgba(0,0,0,.25)'; document.body.appendChild(gh); c.style.opacity='.4'; }
+        gh.style.left=(e.clientX-dx)+'px'; gh.style.top=(e.clientY-dy)+'px';
+        const el=document.elementFromPoint(e.clientX, e.clientY), t=el && el.closest('#acc-grille .acc-case');
+        if(sur && sur!==t) sur.style.boxShadow=''; sur=t; if(sur && sur!==c) sur.style.boxShadow='0 0 0 3px #86EFAC'; };
+      const up=()=>{ document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up);
+        if(gh){ gh.remove(); const j=sur ? +sur.dataset.i : -1; if(j>=0 && j!==i) D.L=_accueilDispoEchanger(D.L, i, j); D.sel=-1; _accRendre(); return; }
+        if(D.sel<0){ if(k) D.sel=i; } else { if(D.sel!==i) D.L=_accueilDispoEchanger(D.L, D.sel, i); D.sel=-1; } _accRendre(); };
+      document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+    });
     g.appendChild(c);
   }
   const pied=mk('div','display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--brd)'); box.appendChild(pied);
@@ -60032,6 +60045,7 @@ function _affRendre(){
   _reuClasses().forEach(c=>sc.appendChild(new Option(String(c).toUpperCase(), c))); sc.value=cls; sc.onchange=()=>{ _aff.cls=sc.value; _aff.edit=''; _aff.menu=''; _aff.voirPas=false; _affRendre(); }; hd.appendChild(sc);
   hd.appendChild(_affEl('span','flex:1'));
   hd.appendChild(_affEl('span','font-size:11.5px;color:var(--tx3)','Informatif — moins fort qu’une contrainte'));
+  hd.appendChild(_affBtn('👥 Faire des groupes','', ()=>{ const c=_aff.cls; closeAffinites(); openGroupes(c); }, 'Générateur de groupes (souhaits et contraintes)'));   // V11.5.30
   const lab=_affEl('label','padding:5px 11px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);font-weight:700;font-size:12.5px;cursor:pointer','📥 Importer xlsx');
   const inp=_affEl('input'); inp.type='file'; inp.accept='.xlsx,.xls,.csv'; inp.style.display='none'; inp.onchange=()=>_affLireFichier(inp.files && inp.files[0]); lab.appendChild(inp); hd.appendChild(lab);
   hd.appendChild(_affBtn('✕','', closeAffinites, 'Fermer'));
@@ -60214,6 +60228,383 @@ function _affMenuPlus(){
   zone.appendChild(b);
 }
 try{ _affMenuPlus(); }catch(e){}
+/* ══ V11.5.30 — 👥 GROUPES DE TRAVAIL (générateur) ════════════════════════════
+   Page indépendante du plan de classe. Vignettes en colonnes, groupes formés par contact
+   (glisser une vignette contre une autre), dissociés en la sortant ; « ✨ Proposer » répartit
+   en tenant compte (jamais bloquant) des contraintes Associer / Séparer, des souhaits
+   (Affinités), de l'équilibre F/G et du niveau. Groupes validés ✓ = verrouillés et gardés.
+   Rôles optionnels (liste éditable : clic droit, double-clic ou appui long sur « 🎭 Rôles »).
+   Données : S.grpTravail[cls] = [{id, nom, cours:[slotKey], nbG, opt, grp:[{id,x,y,m,val}],
+   libres:{uid:{x,y}}, roles:{uid:index}, maj}] ; S.grpRoles = [{ic,l}] ; S.grpNiveaux = {uid:1..4}.
+   (S.groupes = groupes inter-classes : autre chose.) */
+const GRT_ROLES_DEFAUT=[{ic:'👑',l:'Chef de projet'},{ic:'✍️',l:'Secrétaire'},{ic:'📢',l:'Porte-parole'},{ic:'🧰',l:'Matériel'}];
+const GRT_ICONES='👑 ✍️ 📢 🧰 ⏱️ 📝 🎤 🔧 🔨 🪛 🔩 ⚙️ 🧪 🔬 🔭 💡 🔋 🔌 💻 🖥️ ⌨️ 🖱️ 🖨️ 📷 🎥 🎬 📸 🎨 🖌️ ✏️ 🖊️ 📐 📏 📌 📎 🗂️ 📁 📋 📊 📈 📚 📖 🔖 🗒️ 🧭 🗺️ 🌍 🧠 👀 👂 🗣️ 🤝 🙋 🧑‍🏫 🧑‍🔧 🧑‍🔬 🧑‍💻 🧑‍🎨 🦺 ⛑️ 🧹 🧽 🧺 📦 🛒 💰 🧮 ⚖️ 🏁 🎯 🏆 🥇 ⭐ 🌟 ✨ 🔥 ⚡ 💬 ❓ ❗ ✅ ☑️ 🔔 📣 📯 🎲 🧩 🪄 🚀 🛠️ 🏗️ 🤖 🛰️ 🚗 ✈️ 🚲 🌱 ♻️ 🌞 🌙 ☁️ 💧 🍀 🐝 🦉 🦊 🐢 🐙 🦁 🐬 ❤️ 💚 💙 💛 💜 🟢 🔵 🟠 🔴 🟣'.split(' ');
+const GRT_OPT_DEFAUT={gf:true, souhaits:true, asso:true, sepa:true, niveau:false, roles:false};
+
+/* ── Pures ── */
+function _grtPaire(L, a, b){ return (L||[]).some(p=>Array.isArray(p) && ((p[0]===a && p[1]===b) || (p[0]===b && p[1]===a))); }
+/** Score d'un groupe (plus haut = mieux). ctx = {avec:{u:[v]}, asso, sepa, sexe:{u}, niv:{u}, opt}. Pure. */
+function _grtScore(m, ctx){
+  const o=ctx.opt||{}; let s=0;
+  for(let i=0;i<m.length;i++) for(let j=0;j<m.length;j++){ if(i===j) continue;
+    if(o.souhaits && ((ctx.avec||{})[m[i]]||[]).indexOf(m[j])>=0) s+=2;
+    if(i<j){ if(o.asso && _grtPaire(ctx.asso, m[i], m[j])) s+=20; if(o.sepa && _grtPaire(ctx.sepa, m[i], m[j])) s-=30; } }
+  if(o.gf){ const S2=ctx.sexe||{}, f=m.filter(u=>S2[u]==='F').length, g=m.filter(u=>S2[u]==='M').length; if(f+g) s-=3*Math.abs(f-g); }
+  if(o.niveau){ const N=ctx.niv||{}, v=m.map(u=>N[u]).filter(x=>x>0); if(v.length){ const moy=v.reduce((a,b)=>a+b,0)/v.length; s-=4*Math.abs(moy-(ctx.nivMoy||2.5)); } }
+  return s;
+}
+/** Répartit pool en k groupes (tailles égales à 1 près) en améliorant le score par échanges. rnd ∈ [0,1[. Pure si rnd l'est. */
+function _grtProposer(pool, k, ctx, rnd, iters){
+  rnd=rnd||Math.random; k=Math.max(1, Math.min(k, pool.length||1));
+  const P=pool.slice(); for(let i=P.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const t=P[i]; P[i]=P[j]; P[j]=t; }
+  const G=Array.from({length:k}, ()=>[]); P.forEach((u,i)=>G[i%k].push(u));
+  const n=iters||6000;
+  for(let it=0; it<n; it++){ const a=Math.floor(rnd()*k), b=Math.floor(rnd()*k); if(a===b || !G[a].length || !G[b].length) continue;
+    const i=Math.floor(rnd()*G[a].length), j=Math.floor(rnd()*G[b].length);
+    const avant=_grtScore(G[a], ctx)+_grtScore(G[b], ctx); let t=G[a][i]; G[a][i]=G[b][j]; G[b][j]=t;
+    if(_grtScore(G[a], ctx)+_grtScore(G[b], ctx)<avant){ t=G[a][i]; G[a][i]=G[b][j]; G[b][j]=t; } }
+  return G;
+}
+/** Indicateurs d'un groupe. Pure. */
+function _grtStats(m, ctx){
+  const S2=ctx.sexe||{}, A=ctx.avec||{};
+  let conf=0; for(let i=0;i<m.length;i++) for(let j=i+1;j<m.length;j++) if(_grtPaire(ctx.sepa, m[i], m[j])) conf++;
+  const niv=m.map(u=>(ctx.niv||{})[u]).filter(x=>x>0);
+  return {n:m.length, f:m.filter(u=>S2[u]==='F').length, g:m.filter(u=>S2[u]==='M').length,
+    souhaits:m.filter(u=>(A[u]||[]).some(v=>v!==u && m.indexOf(v)>=0)).length, conflits:conf,
+    niveau:niv.length ? Math.round(10*niv.reduce((a,b)=>a+b,0)/niv.length)/10 : null};
+}
+/** Rôles au hasard dans un groupe : un rôle par élève, dans l'ordre de la liste. Pure si rnd l'est. */
+function _grtRolesDistribuer(m, nRoles, rnd){
+  rnd=rnd||Math.random; const L=m.slice(); for(let i=L.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const t=L[i]; L[i]=L[j]; L[j]=t; }
+  const out={}; L.forEach((u,i)=>{ if(i<nRoles) out[u]=i; }); return out;
+}
+/** Retire un élève de l'ensemble (groupe ou case libre) ; un groupe réduit à 1 devient une vignette libre. Modifie ens. */
+function _grtRetirer(ens, u){
+  if(ens.libres) delete ens.libres[u];
+  const g=(ens.grp||[]).find(x=>x.m.indexOf(u)>=0); if(!g) return;
+  g.m.splice(g.m.indexOf(u), 1);
+  if(g.m.length===1){ ens.libres=ens.libres||{}; ens.libres[g.m[0]]={x:g.x, y:g.y+28}; ens.grp.splice(ens.grp.indexOf(g), 1); }
+  else if(!g.m.length) ens.grp.splice(ens.grp.indexOf(g), 1);
+}
+/** Ensembles de groupes rattachés à un cours. Pure. */
+function _grtPourCours(liste, slotKey){ return (liste||[]).filter(e=>slotKey && (e.cours||[]).indexOf(slotKey)>=0); }
+
+/* ── Données ── */
+function _grtListe(cls){ if(!S.grpTravail || typeof S.grpTravail!=='object') S.grpTravail={}; if(!Array.isArray(S.grpTravail[cls])) S.grpTravail[cls]=[]; return S.grpTravail[cls]; }
+function _grtRoles(){ if(!Array.isArray(S.grpRoles) || !S.grpRoles.length) S.grpRoles=GRT_ROLES_DEFAUT.map(x=>Object.assign({}, x)); return S.grpRoles; }
+function _grtNiveaux(){ if(!S.grpNiveaux || typeof S.grpNiveaux!=='object') S.grpNiveaux={}; return S.grpNiveaux; }
+function _grtNouveau(cls){
+  const d=_appToday().split('-'); const e={id:'gt'+Date.now().toString(36), nom:'Groupes du '+d[2]+'/'+d[1], cours:[], nbG:Math.max(2, Math.round(((S.cl[cls]||{}).students||[]).length/4)), opt:Object.assign({}, GRT_OPT_DEFAUT), grp:[], libres:{}, roles:{}, maj:Date.now()};
+  _grtListe(cls).push(e); return e;
+}
+let _grtSaveT=0;
+function _grtSauver(){ const e=_grt.ens; if(e) e.maj=Date.now(); clearTimeout(_grtSaveT); _grtSaveT=setTimeout(()=>{ try{ saveS(); }catch(err){} }, 300); }
+function _grtCtx(cls, ens){
+  const A=((S.affinites||{})[cls])||{}, avec={}; Object.keys(A).forEach(u=>{ avec[u]=(A[u].avec||[]).slice(); });
+  const con=((S.contraintes||{})[cls])||{}, sexe={}, N=_grtNiveaux(), niv={};
+  _grt.eleves.forEach(u=>{ const sd=(S.studentData||{})[u]||{}; sexe[u]=sd.sexe||''; if(N[u]) niv[u]=N[u]; });
+  const vs=Object.values(niv);
+  return {avec, asso:con.associer||[], sepa:con.separer||[], sexe, niv, nivMoy:vs.length ? vs.reduce((a,b)=>a+b,0)/vs.length : 2.5, opt:ens.opt||GRT_OPT_DEFAUT};
+}
+/** Élèves concernés : ceux du demi-groupe si le 1er cours rattaché est en demi-groupe, sinon la classe. */
+function _grtElevesDe(cls, ens){
+  let base=((S.cl[cls]||{}).students||[]).slice();
+  const sk=(ens.cours||[])[0];
+  if(sk){ try{ const sl=(buildYearSlots(cls)||[]).find(s=>s && s.slotKey===sk); const M=sl && _docsDusMembres(sl, cls); if(M) base=base.filter(u=>M.has(u)); }catch(e){} }
+  return base.sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+}
+function _grtNomCourt(u){
+  const sd=(S.studentData||{})[u]||{}, p=(sd.prenoms&&sd.prenoms[0])||getFullName(u)||u;
+  const dup=_grt.eleves.some(v=>v!==u && (((S.studentData||{})[v]||{}).prenoms||[])[0]===p);
+  return dup ? p+' '+String((sd.noms&&sd.noms[0])||'').slice(0,1)+'.' : p;
+}
+function _grtCoursProchains(cls){
+  let L=[]; try{ L=(buildYearSlots(cls)||[]).filter(s=>s && s.dateStr>=_appToday() && !(typeof isSlotCancelled==='function' && isSlotCancelled(s.dateStr, s.debut, cls))); }catch(e){}
+  return L.slice(0, 24);
+}
+function _grtLibCours(sk){ const p=String(sk).split('_'), d=(p[0]||'').split('-'); let j=''; try{ j=['dim','lun','mar','mer','jeu','ven','sam'][new Date(p[0]+'T12:00:00').getDay()]; }catch(e){} return j+' '+(d[2]||'')+'/'+(d[1]||'')+' '+(p[1]||''); }
+
+/* ── Page ── */
+let _grt={cls:'', ens:null, eleves:[], sel:-1};
+function _grtStyle(){
+  if(document.getElementById('grt-style')) return;
+  const st=document.createElement('style'); st.id='grt-style';
+  st.textContent='#grt-page{position:fixed;inset:0;z-index:470;background:var(--bg);display:flex;flex-direction:column;font-family:"DM Sans",sans-serif;user-select:none;-webkit-user-select:none}'
+   +'#grt-bar{display:flex;align-items:center;gap:6px;padding:6px 12px;background:var(--sur);border-bottom:1px solid var(--brd);flex-wrap:wrap}'
+   +'.grt-sel{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;border:1.5px solid var(--brd);background:var(--sur2);color:var(--tx3);cursor:pointer;font-family:inherit;min-height:28px}'
+   +'.grt-sel.on{border-color:#1A3D1A;background:#1A3D1A;color:#fff}'
+   +'.grt-btn{font-size:12px;font-weight:800;padding:5px 11px;border-radius:9px;border:1.5px solid var(--brd);background:var(--sur);color:var(--tx);cursor:pointer;font-family:inherit;min-height:30px}'
+   +'.grt-btn.pri{background:#166534;border-color:#166534;color:#fff}'
+   +'.grt-sep{width:1px;height:22px;background:var(--brd);margin:0 3px}'
+   +'#grt-main{flex:1;display:flex;min-height:0}'
+   +'.grt-col{width:134px;flex-shrink:0;padding:8px 6px;display:flex;flex-direction:column;gap:5px;overflow:auto;background:var(--sur2)}'
+   +'.grt-col.hot{background:#DCFCE7}'
+   +'#grt-cv{flex:1;position:relative;overflow:auto;background-image:radial-gradient(var(--brd) 1px,transparent 1px);background-size:22px 22px}'
+   +'.grt-card{width:118px;height:32px;border-radius:9px;background:var(--sur);border:1.5px solid var(--brd);display:flex;align-items:center;gap:4px;padding:0 7px;font-weight:700;font-size:12.5px;cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,.08);flex-shrink:0;touch-action:none;color:var(--tx)}'
+   +'.grt-card .pn{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}'
+   +'.grt-card .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}.grt-card .mk{font-size:10.5px;line-height:1}'
+   +'.grt-card.libre{position:absolute}.grt-card.conf{border-color:#B91C1C;background:#FEE2E2}'
+   +'.grt-card.ghost{position:fixed;z-index:500;pointer-events:none;box-shadow:0 10px 24px rgba(0,0,0,.25);transform:rotate(-2deg)}.grt-card.fant{opacity:.3}.grt-card.hot{box-shadow:0 0 0 3px #86EFAC}'
+   +'.grt-g{position:absolute;border:2px solid var(--brd);border-radius:14px;background:var(--sur);padding:0 6px 6px;box-shadow:0 4px 14px rgba(0,0,0,.07)}'
+   +'.grt-g.hot{border-color:#22C55E;box-shadow:0 0 0 4px rgba(34,197,94,.25)}.grt-g.val{border-color:#166534;background:#F0FDF4}.grt-g.val .grt-card{cursor:pointer}'
+   +'.grt-gh{display:flex;align-items:center;gap:4px;height:28px;cursor:move;font-size:11px;font-weight:800;color:var(--tx2);touch-action:none}'
+   +'.grt-gh .n{flex:1;white-space:nowrap}.grt-gh .ind{font-size:10.5px;font-weight:700;padding:0 5px;border-radius:999px;background:var(--sur2);border:1px solid var(--brd);white-space:nowrap}'
+   +'.grt-gh .ind.w{background:#FEF3C7;border-color:#F59E0B;color:#B45309}.grt-gh .ind.b{background:#FEE2E2;border-color:#FCA5A5;color:#B91C1C}'
+   +'.grt-gh .v{border:1.5px solid var(--brd);background:var(--sur);border-radius:7px;font-size:11px;font-weight:800;padding:0 6px;height:22px;cursor:pointer;color:var(--tx2);font-family:inherit}'
+   +'.grt-g.val .grt-gh .v.ok{background:#166534;border-color:#166534;color:#fff}'
+   +'.grt-gm{display:grid;grid-template-columns:repeat(2,118px);gap:4px}'
+   +'.grt-pop{position:fixed;z-index:510;width:250px;background:var(--sur);border:1px solid var(--brd);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.2);padding:9px 10px;color:var(--tx)}'
+   +'.grt-pt{font-weight:800;font-size:14px;margin-bottom:6px}.grt-pl{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:4px 0}'
+   +'.grt-plab{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--tx3);width:100%}'
+   +'.grt-pb{font-size:12px;font-weight:700;padding:4px 8px;min-height:30px;border-radius:8px;border:1.5px solid var(--brd);background:var(--sur2);color:var(--tx);cursor:pointer;font-family:inherit}'
+   +'.grt-pb.on{background:#1A3D1A;border-color:#1A3D1A;color:#fff}.grt-pb:disabled{opacity:.4}'
+   +'.grt-ico{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:3px;margin-top:8px;padding:8px;border:1px solid var(--brd);border-radius:10px;max-height:220px;overflow:auto}'
+   +'.grt-ico button{font-size:20px;height:38px;border:0;background:transparent;border-radius:8px;cursor:pointer}'
+   +'.grt-hint{text-align:center;color:var(--tx3);font-size:11px;padding:3px 8px;border-top:1px solid var(--brd);background:var(--sur)}'
+   +'@media (pointer:coarse){.grt-card{height:40px}.grt-gh{height:34px}.grt-gh .v{height:30px;min-width:32px}}';
+  document.head.appendChild(st);
+}
+function openGroupes(cls, ensId){
+  _grtStyle(); fermerGrtPop();
+  const L=_reuClasses(); cls=(cls && S.cl[cls]) ? cls : (typeof curCls!=='undefined' && S.cl[curCls] ? curCls : (L[0]||''));
+  _grt.cls=cls; const liste=_grtListe(cls);
+  _grt.ens=liste.find(e=>e.id===ensId) || liste.slice().sort((a,b)=>(b.maj||0)-(a.maj||0))[0] || null;
+  let pg=document.getElementById('grt-page'); if(pg) pg.remove();
+  pg=document.createElement('div'); pg.id='grt-page'; document.body.appendChild(pg);
+  _grtRendre();
+}
+function closeGroupes(){ fermerGrtPop(); const pg=document.getElementById('grt-page'); if(pg) pg.remove(); try{ saveS(); }catch(e){} }
+function _grtEl(tag, cls, txt){ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; }
+function _grtRendre(){
+  const pg=document.getElementById('grt-page'); if(!pg) return; pg.textContent='';
+  const cls=_grt.cls; let ens=_grt.ens;
+  const bar=_grtEl('div'); bar.id='grt-bar'; pg.appendChild(bar);
+  bar.appendChild(_grtEl('span', null, '👥')).style.fontSize='20px';
+  const sc=_grtEl('select','grt-sel'); sc.style.color='var(--tx)'; _reuClasses().forEach(c=>sc.appendChild(new Option(String(c).toUpperCase(), c))); sc.value=cls;
+  sc.onchange=()=>openGroupes(sc.value); bar.appendChild(sc);
+  const se=_grtEl('select','grt-sel'); se.style.cssText='color:var(--tx);max-width:190px'; se.title='Ensemble de groupes';
+  _grtListe(cls).forEach(e=>se.appendChild(new Option(e.nom, e.id))); se.appendChild(new Option('＋ Nouvel ensemble…', '+'));
+  se.value=ens ? ens.id : '+'; se.onchange=()=>{ if(se.value==='+'){ _grt.ens=_grtNouveau(cls); _grtSauver(); } else _grt.ens=_grtListe(cls).find(e=>e.id===se.value); _grtRendre(); }; bar.appendChild(se);
+  if(!ens){ const vide=_grtEl('div', null); vide.style.cssText='flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--tx3)';
+    vide.appendChild(_grtEl('div', null, 'Aucun ensemble de groupes pour '+String(cls).toUpperCase()+'.'));
+    const b=_grtEl('button','grt-btn pri','＋ Créer un ensemble'); b.type='button'; b.onclick=()=>{ _grt.ens=_grtNouveau(cls); _grtSauver(); _grtRendre(); }; vide.appendChild(b);
+    const x=_grtEl('button','grt-btn','✕'); x.type='button'; x.style.marginLeft='auto'; x.onclick=closeGroupes; bar.appendChild(x); pg.appendChild(vide); return; }
+  const btn=(t, titre, fn, c)=>{ const b=_grtEl('button', c||'grt-btn', t); b.type='button'; if(titre) b.title=titre; b.onclick=fn; bar.appendChild(b); return b; };
+  btn('✎', 'Renommer', ()=>{ const n=prompt('Nom de l’ensemble de groupes', ens.nom); if(n && n.trim()){ ens.nom=n.trim(); _grtSauver(); _grtRendre(); } });
+  btn('🗑', 'Supprimer cet ensemble', ()=>{ if(!confirm('Supprimer « '+ens.nom+' » ?')) return; const L=_grtListe(cls); L.splice(L.indexOf(ens),1); _grt.ens=L[0]||null; _grtSauver(); _grtRendre(); });
+  btn('📅 '+((ens.cours||[]).length ? (ens.cours.length===1 ? _grtLibCours(ens.cours[0]) : ens.cours.length+' cours') : 'aucun cours'), 'Cours où ces groupes s’appliquent', (e)=>_grtPopCours(e.currentTarget), 'grt-sel').style.color='var(--tx)';
+  bar.appendChild(_grtEl('span','grt-sep'));
+  const o=ens.opt=Object.assign({}, GRT_OPT_DEFAUT, ens.opt||{});
+  [['gf','♀♂ F/G'],['souhaits','♥ Souhaits'],['asso','🤝 Associer'],['sepa','⛔ Séparer'],['niveau','📈 Niveau'],['roles','🎭 Rôles']].forEach(([k,l])=>{
+    const b=btn(l, k==='roles' ? 'Clic droit, double-clic ou appui long : modifier les rôles' : '', ()=>{ o[k]=!o[k]; _grtSauver(); _grtRendre(); }, 'grt-sel'+(o[k]?' on':'')); b.dataset.k=k;
+    if(k==='roles'){ let lp=0; b.addEventListener('contextmenu', e=>{ e.preventDefault(); _grtEditerRoles(); }); b.addEventListener('dblclick', e=>{ e.preventDefault(); _grtEditerRoles(); });
+      b.addEventListener('pointerdown', e=>{ if(e.pointerType!=='mouse') lp=setTimeout(()=>{ lp=-1; _grtEditerRoles(); }, 550); });
+      ['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t, ()=>{ if(lp>0) clearTimeout(lp); })); }
+  });
+  bar.appendChild(_grtEl('span','grt-sep'));
+  const nb=_grtEl('span'); nb.style.cssText='display:inline-flex;align-items:center;gap:2px;border:1.5px solid var(--brd);border-radius:999px;padding:1px 3px;background:var(--sur2)'; bar.appendChild(nb);
+  const pm=(t, d)=>{ const b=_grtEl('button', null, t); b.type='button'; b.style.cssText='border:0;background:transparent;font-size:15px;font-weight:800;width:26px;height:26px;cursor:pointer;color:var(--tx)'; b.onclick=()=>{ ens.nbG=Math.max(2, Math.min(_grt.eleves.length||2, (ens.nbG||2)+d)); _grtSauver(); _grtRendre(); }; return b; };
+  nb.appendChild(pm('−', -1)); const nbl=_grtEl('b', null, (ens.nbG||2)+' groupes'); nbl.style.cssText='font-size:12px;min-width:66px;text-align:center'; nb.appendChild(nbl); nb.appendChild(pm('+', 1));
+  btn('✨ Proposer', 'Répartir les élèves non verrouillés (les groupes ✓ validés sont gardés)', _grtProposerUI, 'grt-btn pri');
+  btn('↺', 'Remettre en colonne tout ce qui n’est pas validé', ()=>{ ens.libres={}; ens.grp=(ens.grp||[]).filter(g=>g.val); _grtSauver(); _grtRendre(); });
+  const info=_grtEl('span'); info.style.cssText='font-size:11.5px;color:var(--tx3);margin-left:auto'; bar.appendChild(info);
+  btn('✕', 'Fermer', closeGroupes);
+  // élèves
+  _grt.eleves=_grtElevesDe(cls, ens);
+  const E=new Set(_grt.eleves);
+  ens.grp=(ens.grp||[]).map(g=>Object.assign(g, {m:g.m.filter(u=>E.has(u))})).filter(g=>g.m.length);
+  Object.keys(ens.libres||{}).forEach(u=>{ if(!E.has(u)) delete ens.libres[u]; });
+  const ctx=_grtCtx(cls, ens); _grt.ctx=ctx;
+  const main=_grtEl('div'); main.id='grt-main'; pg.appendChild(main);
+  const colG=_grtEl('div','grt-col'); colG.id='grt-colG'; colG.dataset.col='1';
+  const cv=_grtEl('div'); cv.id='grt-cv';
+  const colD=_grtEl('div','grt-col'); colD.id='grt-colD'; colD.dataset.col='1';
+  colG.style.borderRight='1px solid var(--brd)'; colD.style.borderLeft='1px solid var(--brd)';
+  main.appendChild(colG); main.appendChild(cv); main.appendChild(colD);
+  const ou=(u)=>{ if((ens.libres||{})[u]) return 'libre'; return (ens.grp||[]).some(g=>g.m.indexOf(u)>=0) ? 'grp' : 'col'; };
+  const moitie=Math.ceil(_grt.eleves.length/2);
+  _grt.eleves.forEach((u,i)=>{ if(ou(u)==='col') (i<moitie?colG:colD).appendChild(_grtCarte(u, null)); });
+  Object.keys(ens.libres||{}).forEach(u=>{ const c=_grtCarte(u, null); c.classList.add('libre'); c.style.left=ens.libres[u].x+'px'; c.style.top=ens.libres[u].y+'px'; cv.appendChild(c); });
+  const R=_grtRoles();
+  ens.grp.forEach((g,i)=>{
+    const d=_grtEl('div','grt-g'+(g.val?' val':'')); d.dataset.g=g.id; d.style.left=g.x+'px'; d.style.top=g.y+'px';
+    const h=_grtEl('div','grt-gh'); h.appendChild(_grtEl('span','n', 'G'+(i+1)+' · '+g.m.length));
+    const st=_grtStats(g.m, ctx);
+    if(o.gf) h.appendChild(_grtEl('span','ind'+(Math.abs(st.f-st.g)>2?' w':''), st.f+'F '+st.g+'G'));
+    if(o.souhaits) h.appendChild(_grtEl('span','ind'+(st.souhaits<Math.ceil(st.n/2)?' w':''), '♥ '+st.souhaits+'/'+st.n));
+    if(o.niveau && st.niveau!=null) h.appendChild(_grtEl('span','ind', '📈 '+st.niveau));
+    if(o.sepa && st.conflits) h.appendChild(_grtEl('span','ind b', '⛔ '+st.conflits));
+    if(o.roles){ const r=_grtEl('button','v','🎭'); r.type='button'; r.title='Distribuer les rôles au hasard'; r.onpointerdown=e=>e.stopPropagation();
+      r.onclick=()=>{ g.m.forEach(u=>delete ens.roles[u]); Object.assign(ens.roles, _grtRolesDistribuer(g.m, R.length)); _grtSauver(); _grtRendre(); }; h.appendChild(r); }
+    const v=_grtEl('button','v ok', g.val?'✓ validé':'✓'); v.type='button'; v.title=g.val?'Déverrouiller':'Valider ce groupe (verrouillé, gardé par « Proposer »)';
+    v.onpointerdown=e=>e.stopPropagation(); v.onclick=()=>{ g.val=!g.val; _grtSauver(); _grtRendre(); }; h.appendChild(v);
+    d.appendChild(h);
+    const m=_grtEl('div','grt-gm'); g.m.forEach(u=>m.appendChild(_grtCarte(u, g))); d.appendChild(m);
+    h.addEventListener('pointerdown', ev=>_grtDragGroupe(ev, g, d));
+    cv.appendChild(d);
+  });
+  const hint=_grtEl('div','grt-hint','Glisser une vignette contre une autre = grouper · la sortir = dissocier · clic = niveau, rôle · double-clic = retour en colonne');
+  pg.appendChild(hint);
+  const enCol=_grt.eleves.filter(u=>ou(u)==='col').length, nv=ens.grp.filter(g=>g.val).length;
+  info.textContent=ens.grp.length+' groupe'+(ens.grp.length>1?'s':'')+(nv?' ('+nv+' validé'+(nv>1?'s':'')+')':'')+' · '+enCol+' en colonne';
+}
+function _grtCarte(u, g){
+  const ens=_grt.ens, o=ens.opt, ctx=_grt.ctx, c=_grtEl('div','grt-card'); c.dataset.u=u;
+  if(o.gf && ctx.sexe[u]){ const d=_grtEl('span','dot'); d.style.background=ctx.sexe[u]==='F'?'#DB2777':'#2563EB'; c.appendChild(d); }
+  const R=_grtRoles()[ (ens.roles||{})[u] ];
+  if(g && o.roles && R){ const m=_grtEl('span','mk', R.ic); m.style.fontSize='13px'; m.title=R.l; c.appendChild(m); }
+  const n=_grtEl('span','pn', _grtNomCourt(u)); n.title=getFullName(u)||u; c.appendChild(n);
+  if(o.niveau && ctx.niv[u]){ const m=_grtEl('span','mk', '▮'.repeat(ctx.niv[u])); m.style.color='var(--tx3)'; c.appendChild(m); }
+  if(g){
+    if(o.souhaits && (ctx.avec[u]||[]).some(v=>g.m.indexOf(v)>=0)){ const m=_grtEl('span','mk','♥'); m.style.color='#16A34A'; m.title='Un de ses souhaits est dans le groupe'; c.appendChild(m); }
+    if(o.sepa && g.m.some(v=>v!==u && _grtPaire(ctx.sepa, u, v))) c.classList.add('conf');
+  }
+  if(o.asso){ const p=(ctx.asso||[]).find(x=>Array.isArray(x) && (x[0]===u || x[1]===u)); if(p){ const autre=p[0]===u?p[1]:p[0], ens2=g && g.m.indexOf(autre)>=0;
+    const m=_grtEl('span','mk','🤝'); m.style.opacity=ens2?'1':'.4'; m.title=ens2?'Associé(e) : ensemble':'À associer avec '+_grtNomCourt(autre); c.appendChild(m); } }
+  return c;
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('grt-page') && !document.getElementById('grt-roles')){ if(document.querySelector('.grt-pop')) fermerGrtPop(); else closeGroupes(); } });
+/* glisser une vignette (souris, doigt, stylet) */
+let _grtHot=null, _grtPopT=0;
+function _grtSetHot(el){ if(_grtHot===el) return; if(_grtHot) _grtHot.classList.remove('hot'); _grtHot=el; if(_grtHot) _grtHot.classList.add('hot'); }
+function _grtCible(x, y, ghost){
+  ghost.style.display='none'; const el=document.elementFromPoint(x, y); ghost.style.display='';
+  if(!el || !el.closest('#grt-page')) return null;
+  const ens=_grt.ens, gr=el.closest('.grt-g'); if(gr) return {t:'grp', g:ens.grp.find(g=>g.id===gr.dataset.g), el:gr};
+  const lc=el.closest('.grt-card.libre'); if(lc) return {t:'libre', u:lc.dataset.u, el:lc};
+  const col=el.closest('.grt-col'); if(col) return {t:'col', el:col};
+  const cv=el.closest('#grt-cv');
+  if(cv){ for(const c of cv.querySelectorAll('.grt-card.libre,.grt-g')){ const r=c.getBoundingClientRect();
+      if(x>r.left-14 && x<r.right+14 && y>r.top-14 && y<r.bottom+14) return c.classList.contains('grt-g') ? {t:'grp', g:ens.grp.find(g=>g.id===c.dataset.g), el:c} : {t:'libre', u:c.dataset.u, el:c}; }
+    const R=cv.getBoundingClientRect(); return {t:'cv', x:x-R.left+cv.scrollLeft, y:y-R.top+cv.scrollTop}; }
+  return null;
+}
+document.addEventListener('pointerdown', ev=>{
+  if(!ev.target.closest('.grt-pop')) fermerGrtPop();
+  const c=ev.target.closest('#grt-page .grt-card'); if(!c || ev.button>0) return;
+  const u=c.dataset.u, ens=_grt.ens, g0=ens.grp.find(g=>g.m.indexOf(u)>=0), fixe=!!(g0 && g0.val);
+  ev.preventDefault();
+  const r=c.getBoundingClientRect(), dx=ev.clientX-r.left, dy=ev.clientY-r.top; let ghost=null;
+  const mv=e=>{
+    if(fixe) return;
+    if(!ghost){ if(Math.hypot(e.clientX-ev.clientX, e.clientY-ev.clientY)<5) return; ghost=c.cloneNode(true); ghost.classList.add('ghost'); ghost.classList.remove('libre'); document.body.appendChild(ghost); c.classList.add('fant'); }
+    ghost.style.left=(e.clientX-dx)+'px'; ghost.style.top=(e.clientY-dy)+'px';
+    const t=_grtCible(e.clientX, e.clientY, ghost);
+    _grtSetHot(!t ? null : (t.t==='grp' && !t.g.val) || (t.t==='libre' && t.u!==u) || t.t==='col' ? t.el : null);
+  };
+  const up=e=>{
+    document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); _grtSetHot(null);
+    if(!ghost){ clearTimeout(_grtPopT); _grtPopT=setTimeout(()=>_grtFiche(u, c), 240); return; }
+    const t=_grtCible(e.clientX, e.clientY, ghost); ghost.remove();
+    if(t){ ens.libres=ens.libres||{};
+      if(t.t==='grp'){ if(!t.g.val && t.g.m.indexOf(u)<0){ _grtRetirer(ens, u); t.g.m.push(u); } }
+      else if(t.t==='libre' && t.u!==u){ const p=ens.libres[t.u]; _grtRetirer(ens, u); delete ens.libres[t.u]; ens.grp.push({id:'g'+Date.now().toString(36)+Math.floor(Math.random()*1e4), x:Math.max(4,p.x-6), y:Math.max(4,p.y-28), m:[t.u, u], val:false}); }
+      else if(t.t==='col') _grtRetirer(ens, u);
+      else if(t.t==='cv'){ _grtRetirer(ens, u); ens.libres[u]={x:Math.max(4, Math.round(t.x-dx)), y:Math.max(4, Math.round(t.y-dy))}; }
+      _grtSauver(); }
+    _grtRendre();
+  };
+  document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+});
+document.addEventListener('dblclick', ev=>{ const c=ev.target.closest('#grt-page .grt-card'); if(!c) return; clearTimeout(_grtPopT); fermerGrtPop();
+  const ens=_grt.ens, g=ens.grp.find(x=>x.m.indexOf(c.dataset.u)>=0); if(g && g.val) return; _grtRetirer(ens, c.dataset.u); _grtSauver(); _grtRendre(); });
+function _grtDragGroupe(ev, g, d){
+  if(ev.button>0) return; ev.preventDefault(); const sx=ev.clientX-g.x, sy=ev.clientY-g.y;
+  const mv=e=>{ g.x=Math.max(0, Math.round(e.clientX-sx)); g.y=Math.max(0, Math.round(e.clientY-sy)); d.style.left=g.x+'px'; d.style.top=g.y+'px'; };
+  const up=()=>{ document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); _grtSauver(); };
+  document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+}
+function _grtProposerUI(){
+  const ens=_grt.ens, val=ens.grp.filter(g=>g.val), pris=new Set(val.flatMap(g=>g.m));
+  const pool=_grt.eleves.filter(u=>!pris.has(u)); if(!pool.length) return;
+  const k=Math.max(1, (ens.nbG||2)-val.length);
+  const G=_grtProposer(pool, k, _grt.ctx);
+  ens.libres={}; ens.grp=val.slice();
+  const cv=document.getElementById('grt-cv'), W=(cv && cv.clientWidth)||900, cw=262, ch=30+Math.ceil(Math.max(...G.map(g=>g.length))/2)*36+12, nc=Math.max(1, Math.floor((W-10)/(cw+12)));
+  const libre=(x,y)=>!val.some(g=>x<g.x+cw && x+cw>g.x && y<g.y+ch && y+ch>g.y);
+  let s=0; G.forEach((m,i)=>{ let x, y; do{ x=10+(s%nc)*(cw+12); y=10+Math.floor(s/nc)*(ch+12); s++; }while(!libre(x,y) && s<300);
+    ens.grp.push({id:'g'+Date.now().toString(36)+i, x, y, m, val:false}); });
+  _grtSauver(); _grtRendre();
+}
+/* fiche élève : niveau, rôle, retour en colonne */
+function fermerGrtPop(){ document.querySelectorAll('.grt-pop').forEach(x=>x.remove()); }
+function _grtFiche(u, c){
+  fermerGrtPop(); if(!c || !document.body.contains(c)) c=document.querySelector('#grt-page .grt-card[data-u="'+u+'"]'); if(!c) return;
+  const ens=_grt.ens, g=ens.grp.find(x=>x.m.indexOf(u)>=0), N=_grtNiveaux(), R=_grtRoles();
+  const p=_grtEl('div','grt-pop'), r=c.getBoundingClientRect();
+  p.style.left=Math.max(4, Math.min(window.innerWidth-260, r.left))+'px'; p.style.top=Math.max(4, Math.min(window.innerHeight-260, r.bottom+6))+'px';
+  p.appendChild(_grtEl('div','grt-pt', getFullName(u)||u));
+  const lig=(lab)=>{ const d=_grtEl('div','grt-pl'); d.appendChild(_grtEl('span','grt-plab', lab)); p.appendChild(d); return d; };
+  const L1=lig('Niveau');
+  [0,1,2,3,4].forEach(n=>{ const b=_grtEl('button','grt-pb'+((N[u]||0)===n?' on':''), n ? '▮'.repeat(n) : '—'); b.type='button'; b.title=n ? 'Niveau '+n+' / 4' : 'Non renseigné';
+    b.onclick=()=>{ if(n) N[u]=n; else delete N[u]; _grtSauver(); _grtRendre(); _grtFiche(u); }; L1.appendChild(b); });
+  const L2=lig('Rôle');
+  [{ic:'—', l:'aucun', i:-1}].concat(R.map((x,i)=>Object.assign({i}, x))).forEach(x=>{
+    const cur=(ens.roles||{})[u]; const b=_grtEl('button','grt-pb'+(((cur==null?-1:cur)===x.i)?' on':''), x.ic+' '+x.l); b.type='button'; b.disabled=!g;
+    b.onclick=()=>{ ens.roles=ens.roles||{}; if(x.i<0) delete ens.roles[u]; else { ens.roles[u]=x.i; ens.opt.roles=true; } _grtSauver(); _grtRendre(); fermerGrtPop(); }; L2.appendChild(b); });
+  if(!g) p.appendChild(_grtEl('div', null, 'Rôle : seulement dans un groupe.')).style.cssText='font-size:11px;color:var(--tx3)';
+  const ou=(ens.libres||{})[u] ? 'libre' : g ? 'grp' : 'col';
+  if(ou!=='col' && !(g && g.val)){ const b=_grtEl('button','grt-pb','↩ Remettre en colonne'); b.type='button'; b.style.marginTop='6px'; b.onclick=()=>{ _grtRetirer(ens, u); _grtSauver(); _grtRendre(); fermerGrtPop(); }; p.appendChild(b); }
+  document.body.appendChild(p);
+}
+/* cours rattachés */
+function _grtPopCours(anc){
+  fermerGrtPop(); const ens=_grt.ens, p=_grtEl('div','grt-pop'), r=anc.getBoundingClientRect();
+  p.style.left=Math.max(4, Math.min(window.innerWidth-260, r.left))+'px'; p.style.top=(r.bottom+6)+'px'; p.style.maxHeight='70vh'; p.style.overflow='auto';
+  p.appendChild(_grtEl('div','grt-pt','📅 Cours'));
+  const L=_grtCoursProchains(_grt.cls), tous=new Set((ens.cours||[]).concat(L.map(s=>s.slotKey)));
+  if(!tous.size) p.appendChild(_grtEl('div', null, 'Aucun cours à venir dans l’emploi du temps.'));
+  [...tous].sort().forEach(sk=>{ const lab=_grtEl('label'); lab.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:12.5px;cursor:pointer';
+    const cb=_grtEl('input'); cb.type='checkbox'; cb.checked=(ens.cours||[]).indexOf(sk)>=0; cb.style.cssText='width:18px;height:18px';
+    cb.onchange=()=>{ ens.cours=(ens.cours||[]).filter(x=>x!==sk); if(cb.checked) ens.cours.push(sk); ens.cours.sort(); _grtSauver(); };
+    lab.appendChild(cb); lab.appendChild(_grtEl('span', null, _grtLibCours(sk))); p.appendChild(lab); });
+  const ok=_grtEl('button','grt-btn pri','OK'); ok.type='button'; ok.style.marginTop='8px'; ok.onclick=()=>{ fermerGrtPop(); _grtRendre(); }; p.appendChild(ok);
+  document.body.appendChild(p);
+}
+/* éditeur des rôles */
+function _grtEditerRoles(){
+  fermerGrtPop(); let ov=document.getElementById('grt-roles'); if(ov) ov.remove();
+  ov=_grtEl('div'); ov.id='grt-roles'; ov.style.cssText='position:fixed;inset:0;z-index:520;background:rgba(20,18,10,.45);display:flex;align-items:center;justify-content:center;padding:14px';
+  ov.addEventListener('pointerdown', e=>{ if(e.target===ov){ ov.remove(); _grtRendre(); } });
+  const box=_grtEl('div'); box.style.cssText='background:var(--sur);color:var(--tx);border-radius:14px;padding:14px;width:min(460px,100%);max-height:90vh;overflow:auto'; ov.appendChild(box);
+  box.appendChild(_grtEl('div','grt-pt','🎭 Rôles des groupes'));
+  const R=_grtRoles(); let choix=-1; const liste=_grtEl('div'), grille=_grtEl('div','grt-ico'); box.appendChild(liste);
+  const dessiner=()=>{ liste.textContent='';
+    R.forEach((x,i)=>{ const r=_grtEl('div'); r.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px';
+      const b=_grtEl('button','grt-pb'+(choix===i?' on':''), x.ic); b.type='button'; b.style.cssText='font-size:18px;width:44px'; b.title='Changer l’icône'; b.onclick=()=>{ choix=choix===i?-1:i; dessiner(); }; r.appendChild(b);
+      const inp=_grtEl('input'); inp.value=x.l; inp.style.cssText='flex:1;font:inherit;font-size:13px;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx)';
+      inp.oninput=()=>{ x.l=inp.value; _grtSauver(); }; r.appendChild(inp);
+      const d=_grtEl('button','grt-pb','🗑'); d.type='button'; d.title='Supprimer ce rôle'; d.onclick=()=>{ R.splice(i,1);
+        Object.values(S.grpTravail||{}).forEach(L=>(L||[]).forEach(e=>Object.keys(e.roles||{}).forEach(k=>{ if(e.roles[k]===i) delete e.roles[k]; else if(e.roles[k]>i) e.roles[k]--; })));
+        choix=-1; _grtSauver(); dessiner(); }; r.appendChild(d);
+      liste.appendChild(r); });
+    const a=_grtEl('button','grt-pb','＋ Ajouter un rôle'); a.type='button'; a.onclick=()=>{ R.push({ic:'⭐', l:'Nouveau rôle'}); choix=R.length-1; _grtSauver(); dessiner(); }; liste.appendChild(a);
+    grille.style.display=choix<0?'none':'grid'; };
+  GRT_ICONES.forEach(ic=>{ const b=_grtEl('button', null, ic); b.type='button'; b.onclick=()=>{ if(choix>=0){ R[choix].ic=ic; choix=-1; _grtSauver(); dessiner(); } }; grille.appendChild(b); });
+  box.appendChild(grille);
+  const f=_grtEl('button','grt-btn pri','Fermer'); f.type='button'; f.style.marginTop='10px'; f.onclick=()=>{ ov.remove(); _grtRendre(); }; box.appendChild(f);
+  dessiner(); document.body.appendChild(ov);
+}
+/* entrées : Plus › Placement, Affinités, volet droit (Séance) */
+function _grtMenuPlus(){
+  if(document.getElementById('pm-grt')) return;
+  const zone=document.querySelector('.pm-zone--placement'); if(!zone) return;
+  const b=document.createElement('button'); b.className='pmcard'; b.id='pm-grt'; b.type='button';
+  const ic=document.createElement('span'); ic.className='pmcard-ic'; ic.textContent='👥'; b.appendChild(ic); b.appendChild(document.createTextNode('Groupes'));
+  b.onclick=()=>{ try{ closePlusMenu(); }catch(e){} openGroupes(typeof curCls!=='undefined' ? curCls : ''); };
+  zone.appendChild(b);
+}
+try{ _grtMenuPlus(); }catch(e){}
+/** Lignes « 👥 nom · n groupes » des ensembles rattachés au cours (volet droit). createElement. */
+function _grtLignesCours(cls, slotKey){
+  return _grtPourCours(((S.grpTravail||{})[cls])||[], slotKey).map(e=>{
+    const b=document.createElement('button'); b.type='button'; b.className='vd-priority-item'; b.style.cssText='width:100%;cursor:pointer;border:0;background:transparent;text-align:left;font-family:inherit';
+    const nm=document.createElement('span'); nm.className='vd-pi-name'; nm.textContent='👥 '+e.nom; b.appendChild(nm);
+    const bd=document.createElement('span'); bd.className='vd-pi-badge'; bd.style.background='#DCFCE7'; bd.style.color='#166534'; bd.textContent=(e.grp||[]).length+' groupe'+((e.grp||[]).length>1?'s':''); b.appendChild(bd);
+    b.onclick=()=>openGroupes(cls, e.id); return b; });
+}
+
 
 /* ═══ V11.5.20 — RECHERCHE DANS VOS DONNÉES (lot 3, demande du 04/11) ═════════
    Ctrl+K / 🔎 : dès 3 caractères, une rubrique « Dans vos données » sous les
