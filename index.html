@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.31';
+const APP_VERSION = 'v11.5.32';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20040,6 +20040,7 @@ const _PAL_ACTIONS = [
 // reste tel quel : il dessine aussi les tuiles). Même forme que le lanceur.
 const _PAL_ECRANS_EXTRA = [
   {ic:'💞', full:'Affinités · Avec qui travailler (sondage des élèves)', kw:'affinites affinite sondage avec qui travailler binome groupe sociogramme', fn:()=>{ openAffinites(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.26
+  {ic:'📊', full:'Évaluations · Carnet, évaluations, bibliothèque de grilles', kw:'evaluations evaluation notes carnet grille criteres bareme niveaux indicateurs pronote', fn:()=>{ openEvaluations({cls:(typeof curCls!=='undefined' ? curCls : '')}); }},   // V11.5.32
   {ic:'👥', full:'Groupes · Générateur de groupes de travail', kw:'groupes groupe generateur travail equipes binomes ilots roles', fn:()=>{ _grtChoix(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.30
   {ic:'🗒', full:'Bloc-notes · À faire, à rendre, rappels, notes', kw:'bloc notes carnet a faire rendre rappel note semaine tdl', fn:()=>{ openBlocNotes(); }},   // V11.5.23
   {ic:'👁️', full:'Espace prof · Ma semaine est-elle prête ?',
@@ -37859,6 +37860,7 @@ function openStatusPopup(name, seatEl, evt, keepPos=false){
   try{ _fsBouton(name); }catch(e){ console.warn('[fs]', e); }   // V11.5.16 — fiche de suivi
   try{ _jnlBoutonPopup(name); }catch(e){ console.warn('[journal]', e); }   // V11.5.18 — journal de l'élève
   try{ if(typeof _affLignePopup==='function') _affLignePopup(name); }catch(e){ console.warn('[affinités]', e); }   // V11.5.26
+  try{ if(typeof _evlLignePopup==='function') _evlLignePopup(name); }catch(e){ console.warn('[évaluations]', e); }   // V11.5.32
   // V035-V11.3.21 — icône épingle (visible si l'élève occupe un siège dans le plan actif)
   _refreshStPinIcon();
   const activeKeys=getStatutKeys(name);
@@ -46336,6 +46338,9 @@ function renderVoletDroit(){
   // V11.5.30 — 👥 Groupes de travail rattachés à ce cours
   try{ const _grtL=(typeof _grtLignesCours==='function') ? _grtLignesCours(clsCode, slotKey) : [];
     if(_grtL.length){ const {wrap, body}=mkSection('vd-grt','👥','Groupes', _grtL.length); _grtL.forEach(x=>body.appendChild(x)); scroll.appendChild(wrap); } }catch(e){ console.warn('[groupes]', e); }
+  // V11.5.32 — 📊 Évaluations rattachées à ce cours
+  try{ const _evlL=(typeof _evlLignesCours==='function') ? _evlLignesCours(clsCode, slotKey) : [];
+    if(_evlL.length){ const {wrap, body}=mkSection('vd-evl','📊','Évaluation', _evlL.length); _evlL.forEach(x=>body.appendChild(x)); scroll.appendChild(wrap); } }catch(e){ console.warn('[évaluations]', e); }
 
   // ── 2. Documents à remettre (absents cours préc.) + V019-v161 sous-volet traces EBEP ──
   // V11.3.84 — docs distribués au cours PRÉCÉDENT ; même liste que le modal Séance (clés prev_doc_<nom>_<i> partagées).
@@ -58584,6 +58589,7 @@ function _jnlFicheEntrees(src, uid, cls, du, au){
     const h=/_(\d{2}:\d{2})/.exec(String(se.slotKey));
     out.push({genre:'eval', dateStr:String(se.slotKey).slice(0,10), heure:h?h[1]:'', slotKey:se.slotKey, comps});
   });
+  (src.evals||[]).forEach(v=>{ const t=v && v.res && v.res[uid]; if(t && dans(v.date)) out.push({genre:'evl', dateStr:v.date, heure:v.heure||'', texte:t}); });   // V11.5.32
   ((src.fsHist||{})[uid]||[]).forEach(p=>{
     if(p && dans(p.depuis)) out.push({genre:'fs', dateStr:p.depuis, heure:'', texte:'Fiche de suivi posée'});
     if(p && dans(p.jusqua)) out.push({genre:'fs', dateStr:p.jusqua, heure:'', texte:'Fiche de suivi retirée'});
@@ -58683,6 +58689,7 @@ function _jnlSourcesFiche(cls){
   let def=[]; try{ def=getStatuts(); }catch(e){ def=[]; }
   return {J:S.journalEleves||{}, obsCours:S.obsCours, statutsCours:S.statutsCours, participations:S.participations, tafCoches:S.tafCoches,
     seances, statutsDef:def, fs:S.ficheSuivi||{}, fsHist:S.ficheSuiviHist||{},
+    evals:(()=>{ try{ return _evlPourJournal(cls); }catch(e){ return []; } })(),   // V11.5.32
     libComp:(c)=>{ try{ const l=String(getCompLabelForCourse(c, cls)||c); return l.length>48 ? l.slice(0,47)+'…' : l; }catch(e){ return c; } }};
 }
 function _jnlRendreFiche(){
@@ -58709,7 +58716,7 @@ function _jnlRendreFiche(){
   hd.appendChild(btn('＋ Note','background:var(--acc);color:#fff;border-color:var(--acc)', ()=>_jnlComposer({uids:[uid], cls, apres:_jnlRendreFiche})));
   hd.appendChild(btn('✕','', _jnlFermerFiche, 'Fermer'));
   const FILTRES=[{v:'tout',l:'Tout'},{v:'note',l:'Mes notes'},{v:'obs',l:'Observations'},{v:'statut',l:'Statuts'},{v:'eval',l:'Évaluations'},{v:'fs',l:'Fiche de suivi'}];
-  const garde=(e)=>_jnlFiltre==='tout' || (_jnlFiltre==='note' && e.genre==='note') || (_jnlFiltre==='eval' && e.genre==='eval') || (_jnlFiltre==='fs' && e.genre==='fs')
+  const garde=(e)=>_jnlFiltre==='tout' || (_jnlFiltre==='note' && e.genre==='note') || (_jnlFiltre==='eval' && (e.genre==='eval' || e.genre==='evl')) || (_jnlFiltre==='fs' && e.genre==='fs')
     || (_jnlFiltre==='obs' && e.genre==='cours' && !!e.texte) || (_jnlFiltre==='statut' && e.genre==='cours' && (e.statuts.length || e.partic || e.tnf));
   const vues=()=>tout.filter(garde);
   const fb=_jnlEl('div','display:flex;flex-wrap:wrap;gap:5px;padding:9px 16px;border-bottom:1px solid var(--brd);align-items:center'); box.appendChild(fb);
@@ -58746,6 +58753,8 @@ function _jnlRendreFiche(){
     } else if(e.genre==='eval'){
       z.appendChild(_jnlPuce('🎯 Compétences','#CCFBF1','#115E59'));
       e.comps.forEach(c=>z.appendChild(_jnlEl('span','color:var(--tx)', c.label+' ')).appendChild(_jnlEl('b',null,c.niv)));
+    } else if(e.genre==='evl'){   // V11.5.32
+      z.appendChild(_jnlPuce('📊 Évaluation','#FEF9C3','#854D0E')); z.appendChild(_jnlEl('span','color:var(--tx)', e.texte));
     } else {
       z.appendChild(_jnlPuce('FS','#E0E7FF','#3730A3')); z.appendChild(_jnlEl('span','color:var(--tx)', e.texte));
     }
@@ -59791,7 +59800,7 @@ function _bnTuileAccueil(){
   ref.parentNode.appendChild(b);
 }
 const ACCUEIL_ORDRE=['Vue hebdo',"Planning d'affectation",'Progression','#bn-tile','Synthèse','Suivi des cours','Plans de classe','Référentiels',
-  'Suivi RRUPN','Suivi Pix','Bilans & Export','EBEP','#sdc-tile','#imp-tile','#jnl-tile','Paramètres','#reu-tile','#help-faq-tile'];
+  'Suivi RRUPN','Suivi Pix','Bilans & Export','EBEP','#sdc-tile','#imp-tile','#jnl-tile','Paramètres','#reu-tile','#help-faq-tile','#evl-tile'];
 /** Range les tuiles (demande du 06/11) ; Mode démo quitte l'accueil (Paramètres › Données). Idempotent. */
 function _accueilOrdonner(){
   try{
@@ -60407,6 +60416,7 @@ function _grtRendre(){
   const pm=(t, d)=>{ const b=_grtEl('button', null, t); b.type='button'; b.style.cssText='border:0;background:transparent;font-size:15px;font-weight:800;width:26px;height:26px;cursor:pointer;color:var(--tx)'; b.onclick=()=>{ ens.nbG=Math.max(2, Math.min(_grt.eleves.length||2, (ens.nbG||2)+d)); _grtSauver(); _grtRendre(); }; return b; };
   nb.appendChild(pm('−', -1)); const nbl=_grtEl('b', null, (ens.nbG||2)+' groupes'); nbl.style.cssText='font-size:12px;min-width:66px;text-align:center'; nb.appendChild(nbl); nb.appendChild(pm('+', 1));
   btn('✨ Proposer', 'Répartir les élèves non verrouillés (les groupes ✓ validés sont gardés)', _grtProposerUI, 'grt-btn pri');
+  btn('📊 Évaluer', 'Évaluer ces groupes (une évaluation rattachée à cet ensemble)', ()=>{ const ev=_evlPourEnsemble(cls, ens); closeGroupes(); openEvaluations({cls, vue:'evals', evId:ev.id, saisie:true}); });   // V11.5.32
   btn('↺', 'Remettre en colonne tout ce qui n’est pas validé', ()=>{ ens.libres={}; ens.grp=(ens.grp||[]).filter(g=>g.val); _grtSauver(); _grtRendre(); });
   const info=_grtEl('span'); info.style.cssText='font-size:11.5px;color:var(--tx3);margin-left:auto'; bar.appendChild(info);
   btn('✕', 'Fermer', closeGroupes);
@@ -60435,6 +60445,7 @@ function _grtRendre(){
     if(o.souhaits) h.appendChild(_grtEl('span','ind'+(st.souhaits<Math.ceil(st.n/2)?' w':''), '♥ '+st.souhaits+'/'+st.n));
     if(o.niveau && st.niveau!=null) h.appendChild(_grtEl('span','ind', '📈 '+st.niveau));
     if(o.sepa && st.conflits) h.appendChild(_grtEl('span','ind b', '⛔ '+st.conflits));
+    try{ const nt=_evlNoteGroupe(cls, ens.id, g.id); if(nt) h.appendChild(_grtEl('span','ind', '📊 '+nt)); }catch(e){}   // V11.5.32
     if(o.roles){ const r=_grtEl('button','v','🎭'); r.type='button'; r.title='Distribuer les rôles au hasard'; r.onpointerdown=e=>e.stopPropagation();
       r.onclick=()=>{ g.m.forEach(u=>delete ens.roles[u]); Object.assign(ens.roles, _grtRolesDistribuer(g.m, R.length)); _grtSauver(); _grtRendre(); }; h.appendChild(r); }
     const v=_grtEl('button','v ok', g.val?'✓ validé':'✓'); v.type='button'; v.title=g.val?'Déverrouiller':'Valider ce groupe (verrouillé, gardé par « Proposer »)';
@@ -60641,6 +60652,448 @@ function _grtLignesCours(cls, slotKey){
     const bd=document.createElement('span'); bd.className='vd-pi-badge'; bd.style.background='#DCFCE7'; bd.style.color='#166534'; bd.textContent=(e.grp||[]).length+' groupe'+((e.grp||[]).length>1?'s':''); b.appendChild(bd);
     b.onclick=()=>openGroupes(cls, e.id); return b; });
 }
+/* ══ V11.5.32 — 📊 ÉVALUATIONS (carnet, évaluations, bibliothèque de grilles) ════
+   Bibliothèque : S.evlGrilles = [{id, titre, ic, portee:{type:'tous'|'niveau'|'classe', val}, tags:[],
+     niveaux:['Non atteint','Partiel','Atteint','Dépassé'] (points = rang), criteres:[{id, l, poids, comp, ind:[…]}], cree, maj}].
+   Évaluations : S.evaluations = [{id, cls, titre, type:'eval'|'groupe'|'classe'|'dm', date, slotKey, grilleId,
+     mode:'crit'|'note'|'both', noteCalc, bareme, coef, cible:{type:'classe'|'ens'|'sel', ensId, uids}, parGroupe,
+     res:{uid:{niv:{critId:n}, note, code}}, resG:{groupeId:{niv:{critId:n}}}, cree, maj}].
+   Note calculée = Σ(niveau × poids) / Σ(max × poids) × barème, arrondie au demi-point, sur les critères renseignés.
+   Groupe : niveaux saisis pour le groupe, hérités par chaque membre, ajustables élève par élève.
+   (Les « évaluations de compétences » des séances — evalComps — restent inchangées.) */
+const EVL_TYPES=[{id:'eval', ic:'📝', l:'Évaluation'}, {id:'groupe', ic:'👥', l:'Travail de groupe'}, {id:'classe', ic:'✋', l:'Travail en classe'}, {id:'dm', ic:'🏠', l:'Devoir maison'}];
+const EVL_NIV_DEFAUT=['Non atteint','Partiel','Atteint','Dépassé'];
+const EVL_CODES=['Abs','Disp','NR'];
+const EVL_NIV_COUL=[['#FEE2E2','#991B1B'],['#FEF3C7','#92400E'],['#DCFCE7','#166534'],['#DBEAFE','#1E40AF'],['#EDE9FE','#5B21B6'],['#CCFBF1','#115E59']];
+function _evlGrilleExemple(){
+  const c=(l, poids, comp, ind)=>({id:'c'+Math.random().toString(36).slice(2,8), l, poids, comp, ind});
+  return {id:'gr'+Date.now().toString(36), titre:'Présentation orale', ic:'🎤', portee:{type:'tous', val:''}, tags:['oral','projet'], niveaux:EVL_NIV_DEFAUT.slice(),
+    criteres:[c('Voix',1,'',['Inaudible, lit ses notes','Audible par moments, lit souvent','Audible du fond de la salle, regarde le public','Varie le ton pour capter l’attention']),
+      c('Posture',1,'',['Dos au public, gestes parasites','Face au public mais figé','Face au public, gestes adaptés','Se déplace, montre le support']),
+      c('Support',1,'',['Absent ou illisible','Lisible mais surchargé','Clair, illustré','Sert vraiment l’explication']),
+      c('Contenu',2,'',['Hors sujet ou faux','Incomplet, quelques erreurs','Complet et juste','Complet, juste et approfondi']),
+      c('Temps',1,'',['Moins de 2 min ou plus de 8 min','Écart de plus d’une minute','Durée prévue, à une minute près','Durée prévue, bien rythmé'])], cree:Date.now(), maj:Date.now()};
+}
+
+/* ── Pures ── */
+/** Note calculée depuis les niveaux ; null tant qu'un critère n'est pas renseigné. Pure. */
+function _evlNoteCalc(grille, niv, bareme){
+  if(!grille || !niv) return null; const max=Math.max(1, (grille.niveaux||EVL_NIV_DEFAUT).length-1); let t=0, m=0;
+  let manque=false;
+  (grille.criteres||[]).forEach(c=>{ const n=niv[c.id]; if(n==null || n<0){ manque=true; return; } const p=Number(c.poids)||1; t+=n*p; m+=max*p; });
+  if(!m || manque) return null;   // note seulement quand tous les critères sont renseignés
+  return Math.round(2*t/m*(Number(bareme)||20))/2;
+}
+/** La grille s'applique-t-elle à la classe ? Pure. */
+function _evlGrilleApplicable(g, cls){
+  const p=(g && g.portee)||{type:'tous'}; if(p.type==='classe') return String(p.val).toLowerCase()===String(cls).toLowerCase();
+  if(p.type==='niveau') return String(cls).charAt(0)===String(p.val).charAt(0); return true;
+}
+/** Grilles filtrées : texte (titre, critères, étiquettes), portée, étiquette. Pure. */
+function _evlFiltrerGrilles(L, q, portee, tag){
+  const n=(s)=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const Q=n(q).trim();
+  return (L||[]).filter(g=>{
+    if(Q && !(n(g.titre).indexOf(Q)>=0 || (g.tags||[]).some(t=>n(t).indexOf(Q)>=0) || (g.criteres||[]).some(c=>n(c.l).indexOf(Q)>=0))) return false;
+    if(portee && portee!=='*'){ const p=g.portee||{type:'tous'};
+      if(/^\d$/.test(portee)){ if(!(p.type==='tous' || (p.type==='niveau' && String(p.val)===portee) || (p.type==='classe' && String(p.val).charAt(0)===portee))) return false; }
+      else if(!(p.type==='tous' || (p.type==='classe' && String(p.val).toLowerCase()===String(portee).toLowerCase()) || (p.type==='niveau' && String(p.val)===String(portee).charAt(0)))) return false; }
+    if(tag && (g.tags||[]).indexOf(tag)<0) return false;
+    return true; });
+}
+/** Résultat effectif d'un élève : niveaux (groupe puis ajustements), note, code, ajusté ? Pure. */
+function _evlResultat(ev, grille, uid, gid){
+  const r=((ev.res||{})[uid])||{}, G=gid ? (((ev.resG||{})[gid])||{}).niv||{} : {};
+  const niv=Object.assign({}, G, r.niv||{});
+  const ajuste=!!gid && Object.keys(r.niv||{}).some(k=>r.niv[k]!==G[k]);
+  let note=null;
+  if(r.code) note=null;
+  else if(ev.mode==='note') note=(r.note!=null && r.note!=='') ? Number(r.note) : null;
+  else if(ev.mode==='both') note=(r.note!=null && r.note!=='') ? Number(r.note) : (ev.noteCalc!==false ? _evlNoteCalc(grille, niv, ev.bareme) : null);
+  return {niv, note, code:r.code||'', ajuste, noteForcee:r.note!=null && r.note!==''};
+}
+/** Moyenne /20 pondérée par les coefficients (notes seulement, codes ignorés). Pure. */
+function _evlMoyenne(items){
+  let t=0, c=0; (items||[]).forEach(x=>{ if(x.note==null || isNaN(x.note)) return; const k=Number(x.coef)||1, b=Number(x.bareme)||20; t+=x.note/b*20*k; c+=k; });
+  return c ? Math.round(t/c*10)/10 : null;
+}
+/** Texte court du résultat (journal, carnet). Pure. */
+function _evlTexte(ev, grille, res){
+  if(res.code) return res.code;
+  const parts=[]; if(res.note!=null) parts.push(String(res.note).replace('.',',')+'/'+(ev.bareme||20));
+  if(ev.mode!=='note' && grille){ const N=grille.niveaux||EVL_NIV_DEFAUT; const L=(grille.criteres||[]).filter(c=>res.niv[c.id]!=null).map(c=>c.l+' '+res.niv[c.id]+'/'+(N.length-1)); if(L.length) parts.push(L.join(' · ')); }
+  return parts.join(' · ');
+}
+/** Échelle CSV (séparateur ;). Pure. */
+function _evlCsv(lignes){ return lignes.map(L=>L.map(x=>{ const s=String(x==null?'':x); return /[;"\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }).join(';')).join('\r\n'); }
+
+/* ── Données ── */
+function _evlGrilles(){ if(!Array.isArray(S.evlGrilles)){ S.evlGrilles=[_evlGrilleExemple()]; } return S.evlGrilles; }
+function _evlListe(){ if(!Array.isArray(S.evaluations)) S.evaluations=[]; return S.evaluations; }
+function _evlGrille(id){ return _evlGrilles().find(g=>g.id===id)||null; }
+function _evlDe(cls){ return _evlListe().filter(e=>e.cls===cls).sort((a,b)=>String(b.date).localeCompare(String(a.date)) || (b.cree||0)-(a.cree||0)); }
+function _evlType(id){ return EVL_TYPES.find(t=>t.id===id)||EVL_TYPES[0]; }
+let _evlSaveT=0;
+function _evlSauver(ev){ if(ev) ev.maj=Date.now(); clearTimeout(_evlSaveT); _evlSaveT=setTimeout(()=>{ try{ saveS(); }catch(e){} }, 300); }
+function _evlNouvelle(cls, o){
+  o=o||{}; const e=Object.assign({id:'ev'+Date.now().toString(36)+Math.floor(Math.random()*1e3), cls, titre:'Évaluation', type:'eval', date:_appToday(), slotKey:'', grilleId:'', mode:'note', noteCalc:true, bareme:20, coef:1,
+    cible:{type:'classe'}, parGroupe:false, res:{}, resG:{}, cree:Date.now(), maj:Date.now()}, o);
+  _evlListe().push(e); return e;
+}
+/** Élèves concernés et groupes (pour la saisie par groupe). */
+function _evlCible(ev){
+  const cls=ev.cls; let base=((S.cl[cls]||{}).students||[]).slice();
+  if(ev.slotKey){ try{ const sl=(buildYearSlots(cls)||[]).find(s=>s && s.slotKey===ev.slotKey); const M=sl && _docsDusMembres(sl, cls); if(M) base=base.filter(u=>M.has(u)); }catch(e){} }
+  const tri=(L)=>L.slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+  const c=ev.cible||{type:'classe'};
+  if(c.type==='ens'){ const ens=(((S.grpTravail||{})[cls])||[]).find(x=>x.id===c.ensId);
+    const G=((ens && ens.grp)||[]).map((g,i)=>({id:g.id, nom:'Groupe '+(i+1), m:g.m.slice()}));
+    const dans=new Set(G.flatMap(g=>g.m)); return {eleves:tri([...dans]), groupes:G, ens}; }
+  if(c.type==='sel') return {eleves:tri((c.uids||[]).filter(u=>base.indexOf(u)>=0 || ((S.cl[cls]||{}).students||[]).indexOf(u)>=0)), groupes:[]};
+  return {eleves:tri(base), groupes:[]};
+}
+function _evlGroupeDe(C, uid){ const g=(C.groupes||[]).find(x=>x.m.indexOf(uid)>=0); return g ? g.id : ''; }
+/** Évaluations rattachées à un cours. */
+function _evlDuCours(cls, slotKey){ return _evlListe().filter(e=>e.cls===cls && slotKey && e.slotKey===slotKey); }
+/** Entrées du journal : [{date, heure, res:{uid:texte}}]. */
+function _evlPourJournal(cls){
+  return _evlListe().filter(e=>e.cls===cls).map(ev=>{ const g=_evlGrille(ev.grilleId), C=_evlCible(ev), res={};
+    C.eleves.forEach(u=>{ const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C, u) : ''); const t=_evlTexte(ev, g, r); if(t) res[u]=_evlType(ev.type).ic+' '+ev.titre+' · '+t; });
+    const h=/_(\d{2}:\d{2})/.exec(String(ev.slotKey||'')); return {date:ev.date, heure:h?h[1]:'', res}; });
+}
+
+/* ── Page ── */
+let _evl={cls:'', vue:'carnet', evId:'', saisie:false, grId:'', q:'', portee:'*', tag:'', filtre:'*', icone:false};
+function _evlEl(tag, css, txt){ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
+function _evlBtn(t, css, fn, titre){ const b=_evlEl('button','padding:6px 12px;border-radius:9px;border:1.5px solid var(--brd);background:var(--sur);color:var(--tx);font-weight:800;font-size:12.5px;cursor:pointer;font-family:inherit;min-height:32px;'+(css||''), t); b.type='button'; if(titre) b.title=titre; b.onclick=fn; return b; }
+function _evlChip(t, on, fn, titre){ const b=_evlEl('button','font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;border:1.5px solid '+(on?'#1A3D1A':'var(--brd)')+';background:'+(on?'#1A3D1A':'var(--sur2)')+';color:'+(on?'#fff':'var(--tx2)')+';cursor:pointer;font-family:inherit;margin:2px;min-height:28px', t); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }
+function _evlNiv(n, on, titre, fn, css){ const C=EVL_NIV_COUL[n]||EVL_NIV_COUL[0]; const b=_evlEl('button','min-width:28px;min-height:28px;font-weight:800;font-size:12px;padding:2px 6px;border-radius:7px;cursor:pointer;font-family:inherit;margin:1px;border:1.5px solid transparent;'+(on?'background:'+C[0]+';color:'+C[1]:'background:var(--sur2);color:var(--tx3)')+';'+(css||''), String(n)); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }
+function _evlLab(t){ return _evlEl('div','font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);margin:10px 0 4px', t); }
+function openEvaluations(o){
+  o=o||{}; const L=_reuClasses();
+  _evl.cls=(o.cls && S.cl[o.cls]) ? o.cls : (typeof curCls!=='undefined' && S.cl[curCls] ? curCls : (_evl.cls && S.cl[_evl.cls] ? _evl.cls : (L[0]||'')));
+  _evl.vue=o.vue||'carnet'; _evl.evId=o.evId||''; _evl.saisie=!!o.saisie;
+  let pg=document.getElementById('evl-page'); if(pg) pg.remove();
+  pg=_evlEl('div','position:fixed;inset:0;z-index:465;background:var(--bg);color:var(--tx);display:flex;flex-direction:column;font-family:"DM Sans",sans-serif'); pg.id='evl-page';
+  document.body.appendChild(pg); _evlRendre();
+}
+function closeEvaluations(){ const pg=document.getElementById('evl-page'); if(pg) pg.remove(); try{ saveS(); }catch(e){} }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('evl-page') && !document.getElementById('evl-pop') && !document.getElementById('grt-page')){ closeEvaluations(); } });
+function _evlRendre(){
+  const pg=document.getElementById('evl-page'); if(!pg) return; const y=(document.getElementById('evl-corps')||{}).scrollTop||0; pg.textContent='';
+  const hd=_evlEl('div','display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--sur);border-bottom:1px solid var(--brd);flex-wrap:wrap'); pg.appendChild(hd);
+  hd.appendChild(_evlEl('span','font-family:Georgia,serif;font-size:21px','📊 Évaluations'));
+  const sc=_evlEl('select','padding:5px 8px;border:1.5px solid var(--brd);border-radius:9px;background:var(--sur2);color:var(--tx);font:inherit;font-weight:700;min-height:32px');
+  _reuClasses().forEach(c=>sc.appendChild(new Option(String(c).toUpperCase(), c))); sc.value=_evl.cls; sc.onchange=()=>{ _evl.cls=sc.value; _evl.evId=''; _evl.saisie=false; _evlRendre(); }; hd.appendChild(sc);
+  [['carnet','Carnet'],['evals','Évaluations'],['biblio','Bibliothèque']].forEach(([v,l])=>{ const b=_evlEl('button',null,l); b.type='button'; b.className='fp-tab'+(_evl.vue===v?' act':''); b.onclick=()=>{ _evl.vue=v; _evl.saisie=false; _evlRendre(); }; hd.appendChild(b); });
+  hd.appendChild(_evlEl('span','flex:1'));
+  hd.appendChild(_evlBtn('✕','', closeEvaluations, 'Fermer'));
+  const corps=_evlEl('div','flex:1;overflow:auto;padding:14px 16px 40px'); corps.id='evl-corps'; pg.appendChild(corps);
+  if(_evl.vue==='carnet') _evlRendreCarnet(corps);
+  else if(_evl.vue==='evals') (_evl.saisie ? _evlRendreSaisie(corps) : _evlRendreEvals(corps));
+  else _evlRendreBiblio(corps);
+  corps.scrollTop=y;
+}
+/* Carnet */
+function _evlRendreCarnet(corps){
+  const cls=_evl.cls, E=_evlDe(cls).slice().reverse().filter(e=>_evl.filtre==='*' || e.type===_evl.filtre);
+  const bar=_evlEl('div','display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:10px'); corps.appendChild(bar);
+  bar.appendChild(_evlChip('Tout', _evl.filtre==='*', ()=>{ _evl.filtre='*'; _evlRendre(); }));
+  EVL_TYPES.forEach(t=>bar.appendChild(_evlChip(t.ic+' '+t.l, _evl.filtre===t.id, ()=>{ _evl.filtre=t.id; _evlRendre(); })));
+  bar.appendChild(_evlEl('span','flex:1'));
+  bar.appendChild(_evlBtn('⬇ CSV','', ()=>_evlExporterCsv(cls, E), 'Exporter le carnet (tableur)'));
+  const bp=_evlBtn('⬇ Pronote','opacity:.5', ()=>{ alert('Export Pronote : il faut d’abord le format du fichier d’import Pronote (à fournir).'); }, 'Bientôt : il faut le format d’import Pronote'); bar.appendChild(bp);
+  if(!E.length){ corps.appendChild(_evlEl('div','padding:20px;color:var(--tx3)','Aucune évaluation pour '+String(cls).toUpperCase()+'. Onglet « Évaluations » → ＋ Nouvelle évaluation.')); return; }
+  const wrap=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:14px;overflow:auto'); corps.appendChild(wrap);
+  const T=_evlEl('table','border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px'); wrap.appendChild(T);
+  const th=(t, css)=>_evlEl('th','padding:7px 9px;text-align:left;font-size:10.5px;color:var(--tx3);background:var(--sur2);border-bottom:1px solid var(--brd);position:sticky;top:0;vertical-align:bottom;'+(css||''), t);
+  const h=_evlEl('tr'); T.appendChild(h); h.appendChild(th('Élève','left:0;z-index:2'));
+  const cache=E.map(ev=>({ev, g:_evlGrille(ev.grilleId), C:_evlCible(ev)}));
+  cache.forEach(({ev})=>{ const c=th(null,'cursor:pointer;min-width:90px'); c.title='Ouvrir la saisie';
+    c.appendChild(_evlEl('div','font-weight:800;color:var(--tx);font-size:12px;text-transform:none', _evlType(ev.type).ic+' '+ev.titre));
+    const p=String(ev.date).split('-'); c.appendChild(_evlEl('div','text-transform:none', (p[2]||'')+'/'+(p[1]||'')+(ev.mode!=='crit'?' · /'+ev.bareme+(ev.coef!=1?' ×'+ev.coef:''):' · niveaux')));
+    c.onclick=()=>{ _evl.vue='evals'; _evl.evId=ev.id; _evl.saisie=true; _evlRendre(); }; h.appendChild(c); });
+  h.appendChild(th('Moy. /20'));
+  const eleves=((S.cl[cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+  eleves.forEach(u=>{ const tr=_evlEl('tr'); T.appendChild(tr);
+    tr.appendChild(_evlEl('td','padding:6px 9px;border-bottom:1px solid var(--brd);font-weight:700;white-space:nowrap;position:sticky;left:0;background:var(--sur)', getFullName(u)||u));
+    const items=[];
+    cache.forEach(({ev,g,C})=>{ const td=_evlEl('td','padding:5px 9px;border-bottom:1px solid var(--brd);cursor:pointer;white-space:nowrap'); tr.appendChild(td);
+      td.onclick=()=>_evlPopEleve(ev.id, u, ()=>_evlRendre());
+      if(C.eleves.indexOf(u)<0){ td.textContent='·'; td.style.color='var(--tx3)'; td.style.cursor='default'; td.onclick=null; return; }
+      const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C, u) : '');
+      if(r.code){ td.textContent=r.code; td.style.color='var(--tx3)'; td.style.fontWeight='700'; return; }
+      if(r.note!=null){ td.appendChild(_evlEl('b',null,String(r.note).replace('.',','))); items.push({note:r.note, bareme:ev.bareme, coef:ev.coef}); }
+      else if(g && ev.mode!=='note'){ (g.criteres||[]).forEach(c=>{ const n=r.niv[c.id]; if(n!=null){ const C2=EVL_NIV_COUL[n]||EVL_NIV_COUL[0]; td.appendChild(_evlEl('span','display:inline-block;min-width:18px;text-align:center;font-weight:800;font-size:11px;padding:1px 4px;border-radius:5px;margin:0 1px;background:'+C2[0]+';color:'+C2[1], String(n))).title=c.l; } }); }
+      if(!td.childNodes.length){ td.textContent='—'; td.style.color='var(--tx3)'; }
+      if(r.ajuste) td.title='Ajusté pour cet élève (différent du groupe)'; });
+    const m=_evlMoyenne(items); tr.appendChild(_evlEl('td','padding:6px 9px;border-bottom:1px solid var(--brd);font-weight:800', m==null?'—':String(m).replace('.',',')));
+  });
+  corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px','Clic sur une colonne → la saisie de l’évaluation ; clic sur une case → la grille de l’élève. Abs / Disp / NR ne comptent pas dans la moyenne.'));
+}
+function _evlExporterCsv(cls, E){
+  const eleves=((S.cl[cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
+  const L=[['Élève'].concat(E.map(e=>e.titre+' ('+e.date+')'))];
+  eleves.forEach(u=>{ L.push([getFullName(u)||u].concat(E.map(ev=>{ const C=_evlCible(ev); if(C.eleves.indexOf(u)<0) return ''; const g=_evlGrille(ev.grilleId), r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C,u) : ''); return r.code || (r.note!=null ? String(r.note).replace('.',',') : _evlTexte(ev, g, r)); }))); });
+  const blob=new Blob(['﻿'+_evlCsv(L)], {type:'text/csv;charset=utf-8'});
+  try{ saveBlobFile(blob, 'carnet-'+cls+'-'+_appToday()+'.csv'); }catch(e){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='carnet-'+cls+'.csv'; a.click(); }
+}
+/* Évaluations : liste + fiche */
+function _evlRendreEvals(corps){
+  const cls=_evl.cls, E=_evlDe(cls); let ev=E.find(e=>e.id===_evl.evId)||E[0]||null; if(ev) _evl.evId=ev.id;
+  const row=_evlEl('div','display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap'); corps.appendChild(row);
+  const lst=_evlEl('div','flex:1;min-width:250px;max-width:340px;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:10px'); row.appendChild(lst);
+  lst.appendChild(_evlBtn('＋ Nouvelle évaluation','width:100%;background:#166534;border-color:#166534;color:#fff;margin-bottom:8px', ()=>{ const e=_evlNouvelle(cls); _evl.evId=e.id; _evlSauver(e); _evlRendre(); }));
+  if(!E.length) lst.appendChild(_evlEl('div','padding:8px;color:var(--tx3);font-size:12.5px','Aucune évaluation.'));
+  E.forEach(e=>{ const it=_evlEl('div','padding:8px 10px;border-radius:10px;cursor:pointer;border:1.5px solid '+(ev&&e.id===ev.id?'#1A3D1A':'transparent')+';background:'+(ev&&e.id===ev.id?'var(--sur2)':'transparent')); it.className='evl-it';
+    it.appendChild(_evlEl('div','font-weight:800;font-size:13.5px', _evlType(e.type).ic+' '+e.titre));
+    const g=_evlGrille(e.grilleId), p=String(e.date).split('-');
+    it.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3)', (p[2]||'')+'/'+(p[1]||'')+(g?' · '+g.titre:'')+' · '+({crit:'critères seuls', note:'note seule', both:'critères + note'}[e.mode])+(e.mode!=='crit'?' /'+e.bareme:'')+(e.coef!=1?' ×'+e.coef:'')));
+    it.onclick=()=>{ _evl.evId=e.id; _evlRendre(); }; lst.appendChild(it); });
+  if(!ev) return;
+  const f=_evlEl('div','flex:2;min-width:320px;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:12px 14px'); f.id='evl-fiche'; row.appendChild(f);
+  const maj=()=>{ _evlSauver(ev); _evlRendre(); };
+  const inp=(val, fn, css)=>{ const i=_evlEl('input','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px;'+(css||'')); i.value=val==null?'':val; i.onchange=()=>{ fn(i.value); maj(); }; return i; };
+  const t=inp(ev.titre, v=>{ ev.titre=v.trim()||'Évaluation'; }, 'width:100%;font-size:15px;font-weight:800'); t.id='evl-titre'; f.appendChild(t);
+  f.appendChild(_evlLab('Type')); const ty=_evlEl('div'); f.appendChild(ty);
+  EVL_TYPES.forEach(x=>ty.appendChild(_evlChip(x.ic+' '+x.l, ev.type===x.id, ()=>{ ev.type=x.id; maj(); })));
+  f.appendChild(_evlLab('Quand')); const qd=_evlEl('div','display:flex;gap:6px;flex-wrap:wrap'); f.appendChild(qd);
+  const d=inp(ev.date, v=>{ ev.date=v||_appToday(); ev.slotKey=''; }); d.type='date'; qd.appendChild(d);
+  const sk=_evlEl('select','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px'); sk.appendChild(new Option('— pas de cours rattaché —',''));
+  let sl=[]; try{ sl=(buildYearSlots(ev.cls)||[]).filter(s=>s && s.dateStr===ev.date); }catch(e){}
+  sl.forEach(s=>sk.appendChild(new Option('Cours de '+s.debut, s.slotKey))); if(ev.slotKey && !sl.some(s=>s.slotKey===ev.slotKey)) sk.appendChild(new Option(ev.slotKey, ev.slotKey));
+  sk.value=ev.slotKey||''; sk.onchange=()=>{ ev.slotKey=sk.value; maj(); }; qd.appendChild(sk);
+  f.appendChild(_evlLab('Qui')); const qu=_evlEl('div'); f.appendChild(qu);
+  const c=ev.cible=ev.cible||{type:'classe'}, ensL=((S.grpTravail||{})[ev.cls])||[];
+  qu.appendChild(_evlChip('Classe'+(ev.slotKey?' (élèves du cours)':''), c.type==='classe', ()=>{ ev.cible={type:'classe'}; ev.parGroupe=false; maj(); }));
+  qu.appendChild(_evlChip('👥 Groupes', c.type==='ens', ensL.length ? ()=>{ ev.cible={type:'ens', ensId:(c.ensId||ensL[0].id)}; ev.parGroupe=true; maj(); } : null, ensL.length?'':'Aucun ensemble de groupes pour cette classe'));
+  qu.appendChild(_evlChip('Quelques élèves', c.type==='sel', ()=>{ ev.cible={type:'sel', uids:c.uids||[]}; ev.parGroupe=false; maj(); }));
+  if(c.type==='ens'){ const se=_evlEl('select','font:inherit;padding:5px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);margin:4px 0;min-height:32px'); ensL.forEach(x=>se.appendChild(new Option(x.nom+' ('+(x.grp||[]).length+' groupes)', x.id))); se.value=c.ensId||''; se.onchange=()=>{ c.ensId=se.value; maj(); }; qu.appendChild(se);
+    const pg=_evlEl('label','display:flex;align-items:center;gap:6px;font-size:12.5px;margin-top:4px'); const cb=_evlEl('input'); cb.type='checkbox'; cb.checked=ev.parGroupe!==false; cb.onchange=()=>{ ev.parGroupe=cb.checked; maj(); }; pg.appendChild(cb); pg.appendChild(document.createTextNode('Saisie par groupe (chaque membre hérite, ajustable par élève)')); qu.appendChild(pg); }
+  if(c.type==='sel'){ const box=_evlEl('div','display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:4px;max-height:150px;overflow:auto;border:1px solid var(--brd);border-radius:8px;padding:6px');
+    ((S.cl[ev.cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr')).forEach(u=>{ const l=_evlEl('label','font-size:12px;display:flex;gap:4px;align-items:center;min-width:150px'); const cb=_evlEl('input'); cb.type='checkbox'; cb.checked=(c.uids||[]).indexOf(u)>=0;
+      cb.onchange=()=>{ c.uids=(c.uids||[]).filter(x=>x!==u); if(cb.checked) c.uids.push(u); _evlSauver(ev); }; l.appendChild(cb); l.appendChild(document.createTextNode(getFullName(u)||u)); box.appendChild(l); }); qu.appendChild(box); }
+  f.appendChild(_evlLab('Grille')); const gs=_evlEl('select','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px;max-width:100%'); f.appendChild(gs);
+  gs.appendChild(new Option('— aucune (note seule) —',''));
+  _evlGrilles().filter(g=>_evlGrilleApplicable(g, ev.cls) || g.id===ev.grilleId).forEach(g=>gs.appendChild(new Option((g.ic||'')+' '+g.titre+' · '+(g.criteres||[]).length+' critères', g.id)));
+  gs.value=ev.grilleId||''; gs.onchange=()=>{ ev.grilleId=gs.value; if(!ev.grilleId) ev.mode='note'; else if(ev.mode==='note') ev.mode='both'; maj(); };
+  if(ev.grilleId){ f.appendChild(_evlLab('Mode')); const md=_evlEl('div'); f.appendChild(md);
+    [['crit','Critères seuls'],['note','Note seule'],['both','Critères + note']].forEach(([v,l])=>md.appendChild(_evlChip(l, ev.mode===v, ()=>{ ev.mode=v; maj(); }))); }
+  if(ev.mode!=='crit'){ const nr=_evlEl('div','display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end'); f.appendChild(nr);
+    if(ev.mode==='both'){ const z=_evlEl('div'); z.appendChild(_evlLab('Note')); z.appendChild(_evlChip('calculée depuis les critères', ev.noteCalc!==false, ()=>{ ev.noteCalc=true; maj(); })); z.appendChild(_evlChip('saisie libre', ev.noteCalc===false, ()=>{ ev.noteCalc=false; maj(); })); nr.appendChild(z); }
+    const zb=_evlEl('div'); zb.appendChild(_evlLab('Barème')); const b=inp(ev.bareme, v=>{ ev.bareme=Math.max(1, Number(String(v).replace(',','.'))||20); }, 'width:80px'); b.type='number'; zb.appendChild(b); nr.appendChild(zb);
+    const zc=_evlEl('div'); zc.appendChild(_evlLab('Coef.')); const k=inp(ev.coef, v=>{ ev.coef=Math.max(0, Number(String(v).replace(',','.'))||1); }, 'width:70px'); k.type='number'; k.step='0.5'; zc.appendChild(k); nr.appendChild(zc); }
+  const g=_evlGrille(ev.grilleId);
+  if(g && ev.mode==='both' && ev.noteCalc!==false){ const N=g.niveaux||EVL_NIV_DEFAUT; f.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px', N.map((n,i)=>n+' '+i).join(' · ')+' point(s) par critère'+((g.criteres||[]).some(x=>x.poids>1)?', pondérés ('+g.criteres.filter(x=>x.poids>1).map(x=>x.l+' ×'+x.poids).join(', ')+')':'')+' → ramené sur '+ev.bareme+'.')); }
+  const C=_evlCible(ev); const fait=C.eleves.filter(u=>{ const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C,u) : ''); return r.code || r.note!=null || Object.keys(r.niv).length; }).length;
+  const act=_evlEl('div','display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;align-items:center'); f.appendChild(act);
+  act.appendChild(_evlBtn('✎ Saisir','background:#166534;border-color:#166534;color:#fff', ()=>{ _evl.saisie=true; _evlRendre(); }));
+  act.appendChild(_evlEl('span','font-size:12px;color:var(--tx3)', fait+' / '+C.eleves.length+' élève'+(C.eleves.length>1?'s':'')+' saisi'+(fait>1?'s':'')));
+  act.appendChild(_evlEl('span','flex:1'));
+  act.appendChild(_evlBtn('🗑','', ()=>{ if(!confirm('Supprimer « '+ev.titre+' » et ses résultats ?')) return; const L=_evlListe(); L.splice(L.indexOf(ev),1); _evl.evId=''; _evlSauver(); _evlRendre(); }, 'Supprimer l’évaluation'));
+}
+/* Saisie (tableau) */
+function _evlRendreSaisie(corps){
+  const ev=_evlListe().find(e=>e.id===_evl.evId); if(!ev){ _evl.saisie=false; return _evlRendreEvals(corps); }
+  const g=_evlGrille(ev.grilleId), C=_evlCible(ev), crit=(ev.mode!=='note' && g) ? (g.criteres||[]) : [], N=(g && g.niveaux)||EVL_NIV_DEFAUT;
+  ev.res=ev.res||{}; ev.resG=ev.resG||{};
+  const hd=_evlEl('div','display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px'); corps.appendChild(hd);
+  hd.appendChild(_evlBtn('‹ Fiche','', ()=>{ _evl.saisie=false; _evlRendre(); }));
+  hd.appendChild(_evlEl('b','font-size:16px', _evlType(ev.type).ic+' '+ev.titre));
+  hd.appendChild(_evlEl('span','font-size:12px;color:var(--tx3)', String(ev.cls).toUpperCase()+' · '+ev.date.split('-').reverse().slice(0,2).join('/')+(ev.parGroupe && C.groupes.length?' · par groupe, ajustable par élève':'')));
+  if(!C.eleves.length){ corps.appendChild(_evlEl('div','color:var(--tx3);padding:12px','Aucun élève ciblé.')); return; }
+  const wrap=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:14px;overflow:auto'); corps.appendChild(wrap);
+  const T=_evlEl('table','border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px'); T.id='evl-saisie'; wrap.appendChild(T);
+  const th=(t)=>_evlEl('th','padding:7px 8px;text-align:left;font-size:10.5px;color:var(--tx3);background:var(--sur2);border-bottom:1px solid var(--brd);position:sticky;top:0;white-space:nowrap', t);
+  const h=_evlEl('tr'); T.appendChild(h); h.appendChild(th(''));
+  crit.forEach(c=>{ const x=th(c.l+(c.poids>1?' ×'+c.poids:'')); x.title=(c.comp?'🎯 '+c.comp+'\n':'')+(c.ind||[]).map((t,i)=>i+' '+N[i]+' : '+t).join('\n'); h.appendChild(x); });
+  if(ev.mode!=='crit') h.appendChild(th('Note /'+ev.bareme)); h.appendChild(th(''));
+  const td=(css)=>_evlEl('td','padding:5px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;'+(css||''));
+  const refaire=()=>{ _evlSauver(ev); _evlRendre(); };
+  const ligneEleve=(u, gid)=>{
+    const tr=_evlEl('tr'); tr.dataset.u=u; T.appendChild(tr); const r=ev.res[u]=ev.res[u]||{}; const R=_evlResultat(ev, g, u, gid);
+    const n=td('font-weight:700;'+(gid?'padding-left:20px':'')); n.textContent=getFullName(u)||u; if(R.ajuste){ n.appendChild(_evlEl('span','font-size:10.5px;color:#B45309;font-weight:600',' · ajusté')); } tr.appendChild(n);
+    const Gn=gid ? (((ev.resG[gid])||{}).niv||{}) : {};
+    crit.forEach(c=>{ const z=td(); tr.appendChild(z);
+      if(R.code){ z.textContent='—'; z.style.color='var(--tx3)'; return; }
+      N.forEach((nl,i)=>{ const propre=r.niv && r.niv[c.id]===i, herite=!(r.niv && r.niv[c.id]!=null) && Gn[c.id]===i;
+        const b=_evlNiv(i, propre||herite, nl+((c.ind||[])[i]?' — '+c.ind[i]:''), ()=>{ r.niv=r.niv||{}; if(r.niv[c.id]===i) delete r.niv[c.id]; else r.niv[c.id]=i; if(gid && r.niv[c.id]===Gn[c.id]) delete r.niv[c.id]; refaire(); }, herite?'opacity:.55':(propre && gid && Gn[c.id]!=null && Gn[c.id]!==i ? 'outline:2px dashed #F59E0B;outline-offset:1px':''));
+        z.appendChild(b); }); });
+    if(ev.mode!=='crit'){ const z=td(); tr.appendChild(z);
+      if(!R.code){ const i=_evlEl('input','width:62px;font:inherit;font-weight:800;padding:4px 6px;border:1.5px solid var(--brd);border-radius:7px;background:'+(R.noteForcee||ev.mode==='note'||ev.noteCalc===false?'var(--sur2)':'transparent')+';color:var(--tx)');
+        i.inputMode='decimal'; i.value=R.note==null?'':String(R.note).replace('.',','); i.placeholder='—'; i.title=ev.mode==='both' && ev.noteCalc!==false ? 'Calculée ; écrire une note pour la remplacer, vider pour revenir au calcul' : 'Note';
+        i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v===''){ delete r.note; } else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(Number(ev.bareme)||20, Number(v))); refaire(); };
+        z.appendChild(i); if(R.noteForcee && ev.mode==='both' && ev.noteCalc!==false) z.appendChild(_evlEl('span','font-size:10.5px;color:#B45309',' forcée')); } }
+    const zc=td(); tr.appendChild(zc);
+    EVL_CODES.forEach(k=>zc.appendChild(_evlChip(k, r.code===k, ()=>{ r.code=r.code===k?'':k; if(!r.code) delete r.code; refaire(); }, {Abs:'Absent',Disp:'Dispensé',NR:'Non rendu'}[k])));
+  };
+  if(ev.parGroupe && C.groupes.length){
+    C.groupes.forEach(G=>{ const tr=_evlEl('tr','background:var(--sur2)'); T.appendChild(tr); const rg=ev.resG[G.id]=ev.resG[G.id]||{niv:{}};
+      tr.appendChild(td('font-weight:800')).textContent='👥 '+G.nom+' · '+G.m.length;
+      crit.forEach(c=>{ const z=td(); tr.appendChild(z); N.forEach((nl,i)=>z.appendChild(_evlNiv(i, rg.niv[c.id]===i, nl+((c.ind||[])[i]?' — '+c.ind[i]:'')+' (tout le groupe)', ()=>{ if(rg.niv[c.id]===i) delete rg.niv[c.id]; else rg.niv[c.id]=i; refaire(); }))); });
+      if(ev.mode!=='crit'){ const v=_evlNoteCalc(g, rg.niv, ev.bareme); tr.appendChild(td('font-weight:800')).textContent=(ev.mode==='both' && ev.noteCalc!==false && v!=null) ? String(v).replace('.',',') : ''; }
+      tr.appendChild(td());
+      G.m.forEach(u=>ligneEleve(u, G.id)); });
+  } else C.eleves.forEach(u=>ligneEleve(u, ''));
+  corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px', (ev.parGroupe && C.groupes.length ? 'Ligne du groupe → appliquée à tous ses membres (pâle = hérité). Clic sur un niveau d’un élève → ajusté pour lui seul (cadre orange). ' : '')+'Survol d’un niveau → son indicateur. Abs / Disp / NR : l’élève n’est pas noté.'));
+}
+/* Fenêtre d'un élève (PdC, carnet) : niveaux, note, code, « Suivant ▸ » */
+function _evlPopEleve(evId, uid, apres){
+  const ev=_evlListe().find(e=>e.id===evId); if(!ev) return;
+  const g=_evlGrille(ev.grilleId), C=_evlCible(ev), gid=ev.parGroupe ? _evlGroupeDe(C, uid) : '', N=(g && g.niveaux)||EVL_NIV_DEFAUT, crit=(ev.mode!=='note' && g) ? (g.criteres||[]) : [];
+  let ov=document.getElementById('evl-pop'); if(ov) ov.remove();
+  ov=_evlEl('div','position:fixed;inset:0;z-index:480;background:rgba(20,18,10,.35);display:flex;align-items:center;justify-content:flex-end;padding:14px'); ov.id='evl-pop';
+  const fermer=()=>{ ov.remove(); document.removeEventListener('keydown', esc, true); _evlSauver(ev); if(apres) apres(); };
+  const esc=(e)=>{ if(e.key==='Escape'){ e.stopPropagation(); fermer(); } }; document.addEventListener('keydown', esc, true);
+  ov.addEventListener('pointerdown', e=>{ if(e.target===ov) fermer(); });
+  const box=_evlEl('div','background:var(--sur);color:var(--tx);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.3);width:min(380px,100%);max-height:92vh;overflow:auto;padding:12px 14px'); ov.appendChild(box);
+  ev.res=ev.res||{}; const r=ev.res[uid]=ev.res[uid]||{}; const R=_evlResultat(ev, g, uid, gid); const Gn=gid ? ((((ev.resG||{})[gid])||{}).niv||{}) : {};
+  box.appendChild(_evlEl('div','font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3)', '📊 '+ev.titre));
+  box.appendChild(_evlEl('div','font-weight:800;font-size:17px;margin:2px 0 6px', (getFullName(uid)||uid)+(gid?'  ·  👥 '+((C.groupes.find(x=>x.id===gid)||{}).nom||''):'')));
+  const cd=_evlEl('div'); box.appendChild(cd); EVL_CODES.forEach(k=>cd.appendChild(_evlChip(k, r.code===k, ()=>{ r.code=r.code===k?'':k; if(!r.code) delete r.code; _evlPopEleve(evId, uid, apres); })));
+  if(!r.code) crit.forEach(c=>{ const L=_evlEl('div','display:flex;align-items:center;gap:4px;margin:6px 0'); box.appendChild(L);
+    const lb=_evlEl('span','flex:1;font-weight:700;font-size:13px', c.l+(c.poids>1?' ×'+c.poids:'')); L.appendChild(lb);
+    N.forEach((nl,i)=>{ const propre=r.niv && r.niv[c.id]===i, herite=!(r.niv && r.niv[c.id]!=null) && Gn[c.id]===i;
+      L.appendChild(_evlNiv(i, propre||herite, nl+((c.ind||[])[i]?' — '+c.ind[i]:''), ()=>{ r.niv=r.niv||{}; if(r.niv[c.id]===i) delete r.niv[c.id]; else r.niv[c.id]=i; if(gid && r.niv[c.id]===Gn[c.id]) delete r.niv[c.id]; _evlPopEleve(evId, uid, apres); }, 'min-width:38px;min-height:36px;'+(herite?'opacity:.55':''))); }); });
+  if(!r.code && ev.mode!=='crit'){ const L=_evlEl('div','display:flex;align-items:center;gap:8px;margin:8px 0'); box.appendChild(L); L.appendChild(_evlEl('span','font-weight:700;flex:1','Note /'+ev.bareme));
+    const i=_evlEl('input','width:80px;font:inherit;font-weight:800;font-size:15px;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx)'); i.inputMode='decimal'; i.value=R.note==null?'':String(R.note).replace('.',','); i.placeholder='—';
+    i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v==='') delete r.note; else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(Number(ev.bareme)||20, Number(v))); _evlPopEleve(evId, uid, apres); }; L.appendChild(i); }
+  const idx=C.eleves.indexOf(uid), suiv=C.eleves[idx+1];
+  const bas=_evlEl('div','display:flex;gap:6px;margin-top:10px'); box.appendChild(bas);
+  if(suiv) bas.appendChild(_evlBtn('✓ Suivant ▸','background:#166534;border-color:#166534;color:#fff', ()=>{ _evlSauver(ev); _evlPopEleve(evId, suiv, apres); }, getFullName(suiv)||''));
+  bas.appendChild(_evlBtn('Fermer','', fermer));
+  document.body.appendChild(ov);
+}
+/* Bibliothèque */
+function _evlRendreBiblio(corps){
+  const cls=_evl.cls, Gall=_evlGrilles();
+  const bar=_evlEl('div','display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:10px'); corps.appendChild(bar);
+  const q=_evlEl('input','font:inherit;padding:6px 9px;border:1.5px solid var(--brd);border-radius:9px;background:var(--sur);color:var(--tx);min-width:220px;min-height:32px'); q.placeholder='🔍 Grille, critère, étiquette…'; q.value=_evl.q;
+  q.oninput=()=>{ _evl.q=q.value; clearTimeout(q._t); q._t=setTimeout(()=>{ _evlRendre(); const n=document.querySelector('#evl-page input[placeholder^="🔍"]'); if(n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); }; bar.appendChild(q);
+  [['*','Toutes'],['6','6e'],['5','5e'],['4','4e'],['3','3e'],[cls, String(cls).toUpperCase()]].forEach(([v,l])=>bar.appendChild(_evlChip(l, _evl.portee===v, ()=>{ _evl.portee=v; _evlRendre(); })));
+  const tags=[...new Set(Gall.flatMap(g=>g.tags||[]))].sort();
+  if(tags.length) bar.appendChild(_evlEl('span','width:8px'));
+  tags.forEach(t=>bar.appendChild(_evlChip('🏷 '+t, _evl.tag===t, ()=>{ _evl.tag=_evl.tag===t?'':t; _evlRendre(); })));
+  bar.appendChild(_evlEl('span','flex:1'));
+  bar.appendChild(_evlBtn('＋ Nouvelle grille','background:#166534;border-color:#166534;color:#fff', ()=>{ const g={id:'gr'+Date.now().toString(36), titre:'Nouvelle grille', ic:'📋', portee:{type:'tous', val:''}, tags:[], niveaux:EVL_NIV_DEFAUT.slice(), criteres:[{id:'c'+Date.now().toString(36), l:'Critère 1', poids:1, comp:'', ind:['','','','']}], cree:Date.now(), maj:Date.now()}; Gall.push(g); _evl.grId=g.id; _evlSauver(); _evlRendre(); }));
+  const L=_evlFiltrerGrilles(Gall, _evl.q, _evl.portee, _evl.tag);
+  let G=Gall.find(x=>x.id===_evl.grId); if(!G || L.indexOf(G)<0) G=L[0]||null; if(G) _evl.grId=G.id;
+  const row=_evlEl('div','display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap'); corps.appendChild(row);
+  const lst=_evlEl('div','flex:1;min-width:230px;max-width:300px;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:8px'); row.appendChild(lst);
+  if(!L.length) lst.appendChild(_evlEl('div','padding:8px;color:var(--tx3);font-size:12.5px','Aucune grille.'));
+  const libP=(p)=>!p||p.type==='tous' ? 'Tous niveaux' : p.type==='niveau' ? p.val+'e' : String(p.val).toUpperCase()+' seulement';
+  L.forEach(x=>{ const it=_evlEl('div','padding:8px 10px;border-radius:10px;cursor:pointer;border:1.5px solid '+(G&&x.id===G.id?'#1A3D1A':'transparent')+';background:'+(G&&x.id===G.id?'var(--sur2)':'transparent'));
+    it.appendChild(_evlEl('div','font-weight:800;font-size:13.5px', (x.ic||'📋')+' '+x.titre));
+    const nu=_evlListe().filter(e=>e.grilleId===x.id).length;
+    it.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3)', libP(x.portee)+' · '+(x.criteres||[]).length+' critère'+((x.criteres||[]).length>1?'s':'')+((x.tags||[]).length?' · 🏷 '+x.tags.join(', '):'')+(nu?' · utilisée '+nu+' fois':'')));
+    it.onclick=()=>{ _evl.grId=x.id; _evl.icone=false; _evlRendre(); }; lst.appendChild(it); });
+  if(!G) return;
+  const f=_evlEl('div','flex:3;min-width:340px;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:12px 14px;overflow:auto'); f.id='evl-grille'; row.appendChild(f);
+  const maj=(re)=>{ G.maj=Date.now(); _evlSauver(); if(re!==false) _evlRendre(); };
+  const fi=(val, fn, css, ph)=>{ const i=_evlEl('input','font:inherit;padding:5px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:30px;'+(css||'')); i.value=val==null?'':val; if(ph) i.placeholder=ph; i.onchange=()=>{ fn(i.value); maj(); }; return i; };
+  const top=_evlEl('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px'); f.appendChild(top);
+  const bi=_evlBtn(G.ic||'📋','font-size:18px;min-width:44px', ()=>{ _evl.icone=!_evl.icone; _evlRendre(); }, 'Icône'); top.appendChild(bi);
+  top.appendChild(fi(G.titre, v=>{ G.titre=v.trim()||'Grille'; }, 'flex:1;min-width:180px;font-weight:800;font-size:15px'));
+  top.appendChild(_evlBtn('⧉ Dupliquer','', ()=>{ const c=JSON.parse(JSON.stringify(G)); c.id='gr'+Date.now().toString(36); c.titre=G.titre+' (copie)'; c.cree=c.maj=Date.now(); c.criteres.forEach((x,i)=>x.id='c'+Date.now().toString(36)+i); Gall.push(c); _evl.grId=c.id; _evlSauver(); _evlRendre(); }));
+  top.appendChild(_evlBtn('🗑','', ()=>{ const nu=_evlListe().filter(e=>e.grilleId===G.id).length; if(!confirm('Supprimer la grille « '+G.titre+' » ?'+(nu?'\n'+nu+' évaluation(s) l’utilisent : elles garderont leurs notes mais perdront les niveaux.':''))) return; Gall.splice(Gall.indexOf(G),1); _evl.grId=''; _evlSauver(); _evlRendre(); }, 'Supprimer la grille'));
+  if(_evl.icone){ const gr=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:3px;padding:8px;border:1px solid var(--brd);border-radius:10px;max-height:180px;overflow:auto;margin-bottom:8px'); f.appendChild(gr);
+    (typeof GRT_ICONES!=='undefined' ? GRT_ICONES : ['📋','🎤','🔬','🛠️','📐','🗂️']).forEach(ic=>{ const b=_evlEl('button','font-size:20px;height:38px;border:0;background:transparent;border-radius:8px;cursor:pointer', ic); b.type='button'; b.onclick=()=>{ G.ic=ic; _evl.icone=false; maj(); }; gr.appendChild(b); }); }
+  const meta=_evlEl('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px'); f.appendChild(meta);
+  meta.appendChild(_evlEl('span','font-weight:700;color:var(--tx3)','Portée'));
+  const ps=_evlEl('select','font:inherit;padding:5px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:30px'); ps.appendChild(new Option('Tous niveaux','tous|'));
+  ['6','5','4','3'].forEach(n=>ps.appendChild(new Option(n+'e','niveau|'+n))); _reuClasses().forEach(c=>ps.appendChild(new Option(String(c).toUpperCase()+' seulement','classe|'+c)));
+  ps.value=((G.portee||{}).type||'tous')+'|'+((G.portee||{}).val||''); ps.onchange=()=>{ const [t,v]=ps.value.split('|'); G.portee={type:t, val:v}; maj(); }; meta.appendChild(ps);
+  meta.appendChild(_evlEl('span','font-weight:700;color:var(--tx3);margin-left:8px','Étiquettes'));
+  meta.appendChild(fi((G.tags||[]).join(', '), v=>{ G.tags=[...new Set(String(v).split(/[,;]/).map(x=>x.trim().toLowerCase()).filter(Boolean))]; }, 'min-width:180px', 'oral, projet…'));
+  const N=G.niveaux=G.niveaux||EVL_NIV_DEFAUT.slice();
+  const T=_evlEl('table','border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px'); f.appendChild(T);
+  const h=_evlEl('tr'); T.appendChild(h);
+  const th=(css)=>{ const x=_evlEl('th','padding:6px;text-align:left;background:var(--sur2);border-bottom:1px solid var(--brd);vertical-align:bottom;'+(css||'')); h.appendChild(x); return x; };
+  th('width:18%').appendChild(_evlEl('span','font-size:10.5px;color:var(--tx3);text-transform:uppercase','Critère'));
+  N.forEach((nl,i)=>{ const x=th(); const C2=EVL_NIV_COUL[i]||EVL_NIV_COUL[0]; x.appendChild(_evlEl('span','display:inline-block;min-width:20px;text-align:center;font-weight:800;padding:1px 5px;border-radius:6px;margin-right:4px;background:'+C2[0]+';color:'+C2[1], String(i)));
+    x.appendChild(fi(nl, v=>{ N[i]=v.trim()||('Niveau '+i); }, 'width:calc(100% - 30px);font-size:11.5px;font-weight:700')); });
+  const tn=th('width:70px;white-space:nowrap');
+  tn.appendChild(_evlBtn('−','padding:2px 8px;min-height:26px', ()=>{ if(N.length<=2) return; N.pop(); (G.criteres||[]).forEach(c=>{ c.ind=(c.ind||[]).slice(0,N.length); }); maj(); }, 'Un niveau de moins'));
+  tn.appendChild(_evlBtn('+','padding:2px 8px;min-height:26px', ()=>{ if(N.length>=6) return; N.push('Niveau '+N.length); maj(); }, 'Un niveau de plus'));
+  (G.criteres||[]).forEach((c,ci)=>{ const tr=_evlEl('tr'); T.appendChild(tr);
+    const a=_evlEl('td','padding:6px;border-bottom:1px solid var(--brd);vertical-align:top'); tr.appendChild(a);
+    a.appendChild(fi(c.l, v=>{ c.l=v.trim()||'Critère'; }, 'width:100%;font-weight:800'));
+    const ln=_evlEl('div','display:flex;gap:4px;margin-top:4px;align-items:center'); a.appendChild(ln);
+    const po=_evlEl('select','font:inherit;font-size:11.5px;padding:2px 4px;border:1.5px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx)'); [1,2,3,4].forEach(n=>po.appendChild(new Option('×'+n, String(n)))); po.value=String(c.poids||1); po.title='Poids dans la note'; po.onchange=()=>{ c.poids=Number(po.value); maj(); }; ln.appendChild(po);
+    ln.appendChild(fi(c.comp, v=>{ c.comp=v.trim(); }, 'flex:1;font-size:11px;min-height:24px;padding:2px 6px', '🎯 compétence (facultatif)'));
+    N.forEach((nl,i)=>{ const z=_evlEl('td','padding:6px;border-bottom:1px solid var(--brd);vertical-align:top'); tr.appendChild(z);
+      const ta=_evlEl('textarea','width:100%;min-height:52px;font:inherit;font-size:11.5px;padding:5px 6px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);resize:vertical'); ta.value=(c.ind||[])[i]||''; ta.placeholder='Indicateur : ce qu’on observe';
+      ta.onchange=()=>{ c.ind=c.ind||[]; c.ind[i]=ta.value; maj(false); }; z.appendChild(ta); });
+    const zd=_evlEl('td','padding:6px;border-bottom:1px solid var(--brd);vertical-align:top;white-space:nowrap'); tr.appendChild(zd);
+    if(ci>0) zd.appendChild(_evlBtn('↑','padding:2px 7px;min-height:26px', ()=>{ const t=G.criteres[ci-1]; G.criteres[ci-1]=c; G.criteres[ci]=t; maj(); }, 'Monter'));
+    zd.appendChild(_evlBtn('🗑','padding:2px 7px;min-height:26px', ()=>{ G.criteres.splice(ci,1); maj(); }, 'Supprimer le critère')); });
+  f.appendChild(_evlBtn('＋ Critère','margin-top:8px', ()=>{ G.criteres=G.criteres||[]; G.criteres.push({id:'c'+Date.now().toString(36), l:'Critère '+(G.criteres.length+1), poids:1, comp:'', ind:N.map(()=>'')}); maj(); }));
+  f.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px','Points : '+N.map((n,i)=>n+' = '+i).join(' · ')+'. Les indicateurs s’affichent au survol pendant la saisie.'));
+}
+/* ── Entrées ── */
+function _evlTuileAccueil(){
+  if(document.getElementById('evl-tile')) return;
+  const ref=document.getElementById('sdc-tile'); if(!ref || !ref.parentNode) return;
+  const b=document.createElement('button'); b.id='evl-tile'; b.className='htile'; b.type='button';
+  const ic=document.createElement('span'); ic.className='htile-ic'; ic.textContent='📊';
+  const tx=document.createElement('span'); tx.className='htile-tx';
+  const t=document.createElement('span'); t.className='htile-t'; t.textContent='Évaluations';
+  const s=document.createElement('span'); s.className='htile-s'; s.textContent='Carnet, grilles, saisie';
+  tx.appendChild(t); tx.appendChild(s); b.appendChild(ic); b.appendChild(tx);
+  b.onclick=()=>openEvaluations();
+  ref.parentNode.appendChild(b);
+}
+try{ _evlTuileAccueil(); _accueilOrdonner(); }catch(e){ console.warn('[évaluations] tuile', e); }
+/** ⋯ Plus › Placement « 📊 Évaluer » : l'évaluation du cours ouvert, sinon une nouvelle rattachée au cours. */
+function evaluerCeCours(){
+  const cls=(typeof curCls!=='undefined') ? curCls : '', sk=(typeof curSlotKey!=='undefined') ? curSlotKey : '';
+  const L=_evlDuCours(cls, sk);
+  if(L.length) return openEvaluations({cls, vue:'evals', evId:L[0].id, saisie:true});
+  const e=_evlNouvelle(cls, sk ? {date:String(sk).slice(0,10), slotKey:sk} : {}); _evlSauver(e);
+  openEvaluations({cls, vue:'evals', evId:e.id});
+}
+function _evlMenuPlus(){
+  if(document.getElementById('pm-evl')) return;
+  const zone=document.querySelector('.pm-zone--placement'); if(!zone) return;
+  const b=document.createElement('button'); b.className='pmcard'; b.id='pm-evl'; b.type='button';
+  const ic=document.createElement('span'); ic.className='pmcard-ic'; ic.textContent='📊'; b.appendChild(ic); b.appendChild(document.createTextNode('Évaluer'));
+  b.onclick=()=>{ try{ closePlusMenu(); }catch(e){} evaluerCeCours(); };
+  zone.appendChild(b);
+}
+try{ _evlMenuPlus(); }catch(e){}
+/** Fenêtre de l'élève (PdC) : « 📊 titre » pour chaque évaluation du cours qui le concerne. */
+function _evlLignePopup(uid){
+  const head=document.getElementById('stp-name'); if(!head) return;
+  let z=document.getElementById('stp-evl'); if(z) z.remove();
+  const cls=(typeof curCls!=='undefined') ? curCls : '', sk=(typeof curSlotKey!=='undefined') ? curSlotKey : '';
+  const L=_evlDuCours(cls, sk).filter(ev=>_evlCible(ev).eleves.indexOf(uid)>=0); if(!L.length) return;
+  z=document.createElement('div'); z.id='stp-evl'; z.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 2px';
+  L.forEach(ev=>{ const g=_evlGrille(ev.grilleId), C=_evlCible(ev), R=_evlResultat(ev, g, uid, ev.parGroupe ? _evlGroupeDe(C, uid) : ''); const t=_evlTexte(ev, g, R);
+    const b=_evlBtn('📊 '+ev.titre+(t?' · '+t.split(' · ')[0]:''),'font-size:11.5px;padding:3px 9px;min-height:26px;background:#FEF9C3;border-color:#FDE68A;color:#854D0E', ()=>{ _evlPopEleve(ev.id, uid); }, 'Évaluer cet élève'); z.appendChild(b); });
+  const ap=document.getElementById('stp-aff'); const ref=ap || head; ref.parentNode.insertBefore(z, ref.nextSibling);
+}
+/** Volet droit : « 📊 titre » des évaluations rattachées au cours. */
+function _evlLignesCours(cls, slotKey){
+  return _evlDuCours(cls, slotKey).map(ev=>{ const b=document.createElement('button'); b.type='button'; b.className='vd-priority-item'; b.style.cssText='width:100%;cursor:pointer;border:0;background:transparent;text-align:left;font-family:inherit';
+    const nm=document.createElement('span'); nm.className='vd-pi-name'; nm.textContent=_evlType(ev.type).ic+' '+ev.titre; b.appendChild(nm);
+    const C=_evlCible(ev), g=_evlGrille(ev.grilleId), n=C.eleves.filter(u=>{ const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C,u) : ''); return r.code || r.note!=null || Object.keys(r.niv).length; }).length;
+    const bd=document.createElement('span'); bd.className='vd-pi-badge'; bd.style.background='#FEF9C3'; bd.style.color='#854D0E'; bd.textContent=n+'/'+C.eleves.length; b.appendChild(bd);
+    b.onclick=()=>openEvaluations({cls, vue:'evals', evId:ev.id, saisie:true}); return b; });
+}
+/** Page Groupes : « 📊 Évaluer ces groupes » (crée ou rouvre l'évaluation de l'ensemble). */
+function _evlPourEnsemble(cls, ens){
+  let ev=_evlListe().find(e=>e.cls===cls && e.cible && e.cible.type==='ens' && e.cible.ensId===ens.id);
+  if(!ev){ ev=_evlNouvelle(cls, {titre:ens.nom, type:'groupe', cible:{type:'ens', ensId:ens.id}, parGroupe:true, slotKey:(ens.cours||[])[0]||'', date:((ens.cours||[])[0]||_appToday()).slice(0,10)}); _evlSauver(ev); }
+  return ev;
+}
+/** Note d'un groupe (affichée dans la page Groupes) : « 14,5 » si toutes les notes des membres sont égales, sinon la moyenne « ~13 ». */
+function _evlNoteGroupe(cls, ensId, gid){
+  const ev=_evlListe().find(e=>e.cls===cls && e.cible && e.cible.type==='ens' && e.cible.ensId===ensId); if(!ev) return '';
+  const g=_evlGrille(ev.grilleId), C=_evlCible(ev), G=C.groupes.find(x=>x.id===gid); if(!G) return '';
+  const N=G.m.map(u=>_evlResultat(ev, g, u, ev.parGroupe ? gid : '').note).filter(x=>x!=null); if(!N.length) return '';
+  const m=Math.round(N.reduce((a,b)=>a+b,0)/N.length*2)/2; return (N.every(x=>x===N[0]) ? '' : '~')+String(m).replace('.',',');
+}
+
 
 
 /* ═══ V11.5.20 — RECHERCHE DANS VOS DONNÉES (lot 3, demande du 04/11) ═════════
