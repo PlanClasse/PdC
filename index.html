@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.34';
+const APP_VERSION = 'v11.5.35';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -60921,13 +60921,25 @@ function _evlRendreEvals(corps){
   if(g && ev.mode==='both' && ev.noteCalc!==false){ const N=g.niveaux||EVL_NIV_DEFAUT; f.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px', N.map((n,i)=>n+' '+i).join(' · ')+' point(s) par critère'+((g.criteres||[]).some(x=>x.poids>1)?', pondérés ('+g.criteres.filter(x=>x.poids>1).map(x=>x.l+' ×'+x.poids).join(', ')+')':'')+' → ramené sur '+ev.bareme+'.')); }
   const C=_evlCible(ev); const fait=C.eleves.filter(u=>{ const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C,u) : ''); return r.code || r.note!=null || Object.keys(r.niv).length; }).length;
   const act=_evlEl('div','display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;align-items:center'); f.appendChild(act);
-  act.appendChild(_evlBtn('✎ Saisir','background:#166534;border-color:#166534;color:#fff', ()=>{ _evl.saisie=true; _evlRendre(); }));
+  act.appendChild(_evlBtn('✎ Saisir','background:#166534;border-color:#166534;color:#fff', ()=>{ _evl.saisie=true; _evl.clavier=true; _evlRendre(); }));
+  if(_evlGrille(ev.grilleId)) act.appendChild(_evlBtn('🖨 Imprimer','', ()=>openImpressionEval(ev.id), 'Grilles pour les élèves (vierges, nominatives ou avec les résultats)'));   // V11.5.35
   act.appendChild(_evlEl('span','font-size:12px;color:var(--tx3)', fait+' / '+C.eleves.length+' élève'+(C.eleves.length>1?'s':'')+' saisi'+(fait>1?'s':'')));
   act.appendChild(_evlEl('span','flex:1'));
   if(ev.mode!=='crit') act.appendChild(_evlBtn('⬇ Pronote','', ()=>openExportPronote(ev.cls, ev.id), 'Fichier d’import des notes pour Pronote'));   // V11.5.33
   act.appendChild(_evlBtn('🗑','', ()=>{ if(!confirm('Supprimer « '+ev.titre+' » et ses résultats ?')) return; const L=_evlListe(); L.splice(L.indexOf(ev),1); _evl.evId=''; _evlSauver(); _evlRendre(); }, 'Supprimer l’évaluation'));
 }
-/* Saisie (tableau) */
+/** Touche → action de saisie (pure). col = index de colonne (critères puis « note »), nCrit, nNiv.
+ *  Retour : {t:'niv', n} | {t:'code', c} | {t:'copie'} | {t:'eff'} | {t:'note', ch} | {t:'dep', dx, dy} | null. */
+function _evlTouche(key, col, nCrit, nNiv, shift){
+  if(/^[0-9]$/.test(key)){ if(col>=nCrit) return {t:'note', ch:key}; const n=Number(key); return n<nNiv ? {t:'niv', n} : null; }
+  const k=String(key).toLowerCase();
+  if(k==='a') return {t:'code', c:'Abs'}; if(k==='d') return {t:'code', c:'Disp'}; if(k==='n') return {t:'code', c:'NR'};
+  if(key==='*') return {t:'copie'}; if(key==='Backspace' || key==='Delete') return {t:'eff'};
+  if(key==='Tab') return {t:'dep', dx:shift?-1:1, dy:0}; if(key==='ArrowRight') return {t:'dep', dx:1, dy:0}; if(key==='ArrowLeft') return {t:'dep', dx:-1, dy:0};
+  if(key==='Enter' || key==='ArrowDown') return {t:'dep', dx:0, dy:1}; if(key==='ArrowUp') return {t:'dep', dx:0, dy:-1};
+  return null;
+}
+/* Saisie (tableau) — V11.5.35 : curseur et saisie au clavier (0–3, A/D/N, *, ⌫, Tab, flèches, Entrée) */
 function _evlRendreSaisie(corps){
   const ev=_evlListe().find(e=>e.id===_evl.evId); if(!ev){ _evl.saisie=false; return _evlRendreEvals(corps); }
   const g=_evlGrille(ev.grilleId), C=_evlCible(ev), crit=(ev.mode!=='note' && g) ? (g.criteres||[]) : [], N=(g && g.niveaux)||EVL_NIV_DEFAUT;
@@ -60936,41 +60948,165 @@ function _evlRendreSaisie(corps){
   hd.appendChild(_evlBtn('‹ Fiche','', ()=>{ _evl.saisie=false; _evlRendre(); }));
   hd.appendChild(_evlEl('b','font-size:16px', _evlType(ev.type).ic+' '+ev.titre));
   hd.appendChild(_evlEl('span','font-size:12px;color:var(--tx3)', String(ev.cls).toUpperCase()+' · '+ev.date.split('-').reverse().slice(0,2).join('/')+(ev.parGroupe && C.groupes.length?' · par groupe, ajustable par élève':'')));
+  hd.appendChild(_evlEl('span','flex:1'));
+  if(g) hd.appendChild(_evlBtn('🖨 Imprimer','', ()=>openImpressionEval(ev.id), 'Grilles pour les élèves'));
   if(!C.eleves.length){ corps.appendChild(_evlEl('div','color:var(--tx3);padding:12px','Aucun élève ciblé.')); return; }
-  const wrap=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:14px;overflow:auto'); corps.appendChild(wrap);
+  const aide=_evlEl('div','font-size:11.5px;color:var(--tx2);margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px 12px');
+  const kb=(t)=>_evlEl('b','font-size:11px;border:1.5px solid var(--brd);border-bottom-width:3px;border-radius:5px;padding:0 5px;background:var(--sur)', t);
+  [[['0','–',String(N.length-1)],'niveau'],[['A','D','N'],'Abs · Disp · NR'],[['*'],'comme au-dessus'],[['⌫'],'effacer'],[['Tab','→'],'critère suivant'],[['Entrée','↓'],'élève suivant']].forEach(([K,t])=>{ const s=_evlEl('span'); K.forEach(k=>k==='–'?s.appendChild(document.createTextNode('–')):s.appendChild(kb(k))); s.appendChild(document.createTextNode(' '+t)); aide.appendChild(s); });
+  corps.appendChild(aide);
+  const wrap=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:14px;overflow:auto;outline:none'); wrap.id='evl-saisie-box'; wrap.tabIndex=0; corps.appendChild(wrap);
   const T=_evlEl('table','border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px'); T.id='evl-saisie'; wrap.appendChild(T);
   const th=(t)=>_evlEl('th','padding:7px 8px;text-align:left;font-size:10.5px;color:var(--tx3);background:var(--sur2);border-bottom:1px solid var(--brd);position:sticky;top:0;white-space:nowrap', t);
   const h=_evlEl('tr'); T.appendChild(h); h.appendChild(th(''));
   crit.forEach(c=>{ const x=th(c.l+(c.poids>1?' ×'+c.poids:'')); x.title=(c.comp?'🎯 '+c.comp+'\n':'')+(c.ind||[]).map((t,i)=>i+' '+N[i]+' : '+t).join('\n'); h.appendChild(x); });
+  const nCol=crit.length+(ev.mode!=='crit'?1:0);
   if(ev.mode!=='crit') h.appendChild(th('Note /'+ev.bareme)); h.appendChild(th(''));
   const td=(css)=>_evlEl('td','padding:5px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;'+(css||''));
   const refaire=()=>{ _evlSauver(ev); _evlRendre(); };
-  const ligneEleve=(u, gid)=>{
-    const tr=_evlEl('tr'); tr.dataset.u=u; T.appendChild(tr); const r=ev.res[u]=ev.res[u]||{}; const R=_evlResultat(ev, g, u, gid);
-    const n=td('font-weight:700;'+(gid?'padding-left:20px':'')); n.textContent=getFullName(u)||u; if(R.ajuste){ n.appendChild(_evlEl('span','font-size:10.5px;color:#B45309;font-weight:600',' · ajusté')); } tr.appendChild(n);
+  const lignes=[];   // {t:'g', gid, m} | {t:'e', u, gid}
+  if(ev.parGroupe && C.groupes.length) C.groupes.forEach(G=>{ lignes.push({t:'g', gid:G.id, G}); G.m.forEach(u=>lignes.push({t:'e', u, gid:G.id})); });
+  else C.eleves.forEach(u=>lignes.push({t:'e', u, gid:''}));
+  const cur=_evl.cur=_evl.cur && _evl.cur.ev===ev.id ? _evl.cur : {ev:ev.id, r:0, c:0};
+  cur.r=Math.max(0, Math.min(lignes.length-1, cur.r)); cur.c=Math.max(0, Math.min(Math.max(0,nCol-1), cur.c));
+  const marquer=(z, ri, ci)=>{ z.dataset.r=ri; z.dataset.c=ci; z.addEventListener('pointerdown', ()=>{ cur.r=ri; cur.c=ci; }); if(ri===cur.r && ci===cur.c){ z.style.outline='3px solid #2563EB'; z.style.outlineOffset='-3px'; z.style.background='#EFF6FF'; z.id='evl-cur'; } };
+  const setNiv=(L, ci, n)=>{ const c=crit[ci]; if(!c) return;
+    if(L.t==='g'){ const rg=ev.resG[L.gid]=ev.resG[L.gid]||{niv:{}}; if(n==null) delete rg.niv[c.id]; else rg.niv[c.id]=n; return; }
+    const r=ev.res[L.u]=ev.res[L.u]||{}; const Gn=L.gid ? (((ev.resG[L.gid])||{}).niv||{}) : {};
+    r.niv=r.niv||{}; if(n==null) delete r.niv[c.id]; else r.niv[c.id]=n; if(L.gid && r.niv[c.id]===Gn[c.id]) delete r.niv[c.id]; delete r.code; };
+  lignes.forEach((L, ri)=>{
+    if(L.t==='g'){ const tr=_evlEl('tr','background:var(--sur2)'); T.appendChild(tr); const rg=ev.resG[L.gid]=ev.resG[L.gid]||{niv:{}};
+      tr.appendChild(td('font-weight:800')).textContent='👥 '+L.G.nom+' · '+L.G.m.length;
+      crit.forEach((c, ci)=>{ const z=td(); tr.appendChild(z); marquer(z, ri, ci); N.forEach((nl,i)=>z.appendChild(_evlNiv(i, rg.niv[c.id]===i, nl+((c.ind||[])[i]?' — '+c.ind[i]:'')+' (tout le groupe)', ()=>{ cur.r=ri; cur.c=ci; setNiv(L, ci, rg.niv[c.id]===i ? null : i); refaire(); }))); });
+      if(ev.mode!=='crit'){ const v=_evlNoteCalc(g, rg.niv, ev.bareme); const z=td('font-weight:800'); tr.appendChild(z); marquer(z, ri, crit.length); z.textContent=(ev.mode==='both' && ev.noteCalc!==false && v!=null) ? String(v).replace('.',',') : ''; }
+      tr.appendChild(td()); return; }
+    const u=L.u, gid=L.gid, tr=_evlEl('tr'); tr.dataset.u=u; T.appendChild(tr); const r=ev.res[u]=ev.res[u]||{}; const R=_evlResultat(ev, g, u, gid);
+    const n=td('font-weight:700;'+(gid?'padding-left:20px':'')+(ri===cur.r?';color:#2563EB':'')); n.textContent=getFullName(u)||u; if(R.ajuste){ n.appendChild(_evlEl('span','font-size:10.5px;color:#B45309;font-weight:600',' · ajusté')); } tr.appendChild(n);
     const Gn=gid ? (((ev.resG[gid])||{}).niv||{}) : {};
-    crit.forEach(c=>{ const z=td(); tr.appendChild(z);
+    crit.forEach((c, ci)=>{ const z=td(); tr.appendChild(z); marquer(z, ri, ci);
       if(R.code){ z.textContent='—'; z.style.color='var(--tx3)'; return; }
       N.forEach((nl,i)=>{ const propre=r.niv && r.niv[c.id]===i, herite=!(r.niv && r.niv[c.id]!=null) && Gn[c.id]===i;
-        const b=_evlNiv(i, propre||herite, nl+((c.ind||[])[i]?' — '+c.ind[i]:''), ()=>{ r.niv=r.niv||{}; if(r.niv[c.id]===i) delete r.niv[c.id]; else r.niv[c.id]=i; if(gid && r.niv[c.id]===Gn[c.id]) delete r.niv[c.id]; refaire(); }, herite?'opacity:.55':(propre && gid && Gn[c.id]!=null && Gn[c.id]!==i ? 'outline:2px dashed #F59E0B;outline-offset:1px':''));
-        z.appendChild(b); }); });
-    if(ev.mode!=='crit'){ const z=td(); tr.appendChild(z);
+        z.appendChild(_evlNiv(i, propre||herite, nl+((c.ind||[])[i]?' — '+c.ind[i]:''), ()=>{ cur.r=ri; cur.c=ci; setNiv(L, ci, (r.niv && r.niv[c.id]===i) ? null : i); refaire(); }, herite?'opacity:.55':(propre && gid && Gn[c.id]!=null && Gn[c.id]!==i ? 'outline:2px dashed #F59E0B;outline-offset:1px':''))); }); });
+    if(ev.mode!=='crit'){ const z=td(); tr.appendChild(z); marquer(z, ri, crit.length);
       if(!R.code){ const i=_evlEl('input','width:62px;font:inherit;font-weight:800;padding:4px 6px;border:1.5px solid var(--brd);border-radius:7px;background:'+(R.noteForcee||ev.mode==='note'||ev.noteCalc===false?'var(--sur2)':'transparent')+';color:var(--tx)');
-        i.inputMode='decimal'; i.value=R.note==null?'':String(R.note).replace('.',','); i.placeholder='—'; i.title=ev.mode==='both' && ev.noteCalc!==false ? 'Calculée ; écrire une note pour la remplacer, vider pour revenir au calcul' : 'Note';
+        i.inputMode='decimal'; i.value=R.note==null?'':String(R.note).replace('.',','); i.placeholder='—'; i.dataset.r=ri;
+        i.title=ev.mode==='both' && ev.noteCalc!==false ? 'Calculée ; écrire une note pour la remplacer, vider pour revenir au calcul' : 'Note';
         i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v===''){ delete r.note; } else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(Number(ev.bareme)||20, Number(v))); refaire(); };
+        i.onkeydown=(e)=>{ if(e.key==='Enter' || e.key==='Tab' || e.key==='ArrowDown' || e.key==='ArrowUp'){ e.preventDefault(); e.stopPropagation(); cur.r=Math.max(0, Math.min(lignes.length-1, cur.r+(e.key==='ArrowUp'?-1:1))); _evl.clavier=true; i.onchange(); } else if(e.key==='Escape'){ e.stopPropagation(); i.blur(); _evlFocusSaisie(); } };
+        i.addEventListener('focus', ()=>{ cur.r=ri; cur.c=crit.length; });
         z.appendChild(i); if(R.noteForcee && ev.mode==='both' && ev.noteCalc!==false) z.appendChild(_evlEl('span','font-size:10.5px;color:#B45309',' forcée')); } }
     const zc=td(); tr.appendChild(zc);
-    EVL_CODES.forEach(k=>zc.appendChild(_evlChip(k, r.code===k, ()=>{ r.code=r.code===k?'':k; if(!r.code) delete r.code; refaire(); }, {Abs:'Absent',Disp:'Dispensé',NR:'Non rendu'}[k])));
+    EVL_CODES.forEach(k=>zc.appendChild(_evlChip(k, r.code===k, ()=>{ cur.r=ri; r.code=r.code===k?'':k; if(!r.code) delete r.code; refaire(); }, {Abs:'Absent',Disp:'Dispensé',NR:'Non rendu'}[k])));
+  });
+  wrap.addEventListener('keydown', (e)=>{
+    if(e.target && e.target.tagName==='INPUT') return;
+    const a=_evlTouche(e.key, cur.c, crit.length, N.length, e.shiftKey); if(!a) return;
+    e.preventDefault(); const L=lignes[cur.r]; if(!L) return; _evl.clavier=true;
+    const suivant=()=>{ if(cur.c<nCol-1 && !(L.t==='e' && (ev.res[L.u]||{}).code)) cur.c++; else { cur.c=0; cur.r=Math.min(lignes.length-1, cur.r+1); } };
+    if(a.t==='niv'){ setNiv(L, cur.c, a.n); if(cur.c<crit.length-1) cur.c++; else if(ev.mode!=='crit' && (ev.mode==='note' || ev.noteCalc===false)) cur.c=crit.length; else { cur.c=0; cur.r=Math.min(lignes.length-1, cur.r+1); } }
+    else if(a.t==='code'){ if(L.t==='e'){ const r=ev.res[L.u]=ev.res[L.u]||{}; r.code=r.code===a.c?'':a.c; if(!r.code) delete r.code; cur.c=0; cur.r=Math.min(lignes.length-1, cur.r+1); } }
+    else if(a.t==='copie'){ let k=cur.r-1; while(k>=0 && lignes[k].t!==L.t) k--; if(k>=0){ const P=lignes[k];
+        if(L.t==='g'){ ev.resG[L.gid]={niv:Object.assign({}, ((ev.resG[P.gid]||{}).niv)||{})}; }
+        else { const Rp=_evlResultat(ev, g, P.u, P.gid); crit.forEach((c,ci)=>setNiv(L, ci, Rp.niv[c.id]==null?null:Rp.niv[c.id])); const rp=ev.res[P.u]||{}; if(rp.note!=null && (ev.mode==='note' || rp.note!=='')){ (ev.res[L.u]=ev.res[L.u]||{}).note=rp.note; } } }
+      cur.c=0; cur.r=Math.min(lignes.length-1, cur.r+1); }
+    else if(a.t==='eff'){ if(L.t==='e' && (ev.res[L.u]||{}).code) delete ev.res[L.u].code; else if(cur.c<crit.length) setNiv(L, cur.c, null); else if(L.t==='e' && ev.res[L.u]) delete ev.res[L.u].note; }
+    else if(a.t==='note'){ const inp=T.querySelector('input[data-r="'+cur.r+'"]'); if(inp){ inp.focus(); inp.value=a.ch; } return; }
+    else if(a.t==='dep'){ if(a.dx){ cur.c+=a.dx; if(cur.c>=nCol){ cur.c=0; cur.r=Math.min(lignes.length-1, cur.r+1); } else if(cur.c<0){ cur.c=Math.max(0,nCol-1); cur.r=Math.max(0, cur.r-1); } } else cur.r=Math.max(0, Math.min(lignes.length-1, cur.r+a.dy)); _evlRendre(); return; }
+    _evlSauver(ev); _evlRendre();
+  });
+  wrap.addEventListener('pointerdown', (e)=>{ if(!(e.target && e.target.tagName==='INPUT')) _evl.clavier=true; });
+  corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px', (ev.parGroupe && C.groupes.length ? 'Ligne du groupe → appliquée à tous ses membres (pâle = hérité). Niveau d’un élève → ajusté pour lui seul (cadre orange). ' : '')+'Survol d’un niveau → son indicateur. Abs / Disp / NR : l’élève n’est pas noté.'));
+  if(_evl.clavier) _evlFocusSaisie();   // synchrone : aucune frappe perdue entre deux rendus
+}
+function _evlFocusSaisie(){
+  const w=document.getElementById('evl-saisie-box'); if(!w) return;
+  const ae=document.activeElement; if(ae && ae.tagName==='INPUT' && w.contains(ae)) return;
+  try{ w.focus({preventScroll:true}); }catch(e){ w.focus(); }
+  const c=document.getElementById('evl-cur'); if(c && c.scrollIntoView){ try{ c.scrollIntoView({block:'nearest', inline:'nearest'}); }catch(e){} }
+}
+/* ── 🖨 Impression des grilles (V11.5.35) ── */
+let _evlImp={quoi:'vierge', ind:true, moi:true, pts:false, note:false, a5:false};
+/** Pages à imprimer : [{titre, nom, ligne2, membres:[{nom, role}], niv, note}]. Pure (dépendances passées). */
+function _evlPagesImp(ev, quoi, C, resultat, nomDe, roleDe){
+  if(quoi==='vierge') return [{nom:'', ligne2:'', membres:[], niv:null, note:null}];
+  if(quoi==='eleves' && ev.parGroupe && (C.groupes||[]).length) return C.groupes.map(G=>({nom:G.nom, ligne2:'', membres:G.m.map(u=>({nom:nomDe(u), role:roleDe(u)})), niv:null, note:null}));
+  return (C.eleves||[]).map(u=>{ const R=quoi==='resultats' ? resultat(u) : null; const G=(C.groupes||[]).find(x=>x.m.indexOf(u)>=0);
+    return {nom:nomDe(u), ligne2:G ? G.nom+(roleDe(u)?' · '+roleDe(u):'') : '', membres:[], niv:R ? R.niv : null, note:R ? (R.code || (R.note==null ? null : R.note)) : null}; });
+}
+function _evlImpStyle(){
+  if(document.getElementById('evl-imp-style')) return;
+  const st=document.createElement('style'); st.id='evl-imp-style';
+  st.textContent='#evl-print-root{display:none}'
+   +'.evl-pg{background:#fff;color:#111;font-family:Aptos,"Segoe UI",Calibri,sans-serif;font-size:10.5pt;box-sizing:border-box;width:19cm;padding:0}'
+   +'.evl-pg h2{margin:0;font-size:14pt}.evl-pg .ent{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;border-bottom:2px solid #111;padding-bottom:4px;margin-bottom:6px}'
+   +'.evl-pg table{border-collapse:collapse;width:100%}.evl-pg td,.evl-pg th{border:1px solid #777;padding:3px 4px;vertical-align:top;text-align:left}'
+   +'.evl-pg th{background:#EEE;font-size:9pt}.evl-pg .cr{font-weight:800;width:16%}.evl-pg .bx{display:inline-block;width:9pt;height:9pt;border:1.2px solid #222;margin-right:3px;vertical-align:-1px}'
+   +'.evl-pg .bx.x{background:#222}.evl-pg .nt{border:2px solid #111;border-radius:5px;padding:4px 10px;font-size:13pt;font-weight:800;white-space:nowrap}'
+   +'.evl-pg .rq{flex:1;border:1px solid #777;min-height:2.2cm;padding:4px}.evl-pg .bas{display:flex;gap:10px;align-items:center;margin-top:8px}'
+   +'.evl-pg.a5{font-size:8.5pt;height:13.4cm;overflow:hidden}.evl-pg.a5 h2{font-size:11.5pt}.evl-pg.a5 .rq{min-height:1.2cm}'
+   +'@media print{@page{size:A4 portrait;margin:1cm} body.evl-imprime>*:not(#evl-print-root){display:none!important} body.evl-imprime #evl-print-root{display:block!important}'
+   +' .evl-pg{page-break-after:always;break-after:page} .evl-pg.a5{page-break-after:auto;break-after:auto;margin-bottom:0.6cm} .evl-pg.a5.fin{page-break-after:always;break-after:page}}';
+  document.head.appendChild(st);
+}
+function _evlPageImpEl(ev, g, p, o){
+  const N=(g.niveaux||EVL_NIV_DEFAUT), d=_evlEl('div'); d.className='evl-pg'+(o.a5?' a5':'');
+  const ent=_evlEl('div'); ent.className='ent'; d.appendChild(ent);
+  const l=_evlEl('div'); l.appendChild(_evlEl('h2',null,(g.ic||'')+' '+ev.titre+(g.titre && g.titre!==ev.titre?' — '+g.titre:'')));
+  let dl=ev.date; try{ dl=new Date(ev.date+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}); }catch(e){}
+  l.appendChild(_evlEl('div',null, String(ev.cls).toUpperCase()+' · '+dl)); ent.appendChild(l);
+  const r=_evlEl('div','text-align:right'); ent.appendChild(r);
+  if(p.membres.length){ r.appendChild(_evlEl('div','font-weight:800', p.nom)); p.membres.forEach(m=>r.appendChild(_evlEl('div',null,(m.role?m.role+' ':'')+m.nom))); }
+  else { r.appendChild(_evlEl('div','font-weight:800', p.nom || 'Nom : ………………………………')); r.appendChild(_evlEl('div',null, p.ligne2 || (p.nom?'':'Groupe : ………'))); }
+  const T=_evlEl('table'); d.appendChild(T); const h=_evlEl('tr'); T.appendChild(h); h.appendChild(_evlEl('th',null,'Critère'));
+  N.forEach((n,i)=>h.appendChild(_evlEl('th',null,(o.pts?i+' pt · ':'')+n))); if(o.moi) h.appendChild(_evlEl('th','width:1.6cm','Moi'));
+  (g.criteres||[]).forEach(c=>{ const tr=_evlEl('tr'); T.appendChild(tr); const a=_evlEl('td',null,c.l+(o.pts && c.poids>1?' ×'+c.poids:'')); a.className='cr'; tr.appendChild(a);
+    N.forEach((n,i)=>{ const z=_evlEl('td'); const b=_evlEl('span'); b.className='bx'+(p.niv && p.niv[c.id]===i?' x':''); z.appendChild(b); if(o.ind && (c.ind||[])[i]) z.appendChild(document.createTextNode(c.ind[i])); tr.appendChild(z); });
+    if(o.moi) tr.appendChild(_evlEl('td','white-space:nowrap;color:#666', N.map((x,i)=>i).join('  '))); });
+  const bas=_evlEl('div'); bas.className='bas'; d.appendChild(bas); const rq=_evlEl('div',null,'Remarques :'); rq.className='rq'; bas.appendChild(rq);
+  if(o.note || p.note!=null){ const nt=_evlEl('div',null, p.note!=null ? (typeof p.note==='number' ? String(p.note).replace('.',',')+' / '+ev.bareme : p.note) : '…… / '+ev.bareme); nt.className='nt'; bas.appendChild(nt); }
+  return d;
+}
+function _evlPagesPour(ev, o){
+  const g=_evlGrille(ev.grilleId), C=_evlCible(ev); const ens=C.ens||null, R=_grtRoles ? _grtRoles() : [];
+  const roleDe=(u)=>{ const i=ens && ens.roles ? ens.roles[u] : null; const x=(i!=null) ? R[i] : null; return x ? x.ic : ''; };
+  return _evlPagesImp(ev, o.quoi, C, (u)=>_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C,u) : ''), (u)=>getFullName(u)||u, roleDe);
+}
+function openImpressionEval(evId){
+  const ev=_evlListe().find(e=>e.id===evId); const g=ev && _evlGrille(ev.grilleId); if(!g){ alert('Pas de grille à imprimer pour cette évaluation.'); return; }
+  _evlImpStyle(); let ov=document.getElementById('evl-imp'); if(ov) ov.remove();
+  ov=_evlEl('div','position:fixed;inset:0;z-index:485;background:rgba(20,18,10,.45);display:flex;align-items:center;justify-content:center;padding:14px'); ov.id='evl-imp';
+  ov.addEventListener('pointerdown', e=>{ if(e.target===ov) ov.remove(); });
+  document.body.appendChild(ov);
+  const rendre=()=>{ ov.textContent=''; const o=_evlImp;
+    const box=_evlEl('div','background:var(--sur);color:var(--tx);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:min(1100px,100%);max-height:94vh;display:flex;overflow:hidden'); ov.appendChild(box);
+    const cote=_evlEl('div','width:290px;flex-shrink:0;padding:14px;border-right:1px solid var(--brd);overflow:auto'); box.appendChild(cote);
+    cote.appendChild(_evlEl('div','font-family:Georgia,serif;font-size:19px;margin-bottom:4px','🖨 Imprimer'));
+    cote.appendChild(_evlEl('div','font-size:12px;color:var(--tx3)', ev.titre+' · '+String(ev.cls).toUpperCase()));
+    cote.appendChild(_evlLab('Quoi'));
+    [['vierge','Grille vierge (consigne)'],['eleves', ev.parGroupe && _evlCible(ev).groupes.length ? 'Une page par groupe' : 'Une page par élève'],['resultats','Résultats (après saisie)']].forEach(([v,l])=>cote.appendChild(_evlChip(l, o.quoi===v, ()=>{ o.quoi=v; rendre(); })));
+    cote.appendChild(_evlLab('Contenu'));
+    [['ind','Indicateurs'],['moi','Colonne « Moi »'],['pts','Points / poids'],['note','Case note']].forEach(([k,l])=>cote.appendChild(_evlChip(l, !!o[k], ()=>{ o[k]=!o[k]; rendre(); })));
+    cote.appendChild(_evlLab('Format'));
+    cote.appendChild(_evlChip('1 par page (A4)', !o.a5, ()=>{ o.a5=false; rendre(); })); cote.appendChild(_evlChip('2 par page (A5)', o.a5, ()=>{ o.a5=true; rendre(); }));
+    const P=_evlPagesPour(ev, o);
+    cote.appendChild(_evlEl('div','font-size:12px;color:var(--tx3);margin:10px 0', P.length+' grille'+(P.length>1?'s':'')+' · '+(o.a5 ? Math.ceil(P.length/2) : P.length)+' feuille'+((o.a5 ? Math.ceil(P.length/2) : P.length)>1?'s':'')));
+    const bi=_evlBtn('🖨 Imprimer','background:#166534;border-color:#166534;color:#fff', ()=>_evlImprimerPages(ev, g, P, o)); cote.appendChild(bi);
+    cote.appendChild(_evlBtn('Fermer','margin-left:6px', ()=>ov.remove()));
+    cote.appendChild(_evlEl('div','font-size:11px;color:var(--tx3);margin-top:8px','Pour un PDF : choisir « Enregistrer au format PDF » comme imprimante.'));
+    const ap=_evlEl('div','flex:1;overflow:auto;background:#E5E1D6;padding:16px;display:flex;justify-content:center'); box.appendChild(ap);
+    const feuille=_evlEl('div','background:#fff;padding:1cm;box-shadow:0 6px 20px rgba(0,0,0,.2);height:fit-content'); ap.appendChild(feuille);
+    const e1=_evlPageImpEl(ev, g, P[0], o); feuille.appendChild(e1);
+    if(o.a5 && P[1]){ const sp=_evlEl('div','border-top:1px dashed #999;margin:0.3cm 0'); feuille.appendChild(sp); feuille.appendChild(_evlPageImpEl(ev, g, P[1], o)); }
   };
-  if(ev.parGroupe && C.groupes.length){
-    C.groupes.forEach(G=>{ const tr=_evlEl('tr','background:var(--sur2)'); T.appendChild(tr); const rg=ev.resG[G.id]=ev.resG[G.id]||{niv:{}};
-      tr.appendChild(td('font-weight:800')).textContent='👥 '+G.nom+' · '+G.m.length;
-      crit.forEach(c=>{ const z=td(); tr.appendChild(z); N.forEach((nl,i)=>z.appendChild(_evlNiv(i, rg.niv[c.id]===i, nl+((c.ind||[])[i]?' — '+c.ind[i]:'')+' (tout le groupe)', ()=>{ if(rg.niv[c.id]===i) delete rg.niv[c.id]; else rg.niv[c.id]=i; refaire(); }))); });
-      if(ev.mode!=='crit'){ const v=_evlNoteCalc(g, rg.niv, ev.bareme); tr.appendChild(td('font-weight:800')).textContent=(ev.mode==='both' && ev.noteCalc!==false && v!=null) ? String(v).replace('.',',') : ''; }
-      tr.appendChild(td());
-      G.m.forEach(u=>ligneEleve(u, G.id)); });
-  } else C.eleves.forEach(u=>ligneEleve(u, ''));
-  corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px', (ev.parGroupe && C.groupes.length ? 'Ligne du groupe → appliquée à tous ses membres (pâle = hérité). Clic sur un niveau d’un élève → ajusté pour lui seul (cadre orange). ' : '')+'Survol d’un niveau → son indicateur. Abs / Disp / NR : l’élève n’est pas noté.'));
+  rendre();
+}
+function _evlImprimerPages(ev, g, P, o){
+  _evlImpStyle(); let root=document.getElementById('evl-print-root'); if(!root){ root=document.createElement('div'); root.id='evl-print-root'; document.body.appendChild(root); }
+  root.textContent=''; P.forEach((p,i)=>{ const e=_evlPageImpEl(ev, g, p, o); if(o.a5 && i%2===1) e.classList.add('fin'); root.appendChild(e); });
+  document.body.classList.add('evl-imprime');
+  const fin=()=>{ document.body.classList.remove('evl-imprime'); root.textContent=''; window.removeEventListener('afterprint', fin); };
+  window.addEventListener('afterprint', fin);
+  try{ window.print(); }catch(e){}
 }
 /* Fenêtre d'un élève (PdC, carnet) : niveaux, note, code, « Suivant ▸ » */
 function _evlPopEleve(evId, uid, apres){
