@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.28';
+const APP_VERSION = 'v11.5.29';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -19621,6 +19621,7 @@ function renderParamsAccueil(){
   intro.textContent='Vue d\u2019ensemble de la configuration. Cliquez une carte pour ouvrir la famille, ou un lien pour aller droit à la section.';
   pane.appendChild(intro);
   try{ pane.appendChild(_themeAccueilLigne()); }catch(e){ console.warn('[theme]', e); }   // V11.5.1
+  try{ pane.appendChild(_accueilDispoLigne()); }catch(e){ console.warn('[accueil] dispo', e); }   // V11.5.29
   const grid=document.createElement('div');
   grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;align-items:stretch';
   pane.appendChild(grid);
@@ -59793,9 +59794,97 @@ function _accueilOrdonner(){
     const g=document.getElementById('sdc-tile'); const grille=g && g.parentNode; if(!grille) return;
     const T=[...grille.children];
     const trouver=(k)=>k[0]==='#' ? document.getElementById(k.slice(1)) : T.find(x=>x.querySelector && (x.querySelector('.htile-t')||{}).textContent===k);
-    ACCUEIL_ORDRE.forEach(k=>{ const x=trouver(k); if(x && x.parentNode===grille){ x.style.gridColumn=''; x.style.gridRow=''; grille.appendChild(x); } });
+    grille.querySelectorAll('.htile-vide').forEach(v=>v.remove());
+    const presents=ACCUEIL_ORDRE.filter(k=>{ const x=trouver(k); return x && x.parentNode===grille; });
+    const dispo=_accueilDispoCalcul(((S.reglages||{}).accueilDispo), ACCUEIL_ORDRE, presents);   // V11.5.29 — disposition choisie
+    dispo.forEach(k=>{
+      if(!k){ const v=document.createElement('div'); v.className='htile-vide'; v.setAttribute('aria-hidden','true'); v.style.visibility='hidden'; grille.appendChild(v); return; }
+      const x=trouver(k); if(x){ x.style.gridColumn=''; x.style.gridRow=''; grille.appendChild(x); } });
     const demo=document.getElementById('demo-pub-tile'); if(demo) demo.style.display='none';
   }catch(e){ console.warn('[accueil] tuiles', e); }
+}
+
+/* ── V11.5.29 — Disposition des tuiles de l'accueil (Paramètres › Accueil) ───
+   S.reglages.accueilDispo = liste de clés (titre de tuile ou '#id'), '' = case vide, lue
+   par ligne de 4. Les tuiles inconnues disparaissent, les nouvelles prennent la 1re case vide. */
+const ACC_COLS=4;
+/** Disposition effective. Pure. */
+function _accueilDispoCalcul(sauve, defaut, presents){
+  const P=(presents||[]).slice(); let L;
+  if(Array.isArray(sauve) && sauve.length){ const vu=new Set(); L=sauve.map(k=>(typeof k==='string' && P.indexOf(k)>=0 && !vu.has(k)) ? (vu.add(k), k) : ''); }
+  else L=(defaut||[]).filter(k=>P.indexOf(k)>=0);
+  P.forEach(k=>{ if(L.indexOf(k)<0){ const i=L.indexOf(''); if(i>=0) L[i]=k; else L.push(k); } });
+  while(L.length && !L[L.length-1]) L.pop();
+  return L;
+}
+/** Échange deux cases (glisser-déposer ou deux clics). Pure. */
+function _accueilDispoEchanger(L, i, j){ const M=(L||[]).slice(); const n=Math.max(i, j)+1; while(M.length<n) M.push(''); const t=M[i]; M[i]=M[j]; M[j]=t; return M; }
+let _accD=null;
+function _accTuiles(){
+  const g=document.getElementById('sdc-tile'); const grille=g && g.parentNode; if(!grille) return {};
+  const T=[...grille.children], out={};
+  ACCUEIL_ORDRE.forEach(k=>{ const x=k[0]==='#' ? document.getElementById(k.slice(1)) : T.find(y=>y.querySelector && (y.querySelector('.htile-t')||{}).textContent===k);
+    if(x && x.parentNode===grille) out[k]={ic:((x.querySelector('.htile-ic')||{}).textContent||'').trim(), t:((x.querySelector('.htile-t')||{}).textContent||k).trim(), cls:x.className}; });
+  return out;
+}
+function openAccueilDispo(){
+  try{ _accueilOrdonner(); }catch(e){}
+  const tu=_accTuiles(), presents=Object.keys(tu);
+  _accD={tu, L:_accueilDispoCalcul(((S.reglages||{}).accueilDispo), ACCUEIL_ORDRE, presents), sel:-1, drag:-1};
+  let ov=document.getElementById('acc-dispo'); if(ov) ov.remove();
+  ov=document.createElement('div'); ov.id='acc-dispo'; ov.style.cssText='position:fixed;inset:0;background:rgba(20,18,10,.45);z-index:480;display:flex;align-items:center;justify-content:center;padding:14px';
+  ov.addEventListener('mousedown', e=>{ if(e.target===ov) closeAccueilDispo(); });
+  ov.addEventListener('keydown', e=>{ if(e.key==='Escape'){ e.stopPropagation(); closeAccueilDispo(); } });
+  document.body.appendChild(ov); _accRendre();
+}
+function closeAccueilDispo(){ const ov=document.getElementById('acc-dispo'); if(ov) ov.remove(); _accD=null; }
+function _accRendre(){
+  const ov=document.getElementById('acc-dispo'); if(!ov || !_accD) return; ov.textContent='';
+  const D=_accD, mk=(tag, css, txt)=>{ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; };
+  const box=mk('div','background:var(--bg,#FAF8F3);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:min(980px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden'); ov.appendChild(box);
+  const hd=mk('div','display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--brd)'); box.appendChild(hd);
+  hd.appendChild(mk('span','font-family:Georgia,serif;font-size:21px','🧩 Disposition de l’accueil'));
+  hd.appendChild(mk('span','font-size:12px;color:var(--tx3);flex:1','Glissez une tuile sur une autre case (ou cliquez deux cases) pour les échanger. Les cases vides restent vides à l’accueil.'));
+  const x=mk('button','padding:5px 11px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);font-weight:700;cursor:pointer','✕'); x.type='button'; x.onclick=closeAccueilDispo; hd.appendChild(x);
+  const corps=mk('div','flex:1;overflow:auto;padding:14px 16px'); box.appendChild(corps);
+  const lignes=Math.max(Math.ceil(D.L.length/ACC_COLS)+1, 5), n=lignes*ACC_COLS;
+  const g=mk('div','display:grid;grid-template-columns:repeat('+ACC_COLS+',1fr);gap:8px'); g.id='acc-grille'; corps.appendChild(g);
+  for(let i=0;i<n;i++){
+    const k=D.L[i]||'', t=k ? D.tu[k] : null;
+    const c=mk('div','min-height:54px;border-radius:12px;display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:12.5px;font-weight:700;cursor:'+(k?'grab':'pointer')+';user-select:none;'
+      +(k ? (/htile-primary/.test(t.cls)?'background:#1A3D1A;color:#fff;border:1.5px solid #1A3D1A':/htile-bn/.test(t.cls)?'background:#FEF3C7;color:#3B2F12;border:1.5px solid #E8C96A':/htile-imp/.test(t.cls)?'background:#1D4ED8;color:#fff;border:1.5px solid #1D4ED8':'background:var(--sur);color:var(--tx);border:1.5px solid var(--brd)')
+          : 'border:1.5px dashed var(--brd);color:var(--tx3);background:transparent;justify-content:center;font-weight:500')
+      +(D.sel===i?';outline:3px solid #2563EB;outline-offset:1px':''));
+    c.className='acc-case'; c.dataset.i=String(i);
+    if(k){ c.appendChild(mk('span','font-size:20px;line-height:1', t.ic)); c.appendChild(mk('span',null, t.t)); c.draggable=true; }
+    else c.appendChild(mk('span',null,'vide'));
+    c.addEventListener('dragstart', e=>{ D.drag=i; try{ e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed='move'; }catch(_){} c.style.opacity='.45'; });
+    c.addEventListener('dragend', ()=>{ c.style.opacity=''; });
+    c.addEventListener('dragover', e=>{ e.preventDefault(); c.style.boxShadow='0 0 0 3px #86EFAC'; });
+    c.addEventListener('dragleave', ()=>{ c.style.boxShadow=''; });
+    c.addEventListener('drop', e=>{ e.preventDefault(); const j=D.drag; D.drag=-1; if(j>=0 && j!==i){ D.L=_accueilDispoEchanger(D.L, j, i); } D.sel=-1; _accRendre(); });
+    c.addEventListener('click', ()=>{ if(D.sel<0){ if(k) D.sel=i; } else { if(D.sel!==i) D.L=_accueilDispoEchanger(D.L, D.sel, i); D.sel=-1; } _accRendre(); });
+    g.appendChild(c);
+  }
+  const pied=mk('div','display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid var(--brd)'); box.appendChild(pied);
+  const btn=(t, css, fn)=>{ const b=mk('button','padding:6px 13px;border-radius:9px;border:1px solid var(--brd);background:var(--sur);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;'+(css||''), t); b.type='button'; b.onclick=fn; pied.appendChild(b); return b; };
+  btn('↺ Ordre par défaut','', ()=>{ D.L=_accueilDispoCalcul(null, ACCUEIL_ORDRE, Object.keys(D.tu)); D.sel=-1; _accRendre(); });
+  pied.appendChild(mk('span','flex:1'));
+  btn('Annuler','', closeAccueilDispo);
+  btn('Enregistrer','background:#166534;color:#fff;border-color:#166534', ()=>{
+    if(!S.reglages || typeof S.reglages!=='object') S.reglages={};
+    const L=D.L.slice(); while(L.length && !L[L.length-1]) L.pop();
+    S.reglages.accueilDispo=L; saveS(); closeAccueilDispo(); try{ _accueilOrdonner(); }catch(e){}
+    try{ showDropToast('Disposition de l’accueil enregistrée'); }catch(e){} });
+}
+/** Ligne « Disposition de l'accueil » (Paramètres › Accueil). */
+function _accueilDispoLigne(){
+  const row=document.createElement('div'); row.className='th-ligne';
+  const lab=document.createElement('span'); lab.className='th-lab'; lab.textContent='🧩 Disposition de l’accueil'; row.appendChild(lab);
+  const b=document.createElement('button'); b.type='button'; b.className='th-seg-b'; b.id='acc-dispo-btn'; b.textContent='Réorganiser les tuiles…'; b.onclick=openAccueilDispo; row.appendChild(b);
+  const perso=!!(((S.reglages||{}).accueilDispo)||[]).length;
+  const info=document.createElement('span'); info.className='th-info'; info.textContent=perso ? 'disposition personnalisée' : 'disposition par défaut'; row.appendChild(info);
+  return row;
 }
 
 /** V11.5.23 — Paramètres › Données : le mode démo (session fictive) quitte l'accueil. */
