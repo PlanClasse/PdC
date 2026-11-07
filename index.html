@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.30';
+const APP_VERSION = 'v11.5.31';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20040,7 +20040,7 @@ const _PAL_ACTIONS = [
 // reste tel quel : il dessine aussi les tuiles). Même forme que le lanceur.
 const _PAL_ECRANS_EXTRA = [
   {ic:'💞', full:'Affinités · Avec qui travailler (sondage des élèves)', kw:'affinites affinite sondage avec qui travailler binome groupe sociogramme', fn:()=>{ openAffinites(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.26
-  {ic:'👥', full:'Groupes · Générateur de groupes de travail', kw:'groupes groupe generateur travail equipes binomes ilots roles', fn:()=>{ openGroupes(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.30
+  {ic:'👥', full:'Groupes · Générateur de groupes de travail', kw:'groupes groupe generateur travail equipes binomes ilots roles', fn:()=>{ _grtChoix(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.30
   {ic:'🗒', full:'Bloc-notes · À faire, à rendre, rappels, notes', kw:'bloc notes carnet a faire rendre rappel note semaine tdl', fn:()=>{ openBlocNotes(); }},   // V11.5.23
   {ic:'👁️', full:'Espace prof · Ma semaine est-elle prête ?',
    kw:'espace prof supervision semaine prête calendrier 5 jours préparer tableau de bord mode prof',
@@ -60045,7 +60045,7 @@ function _affRendre(){
   _reuClasses().forEach(c=>sc.appendChild(new Option(String(c).toUpperCase(), c))); sc.value=cls; sc.onchange=()=>{ _aff.cls=sc.value; _aff.edit=''; _aff.menu=''; _aff.voirPas=false; _affRendre(); }; hd.appendChild(sc);
   hd.appendChild(_affEl('span','flex:1'));
   hd.appendChild(_affEl('span','font-size:11.5px;color:var(--tx3)','Informatif — moins fort qu’une contrainte'));
-  hd.appendChild(_affBtn('👥 Faire des groupes','', ()=>{ const c=_aff.cls; closeAffinites(); openGroupes(c); }, 'Générateur de groupes (souhaits et contraintes)'));   // V11.5.30
+  hd.appendChild(_affBtn('👥 Faire des groupes','', ()=>{ const c=_aff.cls; closeAffinites(); _grtChoix(c); }, 'Générateur de groupes (souhaits et contraintes)'));   // V11.5.30
   const lab=_affEl('label','padding:5px 11px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);font-weight:700;font-size:12.5px;cursor:pointer','📥 Importer xlsx');
   const inp=_affEl('input'); inp.type='file'; inp.accept='.xlsx,.xls,.csv'; inp.style.display='none'; inp.onchange=()=>_affLireFichier(inp.files && inp.files[0]); lab.appendChild(inp); hd.appendChild(lab);
   hd.appendChild(_affBtn('✕','', closeAffinites, 'Fermer'));
@@ -60294,8 +60294,8 @@ function _grtPourCours(liste, slotKey){ return (liste||[]).filter(e=>slotKey && 
 function _grtListe(cls){ if(!S.grpTravail || typeof S.grpTravail!=='object') S.grpTravail={}; if(!Array.isArray(S.grpTravail[cls])) S.grpTravail[cls]=[]; return S.grpTravail[cls]; }
 function _grtRoles(){ if(!Array.isArray(S.grpRoles) || !S.grpRoles.length) S.grpRoles=GRT_ROLES_DEFAUT.map(x=>Object.assign({}, x)); return S.grpRoles; }
 function _grtNiveaux(){ if(!S.grpNiveaux || typeof S.grpNiveaux!=='object') S.grpNiveaux={}; return S.grpNiveaux; }
-function _grtNouveau(cls){
-  const d=_appToday().split('-'); const e={id:'gt'+Date.now().toString(36), nom:'Groupes du '+d[2]+'/'+d[1], cours:[], nbG:Math.max(2, Math.round(((S.cl[cls]||{}).students||[]).length/4)), opt:Object.assign({}, GRT_OPT_DEFAUT), grp:[], libres:{}, roles:{}, maj:Date.now()};
+function _grtNouveau(cls, nom){
+  const d=_appToday().split('-'); const e={id:'gt'+Date.now().toString(36), nom:(nom&&String(nom).trim())||('Groupes du '+d[2]+'/'+d[1]), cree:Date.now(), cours:[], nbG:Math.max(2, Math.round(((S.cl[cls]||{}).students||[]).length/4)), opt:Object.assign({}, GRT_OPT_DEFAUT), grp:[], libres:{}, roles:{}, maj:Date.now()};
   _grtListe(cls).push(e); return e;
 }
 let _grtSaveT=0;
@@ -60385,7 +60385,7 @@ function _grtRendre(){
   sc.onchange=()=>openGroupes(sc.value); bar.appendChild(sc);
   const se=_grtEl('select','grt-sel'); se.style.cssText='color:var(--tx);max-width:190px'; se.title='Ensemble de groupes';
   _grtListe(cls).forEach(e=>se.appendChild(new Option(e.nom, e.id))); se.appendChild(new Option('＋ Nouvel ensemble…', '+'));
-  se.value=ens ? ens.id : '+'; se.onchange=()=>{ if(se.value==='+'){ _grt.ens=_grtNouveau(cls); _grtSauver(); } else _grt.ens=_grtListe(cls).find(e=>e.id===se.value); _grtRendre(); }; bar.appendChild(se);
+  se.value=ens ? ens.id : '+'; se.onchange=()=>{ if(se.value==='+'){ const n=prompt('Objet des groupes (ex. Projet robot)', ''); if(n===null){ se.value=ens?ens.id:'+'; return; } _grt.ens=_grtNouveau(cls, n); _grtSauver(); } else _grt.ens=_grtListe(cls).find(e=>e.id===se.value); _grtRendre(); }; bar.appendChild(se);
   if(!ens){ const vide=_grtEl('div', null); vide.style.cssText='flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--tx3)';
     vide.appendChild(_grtEl('div', null, 'Aucun ensemble de groupes pour '+String(cls).toUpperCase()+'.'));
     const b=_grtEl('button','grt-btn pri','＋ Créer un ensemble'); b.type='button'; b.onclick=()=>{ _grt.ens=_grtNouveau(cls); _grtSauver(); _grtRendre(); }; vide.appendChild(b);
@@ -60592,10 +60592,47 @@ function _grtMenuPlus(){
   const zone=document.querySelector('.pm-zone--placement'); if(!zone) return;
   const b=document.createElement('button'); b.className='pmcard'; b.id='pm-grt'; b.type='button';
   const ic=document.createElement('span'); ic.className='pmcard-ic'; ic.textContent='👥'; b.appendChild(ic); b.appendChild(document.createTextNode('Groupes'));
-  b.onclick=()=>{ try{ closePlusMenu(); }catch(e){} openGroupes(typeof curCls!=='undefined' ? curCls : ''); };
+  b.onclick=()=>{ try{ closePlusMenu(); }catch(e){} _grtChoix(typeof curCls!=='undefined' ? curCls : ''); };
   zone.appendChild(b);
 }
 try{ _grtMenuPlus(); }catch(e){}
+/** Derniers ensembles d'une classe (récent d'abord). Pure. */
+function _grtRecents(liste){ return (liste||[]).slice().sort((a,b)=>(b.maj||b.cree||0)-(a.maj||a.cree||0)); }
+function _grtDate(ts){ if(!ts) return ''; const d=new Date(ts); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+/** V11.5.31 — Fenêtre « 👥 Groupes » : ＋ Nouveau groupe (objet) puis les dernières créations ; ouvre la page. */
+function _grtChoix(cls){
+  _grtStyle(); const L=_reuClasses(); cls=(cls && S.cl[cls]) ? cls : (L[0]||'');
+  let ov=document.getElementById('grt-choix'); if(ov) ov.remove();
+  ov=_grtEl('div'); ov.id='grt-choix'; ov.style.cssText='position:fixed;inset:0;z-index:470;background:rgba(20,18,10,.4);display:flex;align-items:flex-start;justify-content:center;padding:70px 14px 14px';
+  const fermer=()=>{ ov.remove(); document.removeEventListener('keydown', esc, true); };
+  const esc=(e)=>{ if(e.key==='Escape'){ e.stopPropagation(); fermer(); } }; document.addEventListener('keydown', esc, true);
+  ov.addEventListener('pointerdown', e=>{ if(e.target===ov) fermer(); });
+  const box=_grtEl('div'); box.style.cssText='background:var(--sur);color:var(--tx);border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.3);width:min(440px,100%);max-height:80vh;display:flex;flex-direction:column;overflow:hidden'; ov.appendChild(box);
+  const hd=_grtEl('div'); hd.style.cssText='display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--brd)'; box.appendChild(hd);
+  hd.appendChild(_grtEl('span', null, '👥')).style.fontSize='20px';
+  const t=_grtEl('span', null, 'Groupes · '+String(cls).toUpperCase()); t.style.cssText='font-family:Georgia,serif;font-size:19px;flex:1'; hd.appendChild(t);
+  const x=_grtEl('button','grt-btn','✕'); x.type='button'; x.onclick=fermer; hd.appendChild(x);
+  const nv=_grtEl('div'); nv.style.cssText='display:flex;gap:6px;padding:12px 14px;border-bottom:1px solid var(--brd);background:var(--sur2)'; box.appendChild(nv);
+  const inp=_grtEl('input'); inp.id='grt-objet'; inp.placeholder='Objet du nouveau groupe (ex. Projet robot)'; inp.style.cssText='flex:1;font:inherit;font-size:13px;padding:7px 9px;border:1.5px solid var(--brd);border-radius:9px;background:var(--sur);color:var(--tx);min-height:36px';
+  const go=()=>{ fermer(); const e=_grtNouveau(cls, inp.value); try{ saveS(); }catch(err){} openGroupes(cls, e.id); };
+  inp.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } };
+  const b=_grtEl('button','grt-btn pri','＋ Nouveau groupe'); b.type='button'; b.onclick=go; nv.appendChild(inp); nv.appendChild(b);
+  const lst=_grtEl('div'); lst.style.cssText='overflow:auto;padding:6px 8px 10px'; box.appendChild(lst);
+  const R=_grtRecents(((S.grpTravail||{})[cls])||[]);
+  if(!R.length) lst.appendChild(_grtEl('div', null, 'Aucun groupe créé pour cette classe.')).style.cssText='padding:14px 8px;color:var(--tx3);font-size:12.5px';
+  else lst.appendChild(_grtEl('div', null, 'Dernières créations')).style.cssText='font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);padding:6px 6px 4px';
+  R.forEach(e=>{ const r=_grtEl('button'); r.type='button'; r.className='grt-recent'; r.style.cssText='display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 8px;border:0;border-radius:10px;background:transparent;cursor:pointer;font-family:inherit;color:var(--tx);min-height:44px';
+    r.onmouseenter=()=>{ r.style.background='var(--sur2)'; }; r.onmouseleave=()=>{ r.style.background='transparent'; };
+    const dt=_grtEl('span', null, _grtDate(e.cree||e.maj)); dt.style.cssText='font-size:11.5px;font-weight:800;color:var(--tx3);width:42px;flex-shrink:0'; r.appendChild(dt);
+    const mid=_grtEl('span'); mid.style.cssText='flex:1;min-width:0'; r.appendChild(mid);
+    const nm=_grtEl('div', null, e.nom); nm.style.cssText='font-weight:800;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'; mid.appendChild(nm);
+    const ng=(e.grp||[]).length, nvd=(e.grp||[]).filter(g=>g.val).length, nc=(e.cours||[]).length;
+    const sub=_grtEl('div', null, ng+' groupe'+(ng>1?'s':'')+(nvd?' · '+nvd+' validé'+(nvd>1?'s':''):'')+(nc ? ' · 📅 '+(nc===1 ? _grtLibCours(e.cours[0]) : nc+' cours') : '')+(e.maj && _grtDate(e.maj)!==_grtDate(e.cree) ? ' · modifié le '+_grtDate(e.maj) : ''));
+    sub.style.cssText='font-size:11.5px;color:var(--tx3)'; mid.appendChild(sub);
+    r.appendChild(_grtEl('span', null, '›')).style.cssText='font-size:18px;color:var(--tx3)';
+    r.onclick=()=>{ fermer(); openGroupes(cls, e.id); }; lst.appendChild(r); });
+  document.body.appendChild(ov); setTimeout(()=>{ try{ inp.focus(); }catch(e){} }, 30);
+}
 /** Lignes « 👥 nom · n groupes » des ensembles rattachés au cours (volet droit). createElement. */
 function _grtLignesCours(cls, slotKey){
   return _grtPourCours(((S.grpTravail||{})[cls])||[], slotKey).map(e=>{
