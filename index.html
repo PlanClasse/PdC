@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.37';
+const APP_VERSION = 'v11.5.38';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -46402,6 +46402,9 @@ function renderVoletDroit(){
   }
 
 
+  // V11.5.38 — ➡️ Pour ce cours : « Prochain cours » noté au cours précédent + lignes du bloc-notes datées de ce jour
+  try{ const _pcL=(typeof _pcLignesVolet==='function') ? _pcLignesVolet(clsCode, slotKey, _grpPrev1) : [];
+    if(_pcL.length){ const {wrap, body}=mkSection('vd-pour','➡️','Pour ce cours', _pcL.length); _pcL.forEach(x=>body.appendChild(x)); scroll.appendChild(wrap); } }catch(e){ console.warn('[pour ce cours]', e); }
   // V11.5.30 — 👥 Groupes de travail rattachés à ce cours
   try{ const _grtL=(typeof _grtLignesCours==='function') ? _grtLignesCours(clsCode, slotKey) : [];
     if(_grtL.length){ const {wrap, body}=mkSection('vd-grt','👥','Groupes', _grtL.length); _grtL.forEach(x=>body.appendChild(x)); scroll.appendChild(wrap); } }catch(e){ console.warn('[groupes]', e); }
@@ -59770,12 +59773,12 @@ function _bnAbsentsDernierCours(cls){
   try{ const L=(buildYearSlots(cls)||[]).filter(s=>s && (s.dateStr<t || (s.dateStr===t && (s.debut||'')<=h)));
     const s=L[L.length-1]; return s ? _docsDusAbsents(s.slotKey, cls, s) : []; }catch(e){ return []; }
 }
-function _bnPopEleves(host, ancre, inserer){
-  const p=_bnPop(host, ancre, 340), N=_bnNiveauxClasses(); let cls='', sel=[];
+function _bnPopEleves(host, ancre, inserer, clsFixe){
+  const p=_bnPop(host, ancre, 340), N=_bnNiveauxClasses(); let cls=clsFixe||'', sel=[];   // V11.5.38 : clsFixe = classe du PdC (pas de choix de classe)
   const dess=()=>{
     p.textContent='';
     p.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin-bottom:6px','👤 Élève(s)'));
-    Object.keys(N).forEach(lv=>{ const r=_bnEl('div','display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px'); r.appendChild(_bnEl('span','font-size:11px;color:var(--tx3);width:24px',lv));
+    if(!clsFixe) Object.keys(N).forEach(lv=>{ const r=_bnEl('div','display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px'); r.appendChild(_bnEl('span','font-size:11px;color:var(--tx3);width:24px',lv));
       N[lv].forEach(c=>r.appendChild(_bnBtn(String(c).toUpperCase(),'padding:3px 9px;border-radius:999px;'+(c===cls?'background:var(--acc);color:#fff;border-color:var(--acc)':''), ()=>{ cls=c; sel=[]; dess(); }))); p.appendChild(r); });
     if(!cls) return;
     const U=((S.cl[cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
@@ -59803,6 +59806,37 @@ function _bnRendreArchives(box){
   if(!K.length && !B.ranges.length) w.appendChild(_bnEl('div','color:var(--tx3);font-size:13px','Rien d’archivé.'));
 }
 /** Vue d'une classe (depuis le plan de classe) : ses lignes, cochables, et une saisie qui ajoute à « Général » avec #classe. */
+/** V11.5.38 — Lignes du bloc-notes d'une classe datées d'un jour (à faire / à rendre / rappel, non faites). Pure. */
+function _bnLignesDuJour(lignes, cls, dateStr){ const c=String(cls||'').toLowerCase(); return (lignes||[]).filter(l=>l && l.date===dateStr && !l.fait && l.type!=='note' && l.type!=='vide' && l.type!=='reu' && (l.classes||[]).indexOf(c)>=0); }
+/** V11.5.38 — « ➡️ Prochain cours » noté au cours précédent de la classe (séance validée, sinon brouillon). */
+function _pcNotePrecedent(cls, slotKey, grp){
+  let prev=null; try{ prev=(typeof getPrevSlotKey==='function') ? getPrevSlotKey(cls, slotKey, grp||'') : null; }catch(e){}
+  if(!prev) return null;
+  let se=null; try{ se=(readAllSeancesForClass(cls)||[]).find(x=>x && x.slotKey===prev)||null; }catch(e){}
+  let t=''; try{ t=_sdcNoteProchainDe(cls, {slotKey:prev, saved:se}); }catch(e){ t=''; }
+  t=String(t||'').trim(); return t ? {prev, texte:t} : null;
+}
+/** V11.5.38 — Ce qui a été noté POUR ce cours : note du cours précédent + lignes du bloc-notes datées de ce jour. */
+function _pcPourCeCours(cls, slotKey, grp){
+  const out={note:_pcNotePrecedent(cls, slotKey, grp), lignes:[]};
+  const d=String(slotKey||'').slice(0,10);
+  try{ const B=_bnStore(), ctx=_bnCtx(); B.onglets.forEach(t=>_bnLignesDuJour(_bnLignes(B.textes[t.id]||'', ctx), cls, d).forEach(l=>out.lignes.push(Object.assign(l, {onglet:t.id})))); }catch(e){}
+  return out;
+}
+/** Volet droit : section « ➡️ Pour ce cours ». createElement. */
+function _pcLignesVolet(cls, slotKey, grp){
+  const P=_pcPourCeCours(cls, slotKey, grp), L=[];
+  if(P.note){ const p=String(P.note.prev).slice(0,10).split('-');
+    const r=document.createElement('div'); r.className='vd-priority-item'; r.style.cssText='display:block;white-space:pre-wrap;font-size:11.5px;line-height:1.45;background:#F0FDF4;border-radius:6px;padding:5px 8px';
+    const h=document.createElement('div'); h.style.cssText='font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#166534;margin-bottom:2px'; h.textContent='Noté au cours du '+(p[2]||'')+'/'+(p[1]||'');
+    r.appendChild(h); r.appendChild(document.createTextNode(P.note.texte)); L.push(r); }
+  P.lignes.forEach(l=>{ const r=document.createElement('div'); r.className='vd-priority-item';
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.title='Fait (coche aussi la ligne du bloc-notes)';
+    const nm=document.createElement('span'); nm.className='vd-pi-name'; nm.textContent=((l.type==='arendre'||l.type==='rappel') && typeof BN_TYPES!=='undefined' ? BN_TYPES[l.type].ic+' ' : '')+(l.texte||'')+((l.noms||[]).length ? ' · '+l.noms.join(', ') : ''); nm.title=nm.textContent;
+    cb.onchange=()=>{ try{ const B=_bnStore(); B.textes[l.onglet]=_bnBasculer(B.textes[l.onglet]||'', l.i); saveS(); }catch(e){} nm.style.textDecoration=cb.checked?'line-through':''; nm.style.opacity=cb.checked?'.5':''; cb.disabled=true; };
+    r.appendChild(cb); r.appendChild(nm); L.push(r); });
+  return L;
+}
 /** V11.5.37 — Ajoute une ligne à un champ du modal Séance (texte existant conservé). Pure. */
 function _bnAjoutTexte(base, txt){ const b=String(base||'').replace(/\s+$/,''), t=String(txt||'').trim(); return t ? (b ? b+'\n'+t : t) : b; }
 const BN_SEANCE={prochain:{ic:'➡️', l:'Prochain cours', champ:'prochainCours'}, commentaire:{ic:'💬', l:'Observations', champ:'commentaire'}};
@@ -59828,7 +59862,7 @@ function _bnRendreClasse(box){
   hd.appendChild(_bnBtn('Tout le bloc-notes ↗','', ()=>{ _bn.cls=''; _bnRendre(); }));
   hd.appendChild(_bnBtn('✕','', closeBlocNotes, 'Fermer'));
   // Saisie rapide (en haut) : type, quand, puis la ligne de saisie juste en dessous
-  const z=_bnEl('div','border-bottom:1px solid var(--brd);padding:10px 14px;display:flex;flex-direction:column;gap:7px;background:var(--sur2)'); z.id='bn-saisie-cls'; box.appendChild(z);
+  const z=_bnEl('div','position:relative;border-bottom:1px solid var(--brd);padding:10px 14px;display:flex;flex-direction:column;gap:7px;background:var(--sur2)'); z.id='bn-saisie-cls'; box.appendChild(z);
   let type=_bn.typeCls!=null ? _bn.typeCls : '☐', quand='prochain';
   const tp=_bnEl('div','display:flex;flex-wrap:wrap;gap:5px;align-items:center'); z.appendChild(tp);
   const ta=_bnEl('input','padding:8px 10px;border:1px solid var(--brd);border-radius:9px;background:var(--bg);color:var(--tx);font-size:13px;font-family:inherit');
@@ -59840,6 +59874,12 @@ function _bnRendreClasse(box){
     if(!versSeance()){ tp.appendChild(_bnEl('span','width:10px'));
       const s=_bnProchainCours(cls);
       [['prochain', s ? '⏭ Prochain cours ('+_bnDateTexte(s.dateStr).slice(3)+')' : '⏭ Prochain cours'],['auj',"Aujourd'hui"],['','Sans date']].forEach(([v,l])=>tp.appendChild(_bnBtn(l, v===quand?'background:#0369A1;color:#fff;border-color:#0369A1':'', ()=>{ quand=v; dess(); }))); }
+    tp.appendChild(_bnEl('span','width:6px'));
+    const be=_bnBtn('👤 Élève(s)…','', ()=>_bnPopEleves(z, be, (U)=>{   // V11.5.38 — élèves de la classe, insérés dans la ligne
+        const noms=U.map(u=>versSeance() ? getFullName(u) : '@['+getFullName(u)+']').join(versSeance() ? ', ' : ' ');
+        const a=ta.selectionStart==null ? ta.value.length : ta.selectionStart, b=ta.selectionEnd==null ? a : ta.selectionEnd;
+        const av=(a>0 && !/\s/.test(ta.value[a-1])) ? ' ' : ''; ta.setRangeText(av+noms+' ', a, b, 'end'); ta.focus(); }, cls), 'Insérer des élèves de la classe'+(versSeance() ? '' : ' (la ligne part aussi dans leur journal)'));
+    tp.appendChild(be);
     ta.placeholder=versSeance() ? (BN_SEANCE[type].ic+' '+BN_SEANCE[type].l+' — ajouté au modal Séance de ce cours… (Entrée)') : 'Nouvelle ligne pour '+String(cls).toUpperCase()+'… (Entrée)'; };
   if(BN_SEANCE[type] && !sk) type='☐';
   dess(); z.appendChild(ta);
@@ -59853,6 +59893,9 @@ function _bnRendreClasse(box){
   // Lignes de la classe (floutées tant que « Afficher » n'est pas cliqué)
   const w=_bnEl('div','flex:1;overflow:auto;'+(_bn.voir?'':'filter:blur(6px);user-select:none;pointer-events:none')); w.id='bn-lignes-cls'; box.appendChild(w);
   if(!_bn.voir){ w.title='Notes floutées : « 👁 Afficher »'; }
+  if(sk){ let np=null; try{ np=_pcNotePrecedent(curCls, sk, (typeof getCurrentGrpId==='function') ? getCurrentGrpId(curCls, sk) : ''); }catch(e){}
+    if(np){ const p=String(np.prev).slice(0,10).split('-'); w.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:9px 14px 4px;color:#166534','➡️ Noté au cours du '+(p[2]||'')+'/'+(p[1]||'')+' pour celui-ci'));
+      const r=_bnEl('div','padding:7px 14px;border-top:1px solid var(--brd);font-size:13px;white-space:pre-wrap', np.texte); w.appendChild(r); } }
   if(sk){ const vals=Object.keys(BN_SEANCE).map(k=>[k, _bnSeanceValeur(curCls, sk, k)]).filter(x=>String(x[1]).trim());
     if(vals.length){ w.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:9px 14px 4px;color:#5B21B6','Dans le modal Séance de ce cours'));
       vals.forEach(([k,v])=>{ const r=_bnEl('div','display:grid;grid-template-columns:22px 1fr;gap:8px;padding:7px 14px;border-top:1px solid var(--brd);font-size:13px;white-space:pre-wrap'); r.appendChild(_bnEl('span',null,BN_SEANCE[k].ic)); r.appendChild(_bnEl('span',null,v)); w.appendChild(r); }); } }
