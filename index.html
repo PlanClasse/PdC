@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.38';
+const APP_VERSION = 'v11.5.39';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59774,7 +59774,7 @@ function _bnAbsentsDernierCours(cls){
     const s=L[L.length-1]; return s ? _docsDusAbsents(s.slotKey, cls, s) : []; }catch(e){ return []; }
 }
 function _bnPopEleves(host, ancre, inserer, clsFixe){
-  const p=_bnPop(host, ancre, 340), N=_bnNiveauxClasses(); let cls=clsFixe||'', sel=[];   // V11.5.38 : clsFixe = classe du PdC (pas de choix de classe)
+  const p=_bnPop(host, ancre, 420), N=_bnNiveauxClasses(); let cls=clsFixe||'', sel=[];   // V11.5.38 : clsFixe = classe du PdC (pas de choix de classe)
   const dess=()=>{
     p.textContent='';
     p.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin-bottom:6px','👤 Élève(s)'));
@@ -59784,7 +59784,11 @@ function _bnPopEleves(host, ancre, inserer, clsFixe){
     const U=((S.cl[cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
     const ab=_bnAbsentsDernierCours(cls);
     if(ab.length) p.appendChild(_bnBtn('☐ Absents du dernier cours ('+ab.length+')','margin:4px 0;font-size:12px', ()=>{ ab.forEach(u=>{ if(sel.indexOf(u)<0) sel.push(u); }); dess(); }));
-    const g=_bnEl('div','display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;max-height:220px;overflow:auto;margin-top:4px;font-size:12.5px'); p.appendChild(g);
+    // V11.5.39 — deux colonnes : A = première moitié de la liste, B = la suite (ordre en colonnes) ; toute la classe visible si la place le permet
+    const lignesG=Math.max(1, Math.ceil(U.length/2));
+    const g=_bnEl('div','display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat('+lignesG+',auto);grid-auto-flow:column;gap:3px 12px;overflow:auto;margin-top:4px;font-size:12.5px'); p.appendChild(g);
+    setTimeout(()=>{ try{ const cadre=host.closest('#bn-modal > div') || document.documentElement, bas=Math.min(cadre.getBoundingClientRect().bottom, window.innerHeight)-12;
+      const dispo=bas-g.getBoundingClientRect().top-48; g.style.maxHeight=Math.max(160, dispo)+'px'; }catch(e){} }, 0);
     U.forEach(u=>{ const l=_bnEl('label','display:flex;gap:5px;align-items:center;cursor:pointer'); const cb=_bnEl('input'); cb.type='checkbox'; cb.checked=sel.indexOf(u)>=0;
       cb.onchange=()=>{ const i=sel.indexOf(u); if(cb.checked && i<0) sel.push(u); if(!cb.checked && i>=0) sel.splice(i,1); };
       l.appendChild(cb); l.appendChild(_bnEl('span',null,getFullName(u))); g.appendChild(l); });
