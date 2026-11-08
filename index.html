@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.39';
+const APP_VERSION = 'v11.5.40';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -36748,8 +36748,76 @@ document.addEventListener('keydown', (e)=>{
   if(!_pdcRaccourciPlus(e.key, {ctrl:e.ctrlKey, alt:e.altKey, meta:e.metaKey}, a ? {tag:a.tagName, editable:!!a.isContentEditable} : null)) return;
   const btn=document.getElementById('btn-plus'); if(!btn || !btn.offsetParent) return;   // plan de classe affiché
   if(document.querySelector('#evl-page,#grt-page,#aff-modal,#bn-modal,#reu-page,#rch-page,#jnl-fiche')) return;
-  e.preventDefault(); try{ togglePlusMenu({stopPropagation(){}}); }catch(err){}
+  e.preventDefault();
+  const m=document.getElementById('plus-menu'), dejaOuvert=!!(m && m.classList.contains('open'));
+  try{ togglePlusMenu({stopPropagation(){}}); }catch(err){}
+  if(!dejaOuvert) try{ _plusAfficherTouches(); }catch(err){ console.warn('[touches Plus]', err); }   // V11.5.40 — touches seulement si ouvert avec P
 });
+/* ══ V11.5.40 — Touches du menu ⋯ Plus (affichées seulement quand on l'ouvre avec P) ════
+   Table FIXE (demande du 08/11) : une touche par action, la même d'un jour à l'autre. RÈGLE : toute nouvelle
+   carte du menu Plus reçoit sa touche ici (test §243 : chaque carte connue du menu en a une, sans doublon).
+   Clé = id de la carte, sinon son libellé en minuscules. Cartes d'affichage sans touche (groupes affichés) : 1, 2, 3… */
+const PLUS_TOUCHES={
+  // Placement
+  'rotation équipes':'R', 'pdc aléatoire':'A', 'vider le plan':'V', 'sync class.↔îlot':'K', 'pm-aff':'F', 'pm-grt':'G', 'pm-evl':'E', 'plan temporaire':'T',
+  // Affichage
+  'ebep':'B', 'pmi-gender':'S', 'f / g':'S', 'pmi-delegues':'D', 'délégués':'D',
+  // Vérifs
+  'contraintes':'C', 'alertes seuils':'L',
+  // Données
+  'exporter plans':'X', 'importer plan':'U', 'imprimer / pdf':'I', 'synchroniser':'Y', 'pmi-delegues-decl':'Q', 'déclarer les délégués':'Q',
+  // Plan courant
+  'effacer statuts':'⌫', 'marquer changement':'M', 'nouveau layout':'N', 'modifier layout':'O', 'renommer layouts':'W', 'pmi-boardpos':'H', 'tableau haut/bas':'H'
+};
+/** Touche d'une carte (id d'abord, puis libellé). Pure. */
+function _plusToucheDe(id, libelle){ if(id && PLUS_TOUCHES[id]) return PLUS_TOUCHES[id]; return PLUS_TOUCHES[String(libelle||'').trim().toLowerCase()]||''; }
+/** Touches des cartes visibles [{id, libelle, zone}] : table fixe, puis 1, 2, 3… pour les cartes d'affichage sans touche ; jamais deux fois la même. Pure. */
+function _plusTouchesAttribuer(cartes){
+  const prises=new Set(), out=[]; let n=1;
+  (cartes||[]).forEach(c=>{ let k=_plusToucheDe(c.id, c.libelle); if(k && prises.has(k)) k='';
+    if(!k && c.zone==='affichage'){ while(prises.has(String(n)) && n<10) n++; if(n<10){ k=String(n); n++; } }
+    if(k) prises.add(k); out.push(k); });
+  return out;
+}
+/** Touche tapée → touche de la table (lettres en majuscules, ⌫ pour Retour arrière / Suppr). Pure. */
+function _plusToucheTapee(key){ if(key==='Backspace' || key==='Delete') return '⌫'; const k=String(key||''); return k.length===1 ? k.toUpperCase() : ''; }
+function _plusLibelleCarte(b){ const c=b.cloneNode(true); c.querySelectorAll('.pmcard-ic,.pm-k').forEach(x=>x.remove()); return c.textContent.replace(/\s+/g,' ').trim(); }
+function _plusMasquerTouches(){
+  const m=document.getElementById('plus-menu'); if(m){ m.classList.remove('pm-touches'); m.querySelectorAll('.pm-k,.pm-k-bande').forEach(x=>x.remove()); }
+  if(window._plusTouchesKey){ document.removeEventListener('keydown', window._plusTouchesKey, true); window._plusTouchesKey=null; }
+}
+function _plusAfficherTouches(){
+  const m=document.getElementById('plus-menu'); if(!m || !m.classList.contains('open')) return;
+  _plusMasquerTouches();
+  if(!document.getElementById('pm-k-style')){ const st=document.createElement('style'); st.id='pm-k-style';
+    st.textContent='#plus-menu.pm-touches .pmcard{position:relative}'
+      +'.pm-k{position:absolute;left:-9px;top:-9px;min-width:24px;height:24px;padding:0 6px;border-radius:7px;background:#1F2A1F;color:#fff;font:800 13px/24px ui-monospace,Consolas,monospace;text-align:center;box-shadow:0 3px 0 rgba(0,0,0,.35),0 6px 14px rgba(0,0,0,.25);pointer-events:none;z-index:3;animation:pmk .16s ease-out}'
+      +'@keyframes pmk{from{opacity:0;transform:scale(.6) translateY(4px)}to{opacity:1;transform:none}}'
+      +'@media (prefers-reduced-motion:reduce){.pm-k{animation:none}}'
+      +'.pm-k-bande{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:8px;padding:7px 12px;border-radius:10px;background:#F4F1EA;color:#2A2416;font-size:12.5px}'
+      +'.pm-k-bande b{font:800 12px/20px ui-monospace,Consolas,monospace;min-width:22px;height:22px;padding:0 6px;border-radius:6px;background:#1F2A1F;color:#fff;display:inline-block;text-align:center;box-shadow:0 2px 0 rgba(0,0,0,.35)}'
+      +'.pmcard.pm-k-go{box-shadow:0 0 0 3px #22C55E}';
+    document.head.appendChild(st); }
+  const cartes=[...m.querySelectorAll('.pmcard')].filter(b=>b.offsetParent!==null);
+  const zoneDe=(b)=>{ const z=b.closest('.pm-zone'); const c=z ? [...z.classList].find(x=>/^pm-zone--/.test(x)) : ''; return c ? c.replace('pm-zone--','') : ''; };
+  const K=_plusTouchesAttribuer(cartes.map(b=>({id:b.id, libelle:_plusLibelleCarte(b), zone:zoneDe(b)})));
+  const parTouche={};
+  cartes.forEach((b,i)=>{ const k=K[i]; if(!k) return; parTouche[k]=b; const s=document.createElement('span'); s.className='pm-k'; s.textContent=k; b.appendChild(s); b.title=(b.title?b.title+' — ':'')+'touche '+k; });
+  m.classList.add('pm-touches');
+  const bande=document.createElement('div'); bande.className='pm-k-bande';
+  const kb=(t)=>{ const x=document.createElement('b'); x.textContent=t; return x; };
+  bande.appendChild(document.createTextNode('Tapez la touche d’une action ·')); bande.appendChild(kb('P')); bande.appendChild(document.createTextNode('ou')); bande.appendChild(kb('Échap')); bande.appendChild(document.createTextNode('pour fermer'));
+  m.appendChild(bande);
+  window._plusTouchesKey=(e)=>{
+    if(!m.classList.contains('open')){ _plusMasquerTouches(); return; }
+    if(e.ctrlKey || e.metaKey || e.altKey) return;
+    if(e.key==='Escape' || e.key==='p' || e.key==='P'){ e.preventDefault(); e.stopPropagation(); _plusMasquerTouches(); try{ closePlusMenu(); }catch(x){} return; }
+    const k=_plusToucheTapee(e.key), b=k && parTouche[k]; if(!b) return;
+    e.preventDefault(); e.stopPropagation(); b.classList.add('pm-k-go'); _plusMasquerTouches();
+    setTimeout(()=>{ b.classList.remove('pm-k-go'); try{ b.click(); }catch(x){} try{ closePlusMenu(); }catch(x){} }, 90);
+  };
+  document.addEventListener('keydown', window._plusTouchesKey, true);
+}
 /** V11.5.17 — Ouvre le cours suivant de la journée (même chemin que l'emploi du temps). */
 function coursSuivantDuJour(){
   const c=_coursSuivantDuJour(curSlotKey);
@@ -40008,6 +40076,7 @@ function togglePlusMenu(e){
   // V020-v177.2 — Détacher vers <body> pour échapper au containing-block
   // créé par le transform/filter éventuel de .tb-center.
   if(m.parentNode!==document.body) document.body.appendChild(m);
+  try{ if(typeof _plusMasquerTouches==='function') _plusMasquerTouches(); }catch(err){}   // V11.5.40 — au clic : pas de touches
   const open=m.classList.contains('open');
   btn.title='Plus d’options (raccourci : P)';   // V11.5.36
   if(open){
@@ -40039,6 +40108,7 @@ function togglePlusMenu(e){
 function closePlusMenu(){
   const m=document.getElementById('plus-menu');
   if(m) m.classList.remove('open');
+  try{ if(typeof _plusMasquerTouches==='function') _plusMasquerTouches(); }catch(e){}   // V11.5.40
 }
 // Close on outside click
 document.addEventListener('click',()=>closePlusMenu());
