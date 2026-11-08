@@ -3009,6 +3009,8 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .imp-seg-b.on{background:#1D4ED8;color:#fff;font-weight:700}
 .imp-alerte{padding:4px 10px;border-radius:999px;background:#FDE2E0;color:#8E1B1B;font-size:12px;font-weight:800}
 .imp-corps{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-height:0}
+/* V11.5.44 — les blocs ne se tassent plus (lignes tronquées, pas de défilement en « Tous niveaux ») */
+.imp-corps>*{flex-shrink:0}
 .imp-vide{padding:14px;color:var(--tx3);font-size:13px;font-style:italic}
 .imp-g,.imp-g-ent{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) 82px 78px 150px 104px;gap:12px;align-items:center}
 .imp-g-ent{padding:0 14px;font-size:11px;font-weight:700;color:var(--tx3)}
@@ -4840,7 +4842,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.43';
+const APP_VERSION = 'v11.5.44';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
