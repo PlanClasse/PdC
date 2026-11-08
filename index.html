@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.35';
+const APP_VERSION = 'v11.5.36';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -36438,6 +36438,7 @@ function openApp(cls, groupeId, slotKey){
   const btnOutils=document.getElementById('btn-outils');
   if(btnOutils) btnOutils.style.display=curSlotKey?'':'none';
   try{ _majBtnCoursSuivant(); }catch(e){ console.warn('[cours suivant]', e); }   // V11.5.17
+  try{ _majBtnCoursPrecedent(); }catch(e){ console.warn('[cours précédent]', e); }   // V11.5.36
   // Mode Contraintes : par défaut en PdC, sorti en EDT. Si on bascule de classe en
   // restant en PdC + Contraintes, on re-render simplement la sidebar pour rafraîchir.
   if(curSlotKey && contraintesMode){
@@ -36684,6 +36685,71 @@ function _majBtnCoursSuivant(){
     b.title='Cours suivant du jour : '+nom+' à '+c.debut.replace(':','h');
   }
 }
+/** V11.5.36 — Cours PRÉCÉDENT de la journée (miroir de _coursSuivantDuJour) : le dernier cours du même jour
+ *  qui commence plus tôt, non annulé et rattaché. null s'il n'y en a pas. */
+function _coursPrecedentDuJour(slotKey){
+  const p=String(slotKey||'').split('_'), dateStr=p[0]||'', hh=p[1]||'';
+  if(!dateStr || !hh || typeof resolveDay!=='function') return null;
+  let r=null; try{ r=resolveDay(dateStr); }catch(e){ return null; }
+  if(!r || r.isVacance || !Array.isArray(r.events)) return null;
+  const cands=r.events.filter(ev=>ev && !ev.cancelled && !ev._reu && ev.start).map(ev=>{
+    const debut=formatHHMM(new Date(ev.start));
+    return {ev, debut, slotKey:dateStr+'_'+debut};
+  }).filter(c=>c.debut<hh).sort((a,b)=>b.debut.localeCompare(a.debut));
+  for(const c of cands){
+    const cls=(typeof extractClassCode==='function') ? (extractClassCode(c.ev.summary||'')||'') : '';
+    if(typeof isSlotCancelled==='function' && isSlotCancelled(dateStr, c.debut, cls)) continue;
+    let ctx=null; try{ ctx=getAppOpenContextFromRawCode(c.ev.summary||'', c.slotKey, cls); }catch(e){ ctx=null; }
+    if(!ctx || !(ctx.cls || ctx.grpInter)) continue;
+    c.cls=cls; c.ctx=ctx;
+    return c;
+  }
+  return null;
+}
+/** V11.5.36 — Bouton « ⏮ Précédent » : à gauche du bloc central (Layout, Vue, Outils, Plus, Suivant), caché au 1er cours. */
+function _majBtnCoursPrecedent(){
+  let b=document.getElementById('btn-jour-prec');
+  const c=(typeof curSlotKey!=='undefined' && curSlotKey) ? _coursPrecedentDuJour(curSlotKey) : null;
+  const plus=document.getElementById('btn-plus'), wrap=plus && plus.parentNode, bloc=wrap && wrap.parentNode;   // .tb-center (celui de « Suivant »)
+  if(!b){
+    if(!c || !bloc) return;
+    b=document.createElement('button'); b.className='tbtn'; b.id='btn-jour-prec'; b.type='button';
+    b.style.cssText='background:#ECFDF5;color:#047857;padding:0 10px;border-right:1px solid var(--brd)';
+    const ic=document.createElement('span'); ic.className='tbtn-ic'; ic.textContent='⏮';
+    const lb=document.createElement('span'); lb.className='tbtn-lb'; lb.textContent='Précédent';
+    b.appendChild(ic); b.appendChild(lb);
+    b.onclick=()=>coursPrecedentDuJour();
+  }
+  // Toujours en tête du bloc (avant Layout) : la barre peut avoir été réagencée entre deux appels.
+  if(bloc){ const lay=document.getElementById('btn-lay'); const ref=(lay && lay.parentNode===bloc) ? lay : bloc.firstElementChild; if(b.parentNode!==bloc || b.nextElementSibling!==ref) bloc.insertBefore(b, ref); }
+  b.style.display=c ? '' : 'none';
+  if(c){
+    const G=(typeof S!=='undefined' && S && S.groupes) || {};
+    const gid=c.ctx.grpInter || c.ctx.groupeId || '';
+    const demi=/(\d[eE]\d+)\s*P(\d)\b/i.exec(String(c.ev.summary||''));
+    const nom=(c.ctx.grpInter && G[gid] && G[gid].label) ? '👥 '+G[gid].label
+      : String(c.ctx.cls||c.cls||'').toUpperCase()+(demi ? ' · P'+demi[2] : '');
+    b.title='Cours précédent du jour : '+nom+' à '+c.debut.replace(':','h');
+  }
+}
+function coursPrecedentDuJour(){
+  const c=_coursPrecedentDuJour(curSlotKey);
+  if(!c) return false;
+  return openAppForEvent(c.ev, c.slotKey, c.cls);
+}
+/** V11.5.36 — Raccourci clavier du plan de classe : « P » ouvre / ferme ⋯ Plus (hors saisie de texte et sans Ctrl / Alt / ⌘). Pure : la touche déclenche-t-elle ? */
+function _pdcRaccourciPlus(key, mods, cible){
+  if(mods && (mods.ctrl || mods.alt || mods.meta)) return false;
+  if(cible && (cible.tag==='INPUT' || cible.tag==='TEXTAREA' || cible.tag==='SELECT' || cible.editable)) return false;
+  return key==='p' || key==='P';
+}
+document.addEventListener('keydown', (e)=>{
+  const a=document.activeElement;
+  if(!_pdcRaccourciPlus(e.key, {ctrl:e.ctrlKey, alt:e.altKey, meta:e.metaKey}, a ? {tag:a.tagName, editable:!!a.isContentEditable} : null)) return;
+  const btn=document.getElementById('btn-plus'); if(!btn || !btn.offsetParent) return;   // plan de classe affiché
+  if(document.querySelector('#evl-page,#grt-page,#aff-modal,#bn-modal,#reu-page,#rch-page,#jnl-fiche')) return;
+  e.preventDefault(); try{ togglePlusMenu({stopPropagation(){}}); }catch(err){}
+});
 /** V11.5.17 — Ouvre le cours suivant de la journée (même chemin que l'emploi du temps). */
 function coursSuivantDuJour(){
   const c=_coursSuivantDuJour(curSlotKey);
@@ -39943,6 +40009,7 @@ function togglePlusMenu(e){
   // créé par le transform/filter éventuel de .tb-center.
   if(m.parentNode!==document.body) document.body.appendChild(m);
   const open=m.classList.contains('open');
+  btn.title='Plus d’options (raccourci : P)';   // V11.5.36
   if(open){
     m.classList.remove('open');
     return;
