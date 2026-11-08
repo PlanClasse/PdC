@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.40';
+const APP_VERSION = 'v11.5.41';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -58641,6 +58641,10 @@ function renderObsSuivi(){
    Données : S.journalEleves[uid] = [{id, date:'AAAA-MM-JJ', heure:'HH:MM', type,
    texte, cls, ts, majTs?}] — par élève, toutes classes (comme S.ficheSuivi).
    Les observations, statuts… restent où ils sont : le journal les LIT. */
+/** V11.5.41 — Boutons de suppression sur fond rouge (demande du 08/11 : « tout ce qui est supprimer doit être en fond rouge »).
+ *  fort = 2e clic « Supprimer ? » (rouge plus foncé). Renvoie le bouton. */
+const BTN_SUPPR='background:#DC2626;color:#FFFFFF;border:1px solid #B91C1C;border-radius:7px;cursor:pointer;font-weight:700';
+function _btnSuppr(b, fort){ if(b){ b.style.background=fort?'#991B1B':'#DC2626'; b.style.color='#FFFFFF'; b.style.borderColor=fort?'#7F1D1D':'#B91C1C'; if(!b.style.borderStyle || b.style.borderStyle==='none'){ b.style.border='1px solid '+(fort?'#7F1D1D':'#B91C1C'); } b.style.borderRadius=b.style.borderRadius||'7px'; b.classList.add('btn-suppr'); } return b; }
 const JNL_TYPES=[
   {id:'parents', ic:'🗣', l:'Réunion parents', bg:'#DBEAFE', fg:'#1D4ED8'},
   {id:'conseil', ic:'🏛', l:'Conseil',         bg:'#FCE7F3', fg:'#9D174D'},
@@ -58879,7 +58883,7 @@ function _jnlRendreFiche(){
       const bm=_jnlEl('button','background:none;border:none;cursor:pointer;font-size:13px;color:var(--tx3)','✎'); bm.type='button'; bm.title='Modifier';
       bm.onclick=()=>_jnlComposer({uid, note:e.note, cls, apres:_jnlRendreFiche});
       const conf=_jnlSupprimerId===e.note.id;
-      const bs=_jnlEl('button','background:none;border:none;cursor:pointer;font-size:'+(conf?'11.5px;font-weight:700;color:#B91C1C':'13px;color:var(--tx3)'), conf?'Supprimer ?':'🗑'); bs.type='button'; bs.title='Supprimer (deux clics)';
+      const bs=_btnSuppr(_jnlEl('button','cursor:pointer;padding:1px 7px;font-size:'+(conf?'11.5px;font-weight:700':'12px'), conf?'Supprimer ?':'🗑'), conf); bs.type='button'; bs.title='Supprimer (deux clics)';
       bs.onclick=()=>{ if(!conf){ _jnlSupprimerId=e.note.id; _jnlRendreFiche(); setTimeout(()=>{ if(_jnlSupprimerId===e.note.id){ _jnlSupprimerId=''; _jnlRendreFiche(); } }, 4000); return; }
         _jnlSupprimerId=''; if(_jnlSupprimer(_jnlStore(), uid, e.note.id)){ saveS(); } _jnlRendreFiche(); };
       a.appendChild(bm); a.appendChild(bs);
@@ -59136,10 +59140,10 @@ function _reuRendreDetail(box, r){
   hd.appendChild(cp);
   hd.appendChild(_reuBtn('✎','', ()=>_reuEditer(r, null), 'Modifier (type, date, classes…)'));
   const conf=_reu.supprimer===r.id;
-  hd.appendChild(_reuBtn(conf?'Supprimer ?':'🗑', conf?'color:#B91C1C;border-color:#FCA5A5':'', ()=>{
+  hd.appendChild(_btnSuppr(_reuBtn(conf?'Supprimer ?':'🗑', '', ()=>{
     if(!conf){ _reu.supprimer=r.id; _reuRendre(); setTimeout(()=>{ if(_reu.supprimer===r.id){ _reu.supprimer=''; _reuRendre(); } }, 4000); return; }
     const R=_reuStore(); const i=R.indexOf(r); if(i>=0) R.splice(i,1); _reu.supprimer=''; _reu.sel=''; saveS(); _reuRendre();
-  }, 'Supprimer la réunion (les notes déjà parties dans le journal des élèves restent)'));
+  }, 'Supprimer la réunion (les notes déjà parties dans le journal des élèves restent)'), conf));
   if(ty.forme==='classes') _reuRendreClasses(box, r);
   if(ty.forme==='eleve') _reuRendreUnEleve(box, r);
   _reuRendreNotes(box, r, ty);
@@ -59521,7 +59525,7 @@ function _reuEditerTypes(){
       Object.keys(REU_FORMES).forEach(k=>fo.appendChild(new Option(REU_FORMES[k], k))); fo.value=t.forme||'libre';
       fo.onchange=()=>{ t.forme=fo.value; saveS(); };
       const n=_reuStore().filter(r=>r && r.type===t.id).length;
-      const del=_reuEl('button','background:none;border:none;cursor:pointer;font-size:'+(conf===t.id?'11.5px;font-weight:700;color:#B91C1C':'14px;color:var(--tx3)'), conf===t.id?'Supprimer ?':'🗑'); del.type='button';
+      const del=_btnSuppr(_reuEl('button','cursor:pointer;padding:1px 7px;font-size:'+(conf===t.id?'11.5px;font-weight:700':'12px'), conf===t.id?'Supprimer ?':'🗑'), conf===t.id); del.type='button';
       del.title=n ? n+' réunion(s) de ce type : elles le garderont, sous le nom « Réunion »' : 'Supprimer ce type';
       del.onclick=()=>{ if(conf!==t.id){ conf=t.id; dess(); return; } T.splice(i,1); conf=''; saveS(); dess(); };
       [ic, lb, fo, del].forEach(x=>row.appendChild(x));
@@ -59731,9 +59735,9 @@ function _bnRendre(){
     b.title=on?'Cliquer pour renommer':''; hd.appendChild(b);
     if(on && t.id!=='general'){
       const conf=_bn.supprimer===t.id, vide=!String(B.textes[t.id]||'').trim();
-      hd.appendChild(_bnBtn(conf?'Supprimer ?':'🗑', conf?'color:#B91C1C;padding:3px 8px':'padding:3px 8px', ()=>{
+      hd.appendChild(_btnSuppr(_bnBtn(conf?'Supprimer ?':'🗑', 'padding:3px 8px', ()=>{
         if(!vide && !conf){ _bn.supprimer=t.id; _bnRendre(); setTimeout(()=>{ if(_bn.supprimer===t.id){ _bn.supprimer=''; _bnRendre(); } }, 4000); return; }
-        B.onglets=B.onglets.filter(x=>x.id!==t.id); delete B.textes[t.id]; _bn.onglet='general'; _bn.supprimer=''; saveS(); _bnRendre(); }, vide?'Supprimer cet onglet':'Supprimer cet onglet et son texte (deux clics)'));
+        B.onglets=B.onglets.filter(x=>x.id!==t.id); delete B.textes[t.id]; _bn.onglet='general'; _bn.supprimer=''; saveS(); _bnRendre(); }, vide?'Supprimer cet onglet':'Supprimer cet onglet et son texte (deux clics)'), conf));
     }
   });
   hd.appendChild(_bnBtn('＋','padding:3px 9px', ()=>{ const id='o'+Date.now().toString(36); B.onglets.push({id, l:'Nouvel onglet', ic:''}); B.textes[id]=''; _bn.onglet=id; _bn.renommer=true; saveS(); _bnRendre(); }, 'Ajouter un onglet'));
@@ -60299,9 +60303,9 @@ function _affRendre(){
       const k=u+'|'+type+'|'+v;
       c.appendChild(_affChip((cst?(type==='associer'?'🤝 ':'🚫 '):'')+getFullName(v)+(reci?' ⇄':''), cst?(type==='associer'?'asso':'sepa'):genre, ()=>{ _aff.menu=_aff.menu===k?'':k; _affRendre(); }, (cst?(type==='associer'?'Contrainte « Associer » déjà prise en compte':'Contrainte « Séparer » déjà prise en compte'):'')+(reci?(cst?' · ':'')+'Choix réciproque':'')));
       if(_aff.menu===k){ const m=_affEl('div','display:flex;gap:5px;flex-wrap:wrap;margin:5px 2px;padding:7px;border:1px solid var(--brd);border-radius:10px;background:var(--sur);box-shadow:0 8px 20px rgba(0,0,0,.1)');
-        m.appendChild(_affBtn('Retirer','padding:3px 9px', ()=>{ const L=(A[u]||{})[genre==='vert'?'avec':'pas']||[]; const i=L.indexOf(v); if(i>=0) L.splice(i,1); _aff.menu=''; saveS(); _affRendre(); }));
+        m.appendChild(_affBtn('🗑 Retirer',BTN_SUPPR+';padding:3px 9px', ()=>{ const L=(A[u]||{})[genre==='vert'?'avec':'pas']||[]; const i=L.indexOf(v); if(i>=0) L.splice(i,1); _aff.menu=''; saveS(); _affRendre(); }));
         if(!cst) m.appendChild(_affBtn((type==='associer'?'🤝 → contrainte « Associer »':'🚫 → contrainte « Séparer »'),'padding:3px 9px', ()=>{ con[type].push([u, v]); _aff.menu=''; saveS(); try{ if(typeof renderApp==='function' && typeof curCls!=='undefined' && curCls===cls) renderApp(); }catch(e){} _affRendre(); }, 'Devient une contrainte de placement'));
-        else m.appendChild(_affBtn('Retirer la contrainte','padding:3px 9px', ()=>{ con[type]=con[type].filter(p=>!(Array.isArray(p) && ((p[0]===u&&p[1]===v)||(p[0]===v&&p[1]===u)))); _aff.menu=''; saveS(); _affRendre(); }));
+        else m.appendChild(_affBtn('🗑 Retirer la contrainte',BTN_SUPPR+';padding:3px 9px', ()=>{ con[type]=con[type].filter(p=>!(Array.isArray(p) && ((p[0]===u&&p[1]===v)||(p[0]===v&&p[1]===u)))); _aff.menu=''; saveS(); _affRendre(); }));
         c.appendChild(m); }
     });
     chips(a.avec||[], 'vert', 'associer', c2);
@@ -60322,7 +60326,7 @@ function _affRendre(){
       z.appendChild(grille('Aimerait travailler avec', 'avec', '#166534'));
       if(_aff.voirPas) z.appendChild(grille('Pas avec', 'pas', '#991B1B'));
       const f=_affEl('div','grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end'); z.appendChild(f);
-      if(A[u]) f.appendChild(_affBtn('Effacer ses réponses','', ()=>{ delete A[u]; _aff.edit=''; saveS(); _affRendre(); }));
+      if(A[u]) f.appendChild(_affBtn('🗑 Effacer ses réponses',BTN_SUPPR, ()=>{ delete A[u]; _aff.edit=''; saveS(); _affRendre(); }));
       f.appendChild(_affBtn('Terminé','background:var(--acc);color:#fff;border-color:var(--acc)', ()=>{ _aff.edit=''; _affRendre(); }));
     }
   });
@@ -60613,7 +60617,7 @@ function _grtRendre(){
     const x=_grtEl('button','grt-btn','✕'); x.type='button'; x.style.marginLeft='auto'; x.onclick=closeGroupes; bar.appendChild(x); pg.appendChild(vide); return; }
   const btn=(t, titre, fn, c)=>{ const b=_grtEl('button', c||'grt-btn', t); b.type='button'; if(titre) b.title=titre; b.onclick=fn; bar.appendChild(b); return b; };
   btn('✎', 'Renommer', ()=>{ const n=prompt('Nom de l’ensemble de groupes', ens.nom); if(n && n.trim()){ ens.nom=n.trim(); _grtSauver(); _grtRendre(); } });
-  btn('🗑', 'Supprimer cet ensemble', ()=>{ if(!confirm('Supprimer « '+ens.nom+' » ?')) return; const L=_grtListe(cls); L.splice(L.indexOf(ens),1); _grt.ens=L[0]||null; _grtSauver(); _grtRendre(); });
+  _btnSuppr(btn('🗑', 'Supprimer cet ensemble', ()=>{ if(!confirm('Supprimer « '+ens.nom+' » ?')) return; const L=_grtListe(cls); L.splice(L.indexOf(ens),1); _grt.ens=L[0]||null; _grtSauver(); _grtRendre(); }));
   btn('📅 '+((ens.cours||[]).length ? (ens.cours.length===1 ? _grtLibCours(ens.cours[0]) : ens.cours.length+' cours') : 'aucun cours'), 'Cours où ces groupes s’appliquent', (e)=>_grtPopCours(e.currentTarget), 'grt-sel').style.color='var(--tx)';
   bar.appendChild(_grtEl('span','grt-sep'));
   const o=ens.opt=Object.assign({}, GRT_OPT_DEFAUT, ens.opt||{});
@@ -60798,7 +60802,7 @@ function _grtEditerRoles(){
       const b=_grtEl('button','grt-pb'+(choix===i?' on':''), x.ic); b.type='button'; b.style.cssText='font-size:18px;width:44px'; b.title='Changer l’icône'; b.onclick=()=>{ choix=choix===i?-1:i; dessiner(); }; r.appendChild(b);
       const inp=_grtEl('input'); inp.value=x.l; inp.style.cssText='flex:1;font:inherit;font-size:13px;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx)';
       inp.oninput=()=>{ x.l=inp.value; _grtSauver(); }; r.appendChild(inp);
-      const d=_grtEl('button','grt-pb','🗑'); d.type='button'; d.title='Supprimer ce rôle'; d.onclick=()=>{ R.splice(i,1);
+      const d=_btnSuppr(_grtEl('button','grt-pb','🗑')); d.type='button'; d.title='Supprimer ce rôle'; d.onclick=()=>{ R.splice(i,1);
         Object.values(S.grpTravail||{}).forEach(L=>(L||[]).forEach(e=>Object.keys(e.roles||{}).forEach(k=>{ if(e.roles[k]===i) delete e.roles[k]; else if(e.roles[k]>i) e.roles[k]--; })));
         choix=-1; _grtSauver(); dessiner(); }; r.appendChild(d);
       liste.appendChild(r); });
@@ -61138,7 +61142,7 @@ function _evlRendreEvals(corps){
   act.appendChild(_evlEl('span','font-size:12px;color:var(--tx3)', fait+' / '+C.eleves.length+' élève'+(C.eleves.length>1?'s':'')+' saisi'+(fait>1?'s':'')));
   act.appendChild(_evlEl('span','flex:1'));
   if(ev.mode!=='crit') act.appendChild(_evlBtn('⬇ Pronote','', ()=>openExportPronote(ev.cls, ev.id), 'Fichier d’import des notes pour Pronote'));   // V11.5.33
-  act.appendChild(_evlBtn('🗑','', ()=>{ if(!confirm('Supprimer « '+ev.titre+' » et ses résultats ?')) return; const L=_evlListe(); L.splice(L.indexOf(ev),1); _evl.evId=''; _evlSauver(); _evlRendre(); }, 'Supprimer l’évaluation'));
+  act.appendChild(_evlBtn('🗑',BTN_SUPPR, ()=>{ if(!confirm('Supprimer « '+ev.titre+' » et ses résultats ?')) return; const L=_evlListe(); L.splice(L.indexOf(ev),1); _evl.evId=''; _evlSauver(); _evlRendre(); }, 'Supprimer l’évaluation'));
 }
 /** Touche → action de saisie (pure). col = index de colonne (critères puis « note »), nCrit, nNiv.
  *  Retour : {t:'niv', n} | {t:'code', c} | {t:'copie'} | {t:'eff'} | {t:'note', ch} | {t:'dep', dx, dy} | null. */
@@ -61378,7 +61382,7 @@ function _evlRendreBiblio(corps){
   const bi=_evlBtn(G.ic||'📋','font-size:18px;min-width:44px', ()=>{ _evl.icone=!_evl.icone; _evlRendre(); }, 'Icône'); top.appendChild(bi);
   top.appendChild(fi(G.titre, v=>{ G.titre=v.trim()||'Grille'; }, 'flex:1;min-width:180px;font-weight:800;font-size:15px'));
   top.appendChild(_evlBtn('⧉ Dupliquer','', ()=>{ const c=JSON.parse(JSON.stringify(G)); c.id='gr'+Date.now().toString(36); c.titre=G.titre+' (copie)'; c.cree=c.maj=Date.now(); c.criteres.forEach((x,i)=>x.id='c'+Date.now().toString(36)+i); Gall.push(c); _evl.grId=c.id; _evlSauver(); _evlRendre(); }));
-  top.appendChild(_evlBtn('🗑','', ()=>{ const nu=_evlListe().filter(e=>e.grilleId===G.id).length; if(!confirm('Supprimer la grille « '+G.titre+' » ?'+(nu?'\n'+nu+' évaluation(s) l’utilisent : elles garderont leurs notes mais perdront les niveaux.':''))) return; Gall.splice(Gall.indexOf(G),1); _evl.grId=''; _evlSauver(); _evlRendre(); }, 'Supprimer la grille'));
+  top.appendChild(_evlBtn('🗑',BTN_SUPPR, ()=>{ const nu=_evlListe().filter(e=>e.grilleId===G.id).length; if(!confirm('Supprimer la grille « '+G.titre+' » ?'+(nu?'\n'+nu+' évaluation(s) l’utilisent : elles garderont leurs notes mais perdront les niveaux.':''))) return; Gall.splice(Gall.indexOf(G),1); _evl.grId=''; _evlSauver(); _evlRendre(); }, 'Supprimer la grille'));
   if(_evl.icone){ const gr=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:3px;padding:8px;border:1px solid var(--brd);border-radius:10px;max-height:180px;overflow:auto;margin-bottom:8px'); f.appendChild(gr);
     (typeof GRT_ICONES!=='undefined' ? GRT_ICONES : ['📋','🎤','🔬','🛠️','📐','🗂️']).forEach(ic=>{ const b=_evlEl('button','font-size:20px;height:38px;border:0;background:transparent;border-radius:8px;cursor:pointer', ic); b.type='button'; b.onclick=()=>{ G.ic=ic; _evl.icone=false; maj(); }; gr.appendChild(b); }); }
   const meta=_evlEl('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px'); f.appendChild(meta);
@@ -61409,7 +61413,7 @@ function _evlRendreBiblio(corps){
       ta.onchange=()=>{ c.ind=c.ind||[]; c.ind[i]=ta.value; maj(false); }; z.appendChild(ta); });
     const zd=_evlEl('td','padding:6px;border-bottom:1px solid var(--brd);vertical-align:top;white-space:nowrap'); tr.appendChild(zd);
     if(ci>0) zd.appendChild(_evlBtn('↑','padding:2px 7px;min-height:26px', ()=>{ const t=G.criteres[ci-1]; G.criteres[ci-1]=c; G.criteres[ci]=t; maj(); }, 'Monter'));
-    zd.appendChild(_evlBtn('🗑','padding:2px 7px;min-height:26px', ()=>{ G.criteres.splice(ci,1); maj(); }, 'Supprimer le critère')); });
+    zd.appendChild(_evlBtn('🗑',BTN_SUPPR+';padding:2px 7px;min-height:26px', ()=>{ G.criteres.splice(ci,1); maj(); }, 'Supprimer le critère')); });
   f.appendChild(_evlBtn('＋ Critère','margin-top:8px', ()=>{ G.criteres=G.criteres||[]; G.criteres.push({id:'c'+Date.now().toString(36), l:'Critère '+(G.criteres.length+1), poids:1, comp:'', ind:N.map(()=>'')}); maj(); }));
   f.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px','Points : '+N.map((n,i)=>n+' = '+i).join(' · ')+'. Les indicateurs s’affichent au survol pendant la saisie.'));
 }
