@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.41';
+const APP_VERSION = 'v11.5.43';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -32906,8 +32906,8 @@ function _sdcAjouterDepuisBiblio(text, seqLigne, seanLigne, lignesAjout){
   return (L.length?L.join('\n')+'\n':'')+ajout.join('\n');
 }
 
-/** Insère un préfixe au curseur (ligne neuve si la ligne courante n'est pas
- *  vide) ; « - N min » s'ajoute en fin de ligne et remplace une durée. Pure. */
+/** Insère un préfixe au curseur : ligne vide → sur la ligne ; curseur en début de ligne
+ *  → l'élément prend la ligne et le texte descend ; ailleurs → ligne suivante ; « - N min » s'ajoute en fin de ligne et remplace une durée. Pure. */
 function _sdcInsererPrefixe(text, pos, prefixe){
   const s=String(text||''); pos=Math.max(0, Math.min(pos|0, s.length));
   const debut=s.lastIndexOf('\n', pos-1)+1;
@@ -32920,6 +32920,8 @@ function _sdcInsererPrefixe(text, pos, prefixe){
   }
   const ins=prefixe+' ';
   if(!ligne.trim()) return {text:s.slice(0,debut)+ins+s.slice(fin), pos:debut+ins.length};
+  // V11.5.43 — curseur en début de ligne : l'élément prend la ligne, le texte descend ; ailleurs : ligne suivante
+  if(pos===debut) return {text:s.slice(0,debut)+prefixe+'\n'+s.slice(debut), pos:debut+prefixe.length};
   return {text:s.slice(0,fin)+'\n'+ins+s.slice(fin), pos:fin+1+ins.length};
 }
 /** Échange la ligne `idx` avec sa voisine non vide (dir = ±1). Pure. */
@@ -60940,6 +60942,40 @@ function _evlTexte(ev, grille, res){
   if(ev.mode!=='note' && grille){ const N=grille.niveaux||EVL_NIV_DEFAUT; const L=(grille.criteres||[]).filter(c=>res.niv[c.id]!=null).map(c=>c.l+' '+res.niv[c.id]+'/'+(N.length-1)); if(L.length) parts.push(L.join(' · ')); }
   return parts.join(' · ');
 }
+/** V11.5.42 — Une évaluation a-t-elle des résultats (niveaux, note ou code) ? Pure. */
+function _evlAResultats(ev){
+  const R=(ev && ev.res)||{}, G=(ev && ev.resG)||{};
+  return Object.keys(R).some(u=>{ const r=R[u]||{}; return !!r.code || (r.note!=null && r.note!=='') || Object.keys(r.niv||{}).length>0; })
+    || Object.keys(G).some(g=>Object.keys((G[g]||{}).niv||{}).length>0);
+}
+/** Évaluations ayant des résultats avec cette grille. Pure. */
+function _evlUsagesAvecResultats(liste, gid){ return (liste||[]).filter(e=>e && e.grilleId===gid && _evlAResultats(e)); }
+/** Nouvelle version d'une grille : copie (mêmes identifiants de critères), l'ancienne est archivée et garde ses évaluations
+ *  à résultats ; celles sans résultat passent à la nouvelle. Modifie `grilles` et `liste`. Renvoie la nouvelle version. */
+function _evlVersionner(G, grilles, liste, id, quand){
+  const V=JSON.parse(JSON.stringify(G)); V.id=id; V.version=(G.version||1)+1; V.cree=V.maj=quand; delete V.archive; delete V.remplaceePar;
+  G.archive=true; G.remplaceePar=V.id; G.archiveLe=quand;
+  grilles.splice(grilles.indexOf(G)+1, 0, V);
+  (liste||[]).forEach(e=>{ if(e && e.grilleId===G.id && !_evlAResultats(e)) e.grilleId=V.id; });
+  return V;
+}
+/** Fenêtre « Cette grille est déjà utilisée » : nouvelle version / modifier pour toutes / annuler. */
+function _evlChoixVersion(G, n, quoi, toutes, version){
+  let ov=document.getElementById('evl-version'); if(ov) ov.remove();
+  ov=_evlEl('div','position:fixed;inset:0;z-index:490;background:rgba(20,18,10,.45);display:flex;align-items:center;justify-content:center;padding:14px'); ov.id='evl-version';
+  const fermer=()=>{ ov.remove(); document.removeEventListener('keydown', esc, true); };
+  const esc=(e)=>{ if(e.key==='Escape'){ e.stopPropagation(); fermer(); _evlRendre(); } }; document.addEventListener('keydown', esc, true);
+  ov.addEventListener('pointerdown', e=>{ if(e.target===ov){ fermer(); _evlRendre(); } });
+  const box=_evlEl('div','background:var(--sur);color:var(--tx);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.3);width:min(520px,100%);padding:16px 18px;display:flex;flex-direction:column;gap:10px'); ov.appendChild(box);
+  box.appendChild(_evlEl('div','font-family:Georgia,serif;font-size:19px','⚠ Cette grille est déjà utilisée'));
+  box.appendChild(_evlEl('div','font-size:13.5px;line-height:1.5', '« '+G.titre+' » sert à '+n+' évaluation'+(n>1?'s':'')+' qui '+(n>1?'ont':'a')+' déjà des résultats. '+quoi+' changerait aussi '+(n>1?'leurs':'ses')+' niveaux ou '+(n>1?'leurs':'sa')+' note'+(n>1?'s':'')+'.'));
+  const b1=_evlBtn('🆕 Nouvelle version','background:#166534;border-color:#166534;color:#fff;text-align:left', ()=>{ fermer(); version(); });
+  b1.appendChild(_evlEl('div','font-weight:500;font-size:11.5px;opacity:.9','les évaluations passées gardent l’ancienne grille ; les prochaines prennent la nouvelle')); box.appendChild(b1);
+  const b2=_evlBtn('Modifier pour toutes','text-align:left', ()=>{ fermer(); toutes(); });
+  b2.appendChild(_evlEl('div','font-weight:500;font-size:11.5px;color:var(--tx3)','les notes déjà calculées seront recalculées')); box.appendChild(b2);
+  box.appendChild(_evlBtn('Annuler','align-self:flex-end', ()=>{ fermer(); _evlRendre(); }));
+  document.body.appendChild(ov);
+}
 /** V11.5.34 — Réglages communs d'une évaluation partagée entre classes (même « lot »). */
 const EVL_COMMUNS=['titre','type','grilleId','mode','noteCalc','bareme','coef'];
 /** Copie d'une évaluation pour une autre classe : réglages communs, même date, toute la classe, sans résultats. Pure. */
@@ -61105,7 +61141,7 @@ function _evlRendreEvals(corps){
       cb.onchange=()=>{ c.uids=(c.uids||[]).filter(x=>x!==u); if(cb.checked) c.uids.push(u); _evlSauver(ev); }; l.appendChild(cb); l.appendChild(document.createTextNode(getFullName(u)||u)); box.appendChild(l); }); qu.appendChild(box); }
   f.appendChild(_evlLab('Grille')); const gs=_evlEl('select','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px;max-width:100%'); f.appendChild(gs);
   gs.appendChild(new Option('— aucune (note seule) —',''));
-  _evlGrilles().filter(g=>_evlGrilleApplicable(g, ev.cls) || g.id===ev.grilleId).forEach(g=>gs.appendChild(new Option((g.ic||'')+' '+g.titre+' · '+(g.criteres||[]).length+' critères', g.id)));
+  _evlGrilles().filter(g=>g.id===ev.grilleId || (!g.archive && _evlGrilleApplicable(g, ev.cls))).forEach(g=>gs.appendChild(new Option((g.ic||'')+' '+g.titre+(g.archive?' (ancienne version)':'')+' · '+(g.criteres||[]).length+' critères', g.id)));
   gs.value=ev.grilleId||''; gs.onchange=()=>{ ev.grilleId=gs.value; if(!ev.grilleId) ev.mode='note'; else if(ev.mode==='note') ev.mode='both'; maj(); };
   if(ev.grilleId){ f.appendChild(_evlLab('Mode')); const md=_evlEl('div'); f.appendChild(md);
     [['crit','Critères seuls'],['note','Note seule'],['both','Critères + note']].forEach(([v,l])=>md.appendChild(_evlChip(l, ev.mode===v, ()=>{ ev.mode=v; maj(); }))); }
@@ -61363,26 +61399,32 @@ function _evlRendreBiblio(corps){
   tags.forEach(t=>bar.appendChild(_evlChip('🏷 '+t, _evl.tag===t, ()=>{ _evl.tag=_evl.tag===t?'':t; _evlRendre(); })));
   bar.appendChild(_evlEl('span','flex:1'));
   bar.appendChild(_evlBtn('＋ Nouvelle grille','background:#166534;border-color:#166534;color:#fff', ()=>{ const g={id:'gr'+Date.now().toString(36), titre:'Nouvelle grille', ic:'📋', portee:{type:'tous', val:''}, tags:[], niveaux:EVL_NIV_DEFAUT.slice(), criteres:[{id:'c'+Date.now().toString(36), l:'Critère 1', poids:1, comp:'', ind:['','','','']}], cree:Date.now(), maj:Date.now()}; Gall.push(g); _evl.grId=g.id; _evlSauver(); _evlRendre(); }));
-  const L=_evlFiltrerGrilles(Gall, _evl.q, _evl.portee, _evl.tag);
+  const L=_evlFiltrerGrilles(Gall, _evl.q, _evl.portee, _evl.tag).sort((a,b)=>(a.archive?1:0)-(b.archive?1:0));   // V11.5.42 — anciennes versions en fin de liste
   let G=Gall.find(x=>x.id===_evl.grId); if(!G || L.indexOf(G)<0) G=L[0]||null; if(G) _evl.grId=G.id;
   const row=_evlEl('div','display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap'); corps.appendChild(row);
   const lst=_evlEl('div','flex:1;min-width:230px;max-width:300px;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:8px'); row.appendChild(lst);
   if(!L.length) lst.appendChild(_evlEl('div','padding:8px;color:var(--tx3);font-size:12.5px','Aucune grille.'));
   const libP=(p)=>!p||p.type==='tous' ? 'Tous niveaux' : p.type==='niveau' ? p.val+'e' : String(p.val).toUpperCase()+' seulement';
   L.forEach(x=>{ const it=_evlEl('div','padding:8px 10px;border-radius:10px;cursor:pointer;border:1.5px solid '+(G&&x.id===G.id?'#1A3D1A':'transparent')+';background:'+(G&&x.id===G.id?'var(--sur2)':'transparent'));
-    it.appendChild(_evlEl('div','font-weight:800;font-size:13.5px', (x.ic||'📋')+' '+x.titre));
+    it.appendChild(_evlEl('div','font-weight:800;font-size:13.5px'+(x.archive?';color:var(--tx3)':''), (x.ic||'📋')+' '+x.titre+(x.version>1 && !x.archive?' · v'+x.version:'')+(x.archive?' · ancienne version':'')));
     const nu=_evlListe().filter(e=>e.grilleId===x.id).length;
     it.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3)', libP(x.portee)+' · '+(x.criteres||[]).length+' critère'+((x.criteres||[]).length>1?'s':'')+((x.tags||[]).length?' · 🏷 '+x.tags.join(', '):'')+(nu?' · utilisée '+nu+' fois':'')));
     it.onclick=()=>{ _evl.grId=x.id; _evl.icone=false; _evlRendre(); }; lst.appendChild(it); });
   if(!G) return;
   const f=_evlEl('div','flex:3;min-width:340px;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:12px 14px;overflow:auto'); f.id='evl-grille'; row.appendChild(f);
   const maj=(re)=>{ G.maj=Date.now(); _evlSauver(); if(re!==false) _evlRendre(); };
+  // V11.5.42 — changement qui touche les notes (critère ajouté / supprimé, poids, nombre de niveaux) sur une grille déjà utilisée avec résultats
+  const structurel=(quoi, fn)=>{ const U=_evlUsagesAvecResultats(_evlListe(), G.id);
+    if(!U.length){ fn(G); maj(); return; }
+    _evlChoixVersion(G, U.length, quoi, ()=>{ fn(G); maj(); }, ()=>{ const V=_evlVersionner(G, Gall, _evlListe(), 'gr'+Date.now().toString(36), Date.now()); fn(V); _evl.grId=V.id; V.maj=Date.now(); _evlSauver(); _evlRendre(); try{ showDropToast('🆕 Nouvelle version de « '+V.titre+' »'); }catch(e){} }); };
   const fi=(val, fn, css, ph)=>{ const i=_evlEl('input','font:inherit;padding:5px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:30px;'+(css||'')); i.value=val==null?'':val; if(ph) i.placeholder=ph; i.onchange=()=>{ fn(i.value); maj(); }; return i; };
   const top=_evlEl('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px'); f.appendChild(top);
   const bi=_evlBtn(G.ic||'📋','font-size:18px;min-width:44px', ()=>{ _evl.icone=!_evl.icone; _evlRendre(); }, 'Icône'); top.appendChild(bi);
   top.appendChild(fi(G.titre, v=>{ G.titre=v.trim()||'Grille'; }, 'flex:1;min-width:180px;font-weight:800;font-size:15px'));
   top.appendChild(_evlBtn('⧉ Dupliquer','', ()=>{ const c=JSON.parse(JSON.stringify(G)); c.id='gr'+Date.now().toString(36); c.titre=G.titre+' (copie)'; c.cree=c.maj=Date.now(); c.criteres.forEach((x,i)=>x.id='c'+Date.now().toString(36)+i); Gall.push(c); _evl.grId=c.id; _evlSauver(); _evlRendre(); }));
   top.appendChild(_evlBtn('🗑',BTN_SUPPR, ()=>{ const nu=_evlListe().filter(e=>e.grilleId===G.id).length; if(!confirm('Supprimer la grille « '+G.titre+' » ?'+(nu?'\n'+nu+' évaluation(s) l’utilisent : elles garderont leurs notes mais perdront les niveaux.':''))) return; Gall.splice(Gall.indexOf(G),1); _evl.grId=''; _evlSauver(); _evlRendre(); }, 'Supprimer la grille'));
+  if(G.archive){ const nv=Gall.find(x=>x.id===G.remplaceePar); const a=_evlEl('div','background:#FEF3C7;color:#92400E;border-radius:9px;padding:7px 10px;font-size:12.5px;margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap', 'Ancienne version, gardée pour les évaluations déjà notées'+(G.archiveLe?' (remplacée le '+new Date(G.archiveLe).toLocaleDateString('fr-FR')+')':'')+'.'); f.appendChild(a);
+    if(nv) a.appendChild(_evlBtn('Voir la version actuelle ›','padding:2px 9px;min-height:26px', ()=>{ _evl.grId=nv.id; _evlRendre(); })); }   // V11.5.42
   if(_evl.icone){ const gr=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:3px;padding:8px;border:1px solid var(--brd);border-radius:10px;max-height:180px;overflow:auto;margin-bottom:8px'); f.appendChild(gr);
     (typeof GRT_ICONES!=='undefined' ? GRT_ICONES : ['📋','🎤','🔬','🛠️','📐','🗂️']).forEach(ic=>{ const b=_evlEl('button','font-size:20px;height:38px;border:0;background:transparent;border-radius:8px;cursor:pointer', ic); b.type='button'; b.onclick=()=>{ G.ic=ic; _evl.icone=false; maj(); }; gr.appendChild(b); }); }
   const meta=_evlEl('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;font-size:12.5px'); f.appendChild(meta);
@@ -61400,21 +61442,21 @@ function _evlRendreBiblio(corps){
   N.forEach((nl,i)=>{ const x=th(); const C2=EVL_NIV_COUL[i]||EVL_NIV_COUL[0]; x.appendChild(_evlEl('span','display:inline-block;min-width:20px;text-align:center;font-weight:800;padding:1px 5px;border-radius:6px;margin-right:4px;background:'+C2[0]+';color:'+C2[1], String(i)));
     x.appendChild(fi(nl, v=>{ N[i]=v.trim()||('Niveau '+i); }, 'width:calc(100% - 30px);font-size:11.5px;font-weight:700')); });
   const tn=th('width:70px;white-space:nowrap');
-  tn.appendChild(_evlBtn('−','padding:2px 8px;min-height:26px', ()=>{ if(N.length<=2) return; N.pop(); (G.criteres||[]).forEach(c=>{ c.ind=(c.ind||[]).slice(0,N.length); }); maj(); }, 'Un niveau de moins'));
-  tn.appendChild(_evlBtn('+','padding:2px 8px;min-height:26px', ()=>{ if(N.length>=6) return; N.push('Niveau '+N.length); maj(); }, 'Un niveau de plus'));
+  tn.appendChild(_evlBtn('−','padding:2px 8px;min-height:26px', ()=>{ if(N.length<=2) return; structurel('Retirer un niveau', X=>{ const M=X.niveaux; M.pop(); (X.criteres||[]).forEach(c=>{ c.ind=(c.ind||[]).slice(0,M.length); }); }); }, 'Un niveau de moins'));
+  tn.appendChild(_evlBtn('+','padding:2px 8px;min-height:26px', ()=>{ if(N.length>=6) return; structurel('Ajouter un niveau', X=>{ X.niveaux.push('Niveau '+X.niveaux.length); }); }, 'Un niveau de plus'));
   (G.criteres||[]).forEach((c,ci)=>{ const tr=_evlEl('tr'); T.appendChild(tr);
     const a=_evlEl('td','padding:6px;border-bottom:1px solid var(--brd);vertical-align:top'); tr.appendChild(a);
     a.appendChild(fi(c.l, v=>{ c.l=v.trim()||'Critère'; }, 'width:100%;font-weight:800'));
     const ln=_evlEl('div','display:flex;gap:4px;margin-top:4px;align-items:center'); a.appendChild(ln);
-    const po=_evlEl('select','font:inherit;font-size:11.5px;padding:2px 4px;border:1.5px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx)'); [1,2,3,4].forEach(n=>po.appendChild(new Option('×'+n, String(n)))); po.value=String(c.poids||1); po.title='Poids dans la note'; po.onchange=()=>{ c.poids=Number(po.value); maj(); }; ln.appendChild(po);
+    const po=_evlEl('select','font:inherit;font-size:11.5px;padding:2px 4px;border:1.5px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx)'); [1,2,3,4].forEach(n=>po.appendChild(new Option('×'+n, String(n)))); po.value=String(c.poids||1); po.title='Poids dans la note'; po.onchange=()=>{ const v=Number(po.value); structurel('Changer le poids de « '+c.l+' »', X=>{ X.criteres[ci].poids=v; }); }; ln.appendChild(po);
     ln.appendChild(fi(c.comp, v=>{ c.comp=v.trim(); }, 'flex:1;font-size:11px;min-height:24px;padding:2px 6px', '🎯 compétence (facultatif)'));
     N.forEach((nl,i)=>{ const z=_evlEl('td','padding:6px;border-bottom:1px solid var(--brd);vertical-align:top'); tr.appendChild(z);
       const ta=_evlEl('textarea','width:100%;min-height:52px;font:inherit;font-size:11.5px;padding:5px 6px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);resize:vertical'); ta.value=(c.ind||[])[i]||''; ta.placeholder='Indicateur : ce qu’on observe';
       ta.onchange=()=>{ c.ind=c.ind||[]; c.ind[i]=ta.value; maj(false); }; z.appendChild(ta); });
     const zd=_evlEl('td','padding:6px;border-bottom:1px solid var(--brd);vertical-align:top;white-space:nowrap'); tr.appendChild(zd);
     if(ci>0) zd.appendChild(_evlBtn('↑','padding:2px 7px;min-height:26px', ()=>{ const t=G.criteres[ci-1]; G.criteres[ci-1]=c; G.criteres[ci]=t; maj(); }, 'Monter'));
-    zd.appendChild(_evlBtn('🗑',BTN_SUPPR+';padding:2px 7px;min-height:26px', ()=>{ G.criteres.splice(ci,1); maj(); }, 'Supprimer le critère')); });
-  f.appendChild(_evlBtn('＋ Critère','margin-top:8px', ()=>{ G.criteres=G.criteres||[]; G.criteres.push({id:'c'+Date.now().toString(36), l:'Critère '+(G.criteres.length+1), poids:1, comp:'', ind:N.map(()=>'')}); maj(); }));
+    zd.appendChild(_evlBtn('🗑',BTN_SUPPR+';padding:2px 7px;min-height:26px', ()=>{ structurel('Supprimer le critère « '+c.l+' »', X=>{ X.criteres.splice(ci,1); }); }, 'Supprimer le critère')); });
+  f.appendChild(_evlBtn('＋ Critère','margin-top:8px', ()=>{ structurel('Ajouter un critère', X=>{ X.criteres=X.criteres||[]; X.criteres.push({id:'c'+Date.now().toString(36), l:'Critère '+(X.criteres.length+1), poids:1, comp:'', ind:(X.niveaux||EVL_NIV_DEFAUT).map(()=>'')}); }); }));
   f.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px','Points : '+N.map((n,i)=>n+' = '+i).join(' · ')+'. Les indicateurs s’affichent au survol pendant la saisie.'));
 }
 /* ── Entrées ── */
