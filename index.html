@@ -4840,7 +4840,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.36';
+const APP_VERSION = 'v11.5.37';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59621,7 +59621,7 @@ function _bnEl(t, css, x){ const e=document.createElement(t); if(css) e.style.cs
 function _bnBtn(t, css, fn, titre){ const b=_bnEl('button','padding:5px 10px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);color:var(--tx);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;'+(css||''), t); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }
 function openBlocNotes(opts){
   opts=opts||{}; const B=_bnStore();
-  _bn.cls=opts.cls||''; _bn.archives=false; _bn.renommer=false; _bn.supprimer='';
+  _bn.cls=opts.cls||''; _bn.archives=false; _bn.renommer=false; _bn.supprimer=''; _bn.voir=false;   // V11.5.37 — floutée à chaque ouverture
   if(!B.onglets.some(t=>t.id===_bn.onglet)) _bn.onglet=B.onglets[0].id;
   let ov=document.getElementById('bn-modal'); if(ov) ov.remove();
   ov=_bnEl('div','position:fixed;inset:0;background:rgba(20,18,10,.45);z-index:470;display:flex;align-items:center;justify-content:center;padding:14px'); ov.id='bn-modal';
@@ -59803,38 +59803,66 @@ function _bnRendreArchives(box){
   if(!K.length && !B.ranges.length) w.appendChild(_bnEl('div','color:var(--tx3);font-size:13px','Rien d’archivé.'));
 }
 /** Vue d'une classe (depuis le plan de classe) : ses lignes, cochables, et une saisie qui ajoute à « Général » avec #classe. */
+/** V11.5.37 — Ajoute une ligne à un champ du modal Séance (texte existant conservé). Pure. */
+function _bnAjoutTexte(base, txt){ const b=String(base||'').replace(/\s+$/,''), t=String(txt||'').trim(); return t ? (b ? b+'\n'+t : t) : b; }
+const BN_SEANCE={prochain:{ic:'➡️', l:'Prochain cours', champ:'prochainCours'}, commentaire:{ic:'💬', l:'Observations', champ:'commentaire'}};
+/** Valeur affichée par le modal Séance pour un champ : brouillon s'il est rempli, sinon la séance enregistrée. */
+function _bnSeanceValeur(cls, slotKey, cle){
+  const d=((S.seanceContentDraft||{})[cls+'|'+slotKey])||{};
+  let se=null; try{ se=(readAllSeancesForClass(cls)||[]).find(x=>x && x.slotKey===slotKey)||null; }catch(e){}
+  return _draftOrSaved(d[cle], se ? (se[BN_SEANCE[cle].champ]||'') : '').value;
+}
+/** Ajoute txt au champ du modal Séance du cours (brouillon, repris à l'ouverture du modal). */
+function _bnVersSeance(cls, slotKey, cle, txt){
+  if(!cls || !slotKey || !BN_SEANCE[cle]) return false;
+  _persistSeanceContentDraft(cls, slotKey, cle, _bnAjoutTexte(_bnSeanceValeur(cls, slotKey, cle), txt)); return true;
+}
 function _bnRendreClasse(box){
   const B=_bnStore(), cls=_bn.cls, ctx=_bnCtx();
+  const sk=(typeof curSlotKey!=='undefined' && curSlotKey && typeof curCls!=='undefined' && String(curCls).toLowerCase()===String(cls).toLowerCase()) ? curSlotKey : '';
   const hd=_bnEl('div','display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--brd)'); box.appendChild(hd);
   hd.appendChild(_bnEl('span','font-family:Georgia,serif;font-size:20px','🗒 Bloc-notes · '+String(cls).toUpperCase()));
   hd.appendChild(_bnEl('span','flex:1'));
+  // V11.5.37 — lignes floutées par défaut (classe projetée) ; « 👁 Afficher » / « 🙈 Masquer »
+  hd.appendChild(_bnBtn(_bn.voir ? '🙈 Masquer' : '👁 Afficher', _bn.voir ? '' : 'background:#1A3D1A;color:#fff;border-color:#1A3D1A', ()=>{ _bn.voir=!_bn.voir; _bnRendre(); }, _bn.voir ? 'Flouter les notes' : 'Déflouter les notes'));
   hd.appendChild(_bnBtn('Tout le bloc-notes ↗','', ()=>{ _bn.cls=''; _bnRendre(); }));
   hd.appendChild(_bnBtn('✕','', closeBlocNotes, 'Fermer'));
-  const w=_bnEl('div','flex:1;overflow:auto'); box.appendChild(w);
+  // Saisie rapide (en haut) : type, quand, puis la ligne de saisie juste en dessous
+  const z=_bnEl('div','border-bottom:1px solid var(--brd);padding:10px 14px;display:flex;flex-direction:column;gap:7px;background:var(--sur2)'); z.id='bn-saisie-cls'; box.appendChild(z);
+  let type=_bn.typeCls!=null ? _bn.typeCls : '☐', quand='prochain';
+  const tp=_bnEl('div','display:flex;flex-wrap:wrap;gap:5px;align-items:center'); z.appendChild(tp);
+  const ta=_bnEl('input','padding:8px 10px;border:1px solid var(--brd);border-radius:9px;background:var(--bg);color:var(--tx);font-size:13px;font-family:inherit');
+  const versSeance=()=>!!BN_SEANCE[type];
+  const dess=()=>{ tp.textContent='';
+    [['☐','☐ À faire'],['📥','📥 À rendre'],['🔔','🔔 Rappel'],['','✎ Note']].forEach(([m,l])=>tp.appendChild(_bnBtn(l, m===type?'background:var(--acc);color:#fff;border-color:var(--acc)':'', ()=>{ type=m; _bn.typeCls=m; dess(); })));
+    if(sk){ tp.appendChild(_bnEl('span','width:6px'));
+      Object.keys(BN_SEANCE).forEach(k=>{ const X=BN_SEANCE[k]; tp.appendChild(_bnBtn(X.ic+' '+X.l, k===type?'background:#7C3AED;color:#fff;border-color:#7C3AED':'background:#F5F3FF;color:#5B21B6;border-color:#DDD6FE', ()=>{ type=k; _bn.typeCls=k; dess(); }, 'Ajouté au modal Séance de ce cours (« '+X.l+' »)')); }); }
+    if(!versSeance()){ tp.appendChild(_bnEl('span','width:10px'));
+      const s=_bnProchainCours(cls);
+      [['prochain', s ? '⏭ Prochain cours ('+_bnDateTexte(s.dateStr).slice(3)+')' : '⏭ Prochain cours'],['auj',"Aujourd'hui"],['','Sans date']].forEach(([v,l])=>tp.appendChild(_bnBtn(l, v===quand?'background:#0369A1;color:#fff;border-color:#0369A1':'', ()=>{ quand=v; dess(); }))); }
+    ta.placeholder=versSeance() ? (BN_SEANCE[type].ic+' '+BN_SEANCE[type].l+' — ajouté au modal Séance de ce cours… (Entrée)') : 'Nouvelle ligne pour '+String(cls).toUpperCase()+'… (Entrée)'; };
+  if(BN_SEANCE[type] && !sk) type='☐';
+  dess(); z.appendChild(ta);
+  ta.onkeydown=(e)=>{ if(e.key!=='Enter') return; const t=ta.value.trim(); if(!t) return;
+    if(versSeance()){ _bnVersSeance(curCls, sk, type, t); try{ showDropToast(BN_SEANCE[type].ic+' Ajouté au modal Séance ('+BN_SEANCE[type].l+')'); }catch(err){} _bnRendre(); }
+    else { let d=''; if(quand==='auj') d=_bnDateTexte(_appToday()); else if(quand==='prochain'){ const s=_bnProchainCours(cls); if(s) d=_bnDateTexte(s.dateStr, s.debut); }
+      const l=(type?type+' ':'')+t+' #'+String(cls).toUpperCase()+(d?' '+d:'');
+      B.textes.general=(B.textes.general ? B.textes.general.replace(/\s+$/,'')+'\n' : '')+l; saveS(); _bnRendre(); }
+    setTimeout(()=>{ const i=document.querySelector('#bn-saisie-cls input'); if(i) i.focus(); }, 30); };
+  setTimeout(()=>ta.focus(), 30);
+  // Lignes de la classe (floutées tant que « Afficher » n'est pas cliqué)
+  const w=_bnEl('div','flex:1;overflow:auto;'+(_bn.voir?'':'filter:blur(6px);user-select:none;pointer-events:none')); w.id='bn-lignes-cls'; box.appendChild(w);
+  if(!_bn.voir){ w.title='Notes floutées : « 👁 Afficher »'; }
+  if(sk){ const vals=Object.keys(BN_SEANCE).map(k=>[k, _bnSeanceValeur(curCls, sk, k)]).filter(x=>String(x[1]).trim());
+    if(vals.length){ w.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:9px 14px 4px;color:#5B21B6','Dans le modal Séance de ce cours'));
+      vals.forEach(([k,v])=>{ const r=_bnEl('div','display:grid;grid-template-columns:22px 1fr;gap:8px;padding:7px 14px;border-top:1px solid var(--brd);font-size:13px;white-space:pre-wrap'); r.appendChild(_bnEl('span',null,BN_SEANCE[k].ic)); r.appendChild(_bnEl('span',null,v)); w.appendChild(r); }); } }
   const lignes=[]; B.onglets.forEach(t=>_bnLignes(B.textes[t.id]||'', ctx).forEach(l=>{ if(l.classes.indexOf(String(cls).toLowerCase())>=0) lignes.push(Object.assign(l, {onglet:t.id})); }));
   const C=_bnClasser(lignes, ctx.today);
   const coche=(l)=>{ B.textes[l.onglet]=_bnBasculer(B.textes[l.onglet]||'', l.i); saveS(); _bnRendre(); };
-  const clic=(l)=>{ _bn.cls=''; _bn.onglet=l.onglet; _bnRendre(); const ta=document.getElementById('bn-texte'); if(ta){ const L=ta.value.split('\n'); let a=0; for(let k=0;k<l.i;k++) a+=L[k].length+1; ta.focus(); ta.setSelectionRange(a, a+(L[l.i]||'').length); } };
+  const clic=(l)=>{ _bn.cls=''; _bn.onglet=l.onglet; _bnRendre(); const ta2=document.getElementById('bn-texte'); if(ta2){ const L=ta2.value.split('\n'); let a=0; for(let k=0;k<l.i;k++) a+=L[k].length+1; ta2.focus(); ta2.setSelectionRange(a, a+(L[l.i]||'').length); } };
   const bloc=(titre, col, arr)=>{ if(!arr.length) return; w.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:9px 14px 4px;color:'+col, titre+' · '+arr.length)); arr.forEach(l=>w.appendChild(_bnLigneApercu(l, coche, clic))); };
   bloc('En retard','#991B1B',C.retard); bloc("Aujourd'hui",'#92400E',C.auj); bloc('Cette semaine','#0369A1',C.semaine); bloc('Plus tard','var(--tx3)',C.plusTard); bloc('Sans date','var(--tx3)',C.sansDate); bloc('Notes','var(--tx3)',C.notes);
   if(!lignes.some(l=>l.type!=='vide' && !l.fait)) w.appendChild(_bnEl('div','padding:16px 14px;color:var(--tx3);font-size:12.5px','Rien pour '+String(cls).toUpperCase()+'.'));
-  // Saisie rapide
-  const z=_bnEl('div','border-top:1px solid var(--brd);padding:10px 14px;display:flex;flex-direction:column;gap:7px;background:var(--sur2)'); box.appendChild(z);
-  let type='☐', quand='prochain';
-  const tp=_bnEl('div','display:flex;flex-wrap:wrap;gap:5px;align-items:center'); z.appendChild(tp);
-  const dess=()=>{ tp.textContent='';
-    [['☐','☐ À faire'],['📥','📥 À rendre'],['🔔','🔔 Rappel'],['','✎ Note']].forEach(([m,l])=>tp.appendChild(_bnBtn(l, m===type?'background:var(--acc);color:#fff;border-color:var(--acc)':'', ()=>{ type=m; dess(); })));
-    tp.appendChild(_bnEl('span','width:10px'));
-    const s=_bnProchainCours(cls);
-    [['prochain', s ? '⏭ Prochain cours ('+_bnDateTexte(s.dateStr).slice(3)+')' : '⏭ Prochain cours'],['auj',"Aujourd'hui"],['','Sans date']].forEach(([v,l])=>tp.appendChild(_bnBtn(l, v===quand?'background:#0369A1;color:#fff;border-color:#0369A1':'', ()=>{ quand=v; dess(); }))); };
-  dess();
-  const ta=_bnEl('input','padding:8px 10px;border:1px solid var(--brd);border-radius:9px;background:var(--bg);color:var(--tx);font-size:13px;font-family:inherit'); ta.placeholder='Nouvelle ligne pour '+String(cls).toUpperCase()+'… (Entrée)'; z.appendChild(ta);
-  ta.onkeydown=(e)=>{ if(e.key!=='Enter') return; const t=ta.value.trim(); if(!t) return;
-    let d=''; if(quand==='auj') d=_bnDateTexte(_appToday()); else if(quand==='prochain'){ const s=_bnProchainCours(cls); if(s) d=_bnDateTexte(s.dateStr, s.debut); }
-    const l=(type?type+' ':'')+t+' #'+String(cls).toUpperCase()+(d?' '+d:'');
-    B.textes.general=(B.textes.general ? B.textes.general.replace(/\s+$/,'')+'\n' : '')+l; saveS(); _bnRendre();
-    setTimeout(()=>{ const i=document.querySelector('#bn-modal input[placeholder^="Nouvelle ligne"]'); if(i) i.focus(); }, 30); };
-  setTimeout(()=>ta.focus(), 30);
 }
 /** Plan de classe : pastille « 🗒 N » (lignes non faites de la classe), à côté de « ▶ Écran ». */
 function _bnBoutonPdc(){
