@@ -4862,7 +4862,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.48';
+const APP_VERSION = 'v11.5.49';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -22682,7 +22682,10 @@ function addSeance(niveau, seqId){
   },80);
 }
 
-function deleteSeance(niveau, seqId, seanId){
+/* V11.5.49 — `apres` (facultatif) : appelé une fois la séance supprimée. deleteSeance pose
+   SA confirmation : ne jamais l'appeler depuis le OK d'un autre showModal (leçon n°1 : le
+   finally du premier referme le second → clic « sans effet », bug du 10/11, Construction). */
+function deleteSeance(niveau, seqId, seanId, apres){
   const seq=(getProgression(niveau)||[]).find(s=>s.id===seqId);
   if(!seq||!seq.seances) return;
 
@@ -22736,6 +22739,7 @@ function deleteSeance(niveau, seqId, seanId){
       _allCls.forEach(cls=>cleanupOrphanEvalDecisions(cls));
     }
     refreshProgressionView();
+    if(typeof apres==='function') try{ apres(); }catch(e){ console.warn('[progression] après suppression', e); }
   };
 
   const removeFromPlanning=(allSeq)=>{
@@ -57618,7 +57622,7 @@ function renderProgConstructionMock(){
       p5.querySelector('#pmk-se-contenu').oninput=e=>{ seance.contenu=e.target.value; saveS(); };
       p5.querySelector('#pmk-se-taf').oninput=e=>{ _bibModifierTafs(seance, parseTafTextareaValue(e.target.value)); saveS(); };   // V11.4.47
       p5.querySelector('#pmk-dup-seance').onclick=()=>{ const cp=JSON.parse(JSON.stringify(seance)); cp.id=uid(); cp.titre=(seance.titre||'Séance')+' (copie)'; setTafArray(cp, getTafArray(seance)); seq.seances.splice((seq.seances.findIndex(x=>x.id===seance.id))+1,0,cp); saveS(); pane._seanceId=cp.id; renderProgConstructionMock(); };
-      p5.querySelector('#pmk-del-seance').onclick=()=>{ showModal('Supprimer cette séance ?', seance.titre||'Séance', ()=>{ deleteSeance(lv,seq.id,seance.id); pane._seanceId=seq.seances?.[0]?.id||null; renderProgConstructionMock(); }); };
+      p5.querySelector('#pmk-del-seance').onclick=()=>{ deleteSeance(lv,seq.id,seance.id, ()=>{ pane._seanceId=null; renderProgConstructionMock(); }); };   // V11.5.49 — une seule confirmation (celle de deleteSeance)
       const opBlock=buildCollapsibleList(seance,'modeOp','Mode opératoire','⚙️','Décrire une opération / tâche…',()=>{},{lv});
       const docsRes=document.createElement('div'); docsRes.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px';
       const docBlock=buildCollapsibleList(seance,'docs','Documents','📄','Nom ou référence du document…',()=>{});
