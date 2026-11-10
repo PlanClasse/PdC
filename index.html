@@ -4850,7 +4850,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.45';
+const APP_VERSION = 'v11.5.46';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -17552,12 +17552,12 @@ function _impSansDistribManuelle(distrib, cle, cls, gid){
     if(d && d.manuel && d.doc===cle && p[1]===cls && (p[2]||'')===(gid||'')) return; out[k]=d; });
   return out;
 }
-function _impDeclarerServi(d, cls, n){
+function _impDeclarerServi(d, cls, n, gid){
   const st=_impStore();
   if(!st.docs[d.cle]) st.docs[d.cle]={label:_impLibelle(d.label), lv:String(d.lv||''), evts:[]};   // historique du document
-  st.distrib=_impDistribManuelle(st.distrib, d.cle, cls, '', n, _appToday(), Date.now());
+  st.distrib=_impDistribManuelle(st.distrib, d.cle, cls, gid||'', n, _appToday(), Date.now());
   _impTuileAt=0; _hmImpCache=null; saveS();
-  try{ showDropToast(String(cls).toUpperCase()+' : « '+d.label+' » déclaré servi ('+Math.max(0, Math.round(Number(n))||0)+')'); }catch(e){}
+  try{ showDropToast(_impPublicLibelle(cls, gid||'')+' : « '+d.label+' » déclaré servi ('+Math.max(0, Math.round(Number(n))||0)+')'); }catch(e){}
 }
 function _impAnnulerServi(d, cls, gid){
   const st=_impStore();
@@ -17587,7 +17587,7 @@ function _impNiveauxTries(lvs){
 /** Relevé : documents programmés entre `du` et `au` (cours non enregistrés,
  *  non annulés), et documents servis par les séances enregistrées récentes. */
 function _impCollecte(du, au){
-  const docs={}, classes={};
+  const docs={}, classes={}, demis={};   // V11.5.46 — demis[cls] = demi-groupes vus dans l'EDT de la classe
   const actives=_homeListActiveClasses();
   const doc=(lv, label)=>{
     const k=_impCle(lv, label); if(!k) return null;
@@ -17598,6 +17598,7 @@ function _impCollecte(du, au){
     const lv=_sdcNiveau(cls); (classes[lv]=classes[lv]||[]).push(cls);
     let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ slots=[]; }
     slots.forEach(sl=>{
+      const g0=_numPublicDuSlot(sl); if(g0){ demis[cls]=demis[cls]||[]; if(demis[cls].indexOf(g0)<0) demis[cls].push(g0); }
       if(!sl || !sl.slotKey || !sl.dateStr || sl.dateStr<du || sl.dateStr>au || sl.saved) return;
       if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, cls)) return;
       let ds=[]; try{ ds=_docsDistribuesAuCours(sl.slotKey, cls)||[]; }catch(e){ ds=[]; }
@@ -17665,8 +17666,23 @@ function _impCollecte(du, au){
     d.bilan=_impBilan(d.stock, d.prevus);
     const vus=new Set(d.prevus.map(p=>p.cls).concat(d.servis.map(p=>p.cls)));
     d.horsCompte=(classes[d.lv]||[]).filter(c=>!vus.has(c));
+    d.horsDemi=_impDemisNonComptes(d.prevus.concat(d.servis), demis);
   });
   return {docs, classes, archives};
+}
+/** V11.5.46 — Demi-groupes « non comptés » : une classe dont un demi-groupe a le document
+ *  (servi ou programmé) mais pas l'autre → l'autre est listé. Une classe entière servie ou
+ *  programmée (gid vide) couvre ses deux moitiés. Pure.
+ *  publics=[{cls, gid}] ; demis={cls:[gid…]} → [{cls, gid}]. */
+function _impDemisNonComptes(publics, demis){
+  const P=Array.isArray(publics)?publics:[], out=[], D=demis||{};
+  const parCls={};
+  P.forEach(p=>{ if(!p || !p.cls) return; (parCls[p.cls]=parCls[p.cls]||[]).push(p.gid||''); });
+  Object.keys(parCls).forEach(c=>{
+    const g=parCls[c]; if(g.indexOf('')>=0) return;
+    (Array.isArray(D[c])?D[c]:[]).forEach(x=>{ if(x && g.indexOf(x)<0) out.push({cls:c, gid:x}); });
+  });
+  return out;
 }
 function _impLignes(col){
   return Object.keys(col.docs).map(k=>col.docs[k]).filter(d=>d.prevus.length || d.servis.length || d.enStock)
@@ -17796,19 +17812,20 @@ function _impFormImprime(d, defaut){
   return f;
 }
 /** V11.5.45 — Confirmation « [classe] a reçu ce document : [n] exemplaires · stock a → b ». */
-function _impFormDeclarer(d, cls){
+function _impFormDeclarer(d, cls, gid){
+  gid=gid||'';
   const f=_impEl('div', 'imp-form imp-decl');
-  const C=String(cls).toUpperCase();
+  const C=_impPublicLibelle(cls, gid);
   f.appendChild(_impEl('span', 'imp-decl-t', C+' a reçu « '+d.label+' » (oublié dans « Saisir mes cours ») :'));
   const lab=_impEl('label', 'imp-form-l');
   const inp=_impEl('input', 'imp-num'); inp.type='number'; inp.min='0'; inp.step='1';
-  inp.value=String(_impEffectif(cls, '')); inp.setAttribute('aria-label', 'Exemplaires distribués');
+  inp.value=String(_impEffectif(cls, gid)); inp.setAttribute('aria-label', 'Exemplaires distribués');
   lab.appendChild(inp); lab.appendChild(document.createTextNode('exemplaires')); f.appendChild(lab);
   const info=_impEl('span', 'imp-decl-s'); f.appendChild(info);
   const maj=()=>{ const v=Math.max(0, Math.round(Number(inp.value))||0);
     info.textContent=(d.stock==null) ? 'aucun stock déclaré : rien à retirer' : 'stock '+Math.max(0,d.stock)+' → '+(d.stock-v); };
   inp.addEventListener('input', maj); maj();
-  f.appendChild(_impBtn('Confirmer', 'bp imp-valider', ()=>{ _impDeclarerServi(d, cls, inp.value); _imp.declarer=''; _impRendre(); }));
+  f.appendChild(_impBtn('Confirmer', 'bp imp-valider', ()=>{ _impDeclarerServi(d, cls, inp.value, gid); _imp.declarer=''; _impRendre(); }));
   f.appendChild(_impBtn('Annuler', 'bs imp-form-x', ()=>{ _imp.declarer=''; _impRendre(); }));
   setTimeout(()=>{ try{ inp.focus(); inp.select(); }catch(e){} }, 0);
   inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); f.querySelector('.imp-valider').click(); } });
@@ -17848,7 +17865,7 @@ function _impRendreGestion(zone, corps){
   });
   _impBlocArchives(corps, col.archives.filter(a=>!_imp.niveau || a.lv===_imp.niveau));
   const leg=_impEl('div', 'imp-legende');
-  [['imp-vert','classe ✓ effectif','servie (effectif retiré du stock)'],['imp-neutre','classe · date · effectif','programmée'],['imp-hors','classe','pas encore programmée : non comptée (un clic : déclarer qu’elle l’a reçu)']].forEach(([c,a,b])=>{
+  [['imp-vert','classe ✓ effectif','servie (effectif retiré du stock)'],['imp-neutre','classe · date · effectif','programmée'],['imp-hors','classe','pas encore programmée (ou l’autre demi-groupe) : non comptée (un clic : déclarer qu’elle l’a reçu)']].forEach(([c,a,b])=>{
     const s=_impEl('span', 'imp-leg-i'); s.appendChild(_impEl('span', 'imp-chip '+c, a)); s.appendChild(document.createTextNode(b)); leg.appendChild(s);
   });
   leg.appendChild(_impEl('span', 'imp-leg-i', 'Un document imprimé reste listé tant qu’il en reste en stock ; « Archiver » le range (impossible tant qu’un cours le prévoit) ; 🕘 = son historique.'));
@@ -17879,6 +17896,10 @@ function _impLigneGestion(d){
     const k='d|'+d.cle+'|'+c;
     chips.appendChild(_impBtn(String(c).toUpperCase()+' · non comptée', 'imp-chip imp-hors imp-chip-clic'+(_imp.declarer===k?' on':''), ()=>{ _imp.declarer=(_imp.declarer===k)?'':k; _imp.form=null; _impRendre(); }, 'Déclarer que '+String(c).toUpperCase()+' a reçu ce document (le stock baisse)'));
   });
+  (d.horsDemi||[]).forEach(h=>{   // V11.5.46 — l'autre demi-groupe d'une classe déjà servie / programmée
+    const k='d|'+d.cle+'|'+h.cls+'|'+h.gid, L=_impPublicLibelle(h.cls, h.gid);
+    chips.appendChild(_impBtn(L+' · non compté', 'imp-chip imp-hors imp-chip-clic'+(_imp.declarer===k?' on':''), ()=>{ _imp.declarer=(_imp.declarer===k)?'':k; _imp.form=null; _impRendre(); }, 'Déclarer que '+L+' a reçu ce document (le stock baisse)'));
+  });
   g.appendChild(chips);
   const cR=_impEl('div', 'imp-n', String(d.bilan.reste)); cR.dataset.l='RESTE À SERVIR'; g.appendChild(cR);
   const cS=_impEl('div', 'imp-n'+(d.stock==null?' imp-muet':''), d.stock==null?'— aucun':String(Math.max(0,d.stock))); cS.dataset.l='STOCK'; g.appendChild(cS);
@@ -17897,7 +17918,7 @@ function _impLigneGestion(d){
   act2.appendChild(bA);
   if(_imp.form===d.cle) row.appendChild(_impFormImprime(d, d.bilan.manque));
   const dc=String(_imp.declarer||'');
-  if(dc.indexOf('d|'+d.cle+'|')===0) row.appendChild(_impFormDeclarer(d, dc.slice(d.cle.length+3)));
+  if(dc.indexOf('d|'+d.cle+'|')===0){ const cg=dc.slice(d.cle.length+3).split('|'); row.appendChild(_impFormDeclarer(d, cg[0], cg[1]||'')); }
   else if(dc.indexOf('x|'+d.cle+'|')===0){ const s=d.servis.find(x=>x.manuel && x.cle===dc.slice(d.cle.length+3)); if(s) row.appendChild(_impFormAnnulerServi(d, s)); }
   if(_imp.hist===d.cle) row.appendChild(_impHistDoc(d.cle));
   return row;
@@ -20128,6 +20149,7 @@ const _PAL_ECRANS_EXTRA = [
   {ic:'💞', full:'Affinités · Avec qui travailler (sondage des élèves)', kw:'affinites affinite sondage avec qui travailler binome groupe sociogramme', fn:()=>{ openAffinites(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.26
   {ic:'📊', full:'Évaluations · Carnet, évaluations, bibliothèque de grilles', kw:'evaluations evaluation notes carnet grille criteres bareme niveaux indicateurs pronote', fn:()=>{ openEvaluations({cls:(typeof curCls!=='undefined' ? curCls : '')}); }},   // V11.5.32
   {ic:'👥', full:'Groupes · Générateur de groupes de travail', kw:'groupes groupe generateur travail equipes binomes ilots roles', fn:()=>{ _grtChoix(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.30
+  {ic:'🤒', full:'Mes absences · Déclarer une absence (cours annulés)', kw:'absence absences absent malade maladie arret conge formation stage declarer annuler cours prof', fn:()=>{ openAbsencesModal(); }},   // V11.5.46
   {ic:'🗒', full:'Bloc-notes · À faire, à rendre, rappels, notes', kw:'bloc notes carnet a faire rendre rappel note semaine tdl', fn:()=>{ openBlocNotes(); }},   // V11.5.23
   {ic:'👁️', full:'Espace prof · Ma semaine est-elle prête ?',
    kw:'espace prof supervision semaine prête calendrier 5 jours préparer tableau de bord mode prof',
