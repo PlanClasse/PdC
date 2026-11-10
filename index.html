@@ -3266,6 +3266,18 @@ i.cov2-e{background:#1D4ED8}
 .sdc-ta{flex:1;min-height:220px;width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.55;padding:10px;border:1px solid var(--brd2);border-radius:var(--r2);resize:none;background:var(--sur);color:var(--tx)}
 .sdc-ta[readonly]{background:var(--sur2);color:var(--tx2)}
 .sdc-pref{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:8px}
+/* V11.5.48 — compléter un cours enregistré */
+.sdc-compl{margin-top:10px;padding:10px 12px;border:1.5px dashed #7C3AED;border-radius:10px;background:#F5F3FF}
+.sdc-compl-h{font-size:12px;font-weight:800;color:#5B21B6;margin-bottom:6px}
+.sdc-compl-ta{width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid #C4B5FD;border-radius:8px;background:var(--sur);color:var(--tx);resize:vertical}
+.sdc-compl-ok{margin-left:auto}
+.sdc-compl-msg{font-size:12px;margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.sdc-compl-msg.sdc-ok{color:#166534}
+.sdc-compl-msg.sdc-ko{color:#991B1B}
+.sdc-compl-deja{font-size:11.5px;color:#5B21B6;margin-top:6px;display:flex;flex-direction:column;gap:2px}
+/* V11.5.48 — modal Séance : l'évaluation se distingue des reports (ambre) */
+.ms-eval-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border:2px solid #7C3AED;border-radius:var(--r1);background:#EDE9FE;margin-bottom:4px}
+.ms-eval-tag{flex-shrink:0;font-size:10px;font-weight:800;letter-spacing:.05em;padding:2px 6px;border-radius:4px;background:#7C3AED;color:#fff}
 .sdc-pref-l{font-size:11px;font-weight:700;color:var(--tx3)}
 .sdc-pref-n{font-size:11px;color:var(--tx3);flex-basis:100%}
 .sdc-sugg{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:6px}
@@ -4850,7 +4862,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.47';
+const APP_VERSION = 'v11.5.48';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -34185,6 +34197,127 @@ function _sdcEnregistrer(cls, slotKey, text, etoiles){
   return {ok:true, message:msg, texte:text, verse};
 }
 
+/* V11.5.48 — COMPLÉTER APRÈS COUP un cours ENREGISTRÉ (demande du 10/11 : évaluation
+   oubliée). Seules les lignes /Eval, /Doc, /TAF sont acceptées ; elles s'AJOUTENT au cours
+   (rien n'est réinterprété ni retiré) : /Eval et /Doc → freeItems de l'entrée du planning
+   (rattachés aux en-têtes /SEQ /Séance du cours), /TAF → champ TAF du modal Séance (brouillon).
+   On coche ensuite « Faite » dans le modal Séance rouvert (bouton « 💾 Ouvrir la séance »). */
+/** Lignes acceptées / refusées, interprétées sous les en-têtes du cours. Pure. */
+function _sdcComplements(texte, entetes, prog){
+  const acc=[], refus=[];
+  String(texte||'').split('\n').forEach(l=>{
+    const it=_sdcClasserLigne(l); if(!it) return;
+    if(it.type==='eval' || it.type==='doc' || it.type==='taf'){ if(String(it.label||'').trim() || it.type==='eval') acc.push(String(l).trim()); else refus.push(String(l).trim()); }
+    else refus.push(String(l).trim());
+  });
+  const H=(Array.isArray(entetes)?entetes:[]).filter(Boolean);
+  const r=_sdcInterpreter(H.concat(acc).join('\n'), prog);
+  const items=r.items.filter(it=>it.type==='eval' || it.type==='doc' || it.type==='taf')
+    .map(it=>{ const o={type:it.type, label:String(it.label||'').trim()||(it.type==='eval'?'Évaluation':''), duree:it.duree||0};
+      if(it.type==='eval' && it.seqId) o.seqId=it.seqId;
+      if(it.seanBloc){ o.seqBloc=it.seqBloc; o.seanBloc=it.seanBloc; }
+      return o; });
+  return {items, refus};
+}
+/** En-têtes /SEQ et /Séance (les premiers) d'un texte de cours. Pure. */
+function _sdcEntetesDuTexte(texte){
+  let seq='', sean='';
+  String(texte||'').split('\n').forEach(l=>{ const it=_sdcClasserLigne(l); if(!it) return;
+    if(it.type==='seq' && !seq) seq=String(l).trim(); else if(it.type==='sean' && seq && !sean) sean=String(l).trim(); });
+  return [seq, sean].filter(Boolean);
+}
+/** V11.5.48 — Bloc « ＋ Compléter ce cours enregistré » (sous la saisie en lecture seule). */
+function _sdcZoneCompleter(parent, cls, slotKey, texteCours){
+  const z=_sdcEl('div','sdc-compl'); parent.appendChild(z);
+  z.appendChild(_sdcEl('div','sdc-compl-h','＋ Compléter ce cours enregistré (un oubli)'));
+  const ta=_sdcEl('textarea','sdc-compl-ta'); ta.rows=3; ta.spellcheck=true;
+  ta.placeholder='/Eval Schéma fonctionnel - 30 min\n/Doc Fiche élève 2\n/TAF Terminer la p. 3';
+  z.appendChild(ta);
+  const bas=_sdcEl('div','sdc-pref'); z.appendChild(bas);
+  ['/Eval','/Doc','/TAF'].forEach(p=>{
+    const b=_sdcEl('button','sdc-chip',p); b.type='button';
+    b.onmousedown=(e)=>e.preventDefault();
+    b.onclick=()=>{ const r=_sdcInsererPrefixe(ta.value, ta.selectionStart, p); ta.value=r.text; ta.focus(); ta.setSelectionRange(r.pos, r.pos); };
+    bas.appendChild(b);
+  });
+  const bA=_sdcEl('button','bp sdc-compl-ok','Ajouter au cours'); bA.type='button'; bas.appendChild(bA);
+  const msg=_sdcEl('div','sdc-compl-msg'); z.appendChild(msg);
+  const d=_sdcDraft(cls, slotKey);
+  const deja=(d && Array.isArray(d.complements)) ? d.complements : [];
+  if(deja.length){
+    const h=_sdcEl('div','sdc-compl-deja');
+    deja.forEach(c=>{ let q=''; try{ q=new Date(c.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}); }catch(e){}
+      (c.lignes||[]).forEach(l=>h.appendChild(_sdcEl('div',null,'✓ '+l+(q?' · ajouté le '+q:'')))); });
+    z.appendChild(h);
+  }
+  const ouvrir=()=>{ closeSaisieCours(); setTimeout(()=>{ try{ openApp(cls, null, slotKey); setTimeout(()=>{ try{ openSaveSeance(); }catch(e){ console.warn('[sdc] séance', e); } }, 400); }catch(e){ console.warn('[sdc] ouvrir', e); } }, 0); };
+  bA.onclick=()=>{
+    const r=_sdcCompleterEnregistre(cls, slotKey, ta.value, texteCours);
+    msg.textContent=''; msg.className='sdc-compl-msg '+(r.ok?'sdc-ok':'sdc-ko');
+    msg.appendChild(document.createTextNode((r.ok?'✓ ':'⚠ ')+r.message));
+    if(!r.ok) return;
+    ta.value='';
+    const bO=_sdcEl('button','bs sdc-compl-ouvrir','💾 Ouvrir la séance'); bO.type='button'; bO.onclick=ouvrir;
+    msg.appendChild(bO);
+    try{ _sdcRafraichirVues(); }catch(e){}
+  };
+  return z;
+}
+function _sdcCompleterEnregistre(cls, slotKey, texte, texteCours){
+  cls=_sdcClsCanon(cls);
+  const prog=getProgression(_sdcNiveau(cls))||[];
+  const C=_sdcComplements(texte, _sdcEntetesDuTexte(texteCours), prog);
+  if(!C.items.length) return {ok:false, message: C.refus.length ? 'Seules les lignes /Eval, /Doc et /TAF peuvent compléter un cours enregistré.' : 'Rien à ajouter.'};
+  if(C.refus.length) return {ok:false, message:'Ligne(s) refusée(s) : '+C.refus.join(' · ')+' — seules /Eval, /Doc et /TAF complètent un cours enregistré.'};
+  if(typeof pushUndo==='function') try{ pushUndo(); }catch(e){}
+  if(!S.edtProgMapping) S.edtProgMapping={};
+  const key=_sdcMapKey(slotKey, cls);
+  const e=S.edtProgMapping[key] || {seances:[], lignes:[], freeItems:[], isolatedOps:[], skippedOps:[]};
+  if(!Array.isArray(e.freeItems)) e.freeItems=[];
+  if(!Array.isArray(e.lignes)) e.lignes=[];
+  const t0=Date.now().toString(36), base='sdc_'+String(slotKey+cls).replace(/[^A-Za-z0-9]/g,'')+'_c'+t0+'_';
+  const n={eval:0, doc:0, taf:0}, tafs=[];
+  C.items.forEach((it,i)=>{
+    n[it.type]++;
+    if(it.type==='taf'){ tafs.push(it.label); return; }
+    const fi={id:base+i, label:it.label, type:it.type==='eval'?'eval':'doc', icon:it.type==='eval'?'📝':'📄', duree:it.duree||0, sdc:true, suiviSynthese:it.type==='eval', apresCoup:Date.now()};
+    if(it.seqId) fi.seqId=it.seqId;
+    if(it.seanBloc){ fi.seqBloc=it.seqBloc; fi.seanBloc=it.seanBloc; }
+    e.freeItems.push(fi); e.lignes.push({src:'cours', kind:it.type, fiId:fi.id});
+  });
+  S.edtProgMapping[key]=e;
+  if(typeof invalidateLayoutCache==='function') try{ invalidateLayoutCache(cls); }catch(err){}
+  if(!S.seanceContentDraft) S.seanceContentDraft={};
+  const dk=cls+'|'+slotKey, d=S.seanceContentDraft[dk]||{};
+  if(tafs.length){
+    let saved=null; try{ saved=(_sdcCoursDeClasse(cls).find(c=>c.slotKey===slotKey)||{}).saved||null; }catch(err){}
+    const avant=_draftOrSaved(d.taf, (typeof getTafArray==='function' ? getTafArray(saved) : []).join('\n')).value;
+    const n0=(typeof _sdcTafsTexte==='function') ? _sdcTafsTexte(avant).length : String(avant||'').split('\n').filter(x=>x.trim()).length;
+    d.taf=String(avant||'').replace(/\s+$/,'')+(String(avant||'').trim()?'\n':'')+tafs.join('\n');
+    // Les TAF du modal sont repérés par leur RANG (taf_0, taf_1…) : un TAF ajouté hériterait
+    // de la décision / coche d'un ancien TAF à ce rang (ex. un TAF annulé, sorti du champ).
+    // On les efface pour les rangs nouveaux dont l'ancienne ligne portait un autre libellé.
+    try{
+      const rows=(saved && Array.isArray(saved.taskRows)) ? saved.taskRows : [];
+      let grp=''; try{ grp=(typeof getCurrentGrpId==='function') ? (getCurrentGrpId(cls, slotKey)||'') : ''; }catch(err){}
+      const bucket=(S.seanceCoches && typeof _cocheKey==='function') ? S.seanceCoches[_cocheKey(slotKey, cls, grp)] : null;
+      tafs.forEach((t,j)=>{ const k='taf_'+(n0+j), r=rows.find(x=>x && x.key===k);
+        if(r && String(r.label||'').trim()===String(t).trim()) return;
+        if(saved && saved.tacheDecisions) delete saved.tacheDecisions[k];
+        if(bucket) delete bucket[k];
+        if(d.tacheDecisions) delete d.tacheDecisions[k]; });
+    }catch(err){ console.warn('[sdc] compléter : rangs des TAF', err); }
+  }
+  const lignes=String(texte||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  if(typeof d.saisieEnreg==='string' && d.saisieEnreg.trim() && d.saisie===d.saisieEnreg){ d.saisieEnreg=d.saisieEnreg.replace(/\s+$/,'')+'\n'+lignes.join('\n'); d.saisie=d.saisieEnreg; }
+  if(!Array.isArray(d.complements)) d.complements=[];
+  d.complements.push({ts:Date.now(), lignes});
+  S.seanceContentDraft[dk]=d;
+  saveS();
+  const parts=[]; if(n.eval) parts.push(n.eval+' évaluation'+(n.eval>1?'s':'')); if(n.doc) parts.push(n.doc+' document'+(n.doc>1?'s':'')); if(n.taf) parts.push(n.taf+' TAF');
+  return {ok:true, message:'Ajouté au cours : '+parts.join(', ')+'. À cocher « Faite » dans la séance.', n};
+}
+
 /* ── État et ouverture ─────────────────────────────────────────────────── */
 let _sdc=null, _sdcSaisieT=null;
 function openSaisieCours(opts){
@@ -34737,6 +34870,7 @@ function _sdcRendre(){
     b.onclick=()=>{ if(ta.readOnly) return; const r=_sdcInsererPrefixe(ta.value, ta.selectionStart, p); ta.value=r.text; ta.focus(); ta.setSelectionRange(r.pos, r.pos); maj(true); };
     pref.appendChild(b);
   });
+  if(enregistre && !avant) try{ _sdcZoneCompleter(colG, cls, slotKey, texte0); }catch(e){ console.warn('[sdc] compléter', e); }   // V11.5.48
   pref.appendChild(_sdcEl('span','sdc-pref-n','Une ligne sans préfixe est une tâche. Sous un /SEQ + /Séance connus, une ligne proche d’une ligne de la bibliothèque y est reliée ; sinon elle est propre à ce cours. L’étoile ☆ d’une ligne la verse dans la bibliothèque à l’enregistrement (et crée le chapitre ou la séance s’ils manquent).'))
 
   // V11.3.66 — demi-groupes : reprendre le contenu du cours jumeau, seulement
@@ -52483,7 +52617,7 @@ function openSaveSeance(){
       const _isDoneEv = _curEv==='done';
 
       const evRow=document.createElement('div');
-      evRow.style.cssText='display:flex;align-items:center;gap:6px;padding:5px 8px;border:1.5px solid #F59E0B;border-radius:var(--r1);background:#FEF3C7;margin-bottom:4px';
+      evRow.className='ms-eval-row';   // V11.5.48 — violet + « ÉVAL » (l'ambre se confondait avec les reports)
 
       const evCb=document.createElement('input');
       evCb.type='checkbox';
@@ -52499,10 +52633,11 @@ function openSaveSeance(){
       evIco.style.cssText='flex-shrink:0;font-size:12px';
 
       const evLbl=document.createElement('span');
-      evLbl.style.cssText='flex:1;font-size:11px;line-height:1.3;color:var(--tx);font-weight:600;'+(_isDoneEv?'text-decoration:line-through;color:var(--tx3);font-weight:400':'');
+      evLbl.style.cssText='flex:1;font-size:12px;line-height:1.3;color:#3B0764;font-weight:700;'+(_isDoneEv?'text-decoration:line-through;color:#6D28D9;font-weight:600':'');
       evLbl.textContent=_label+_durTxt;
 
-      evRow.appendChild(evCb); evRow.appendChild(evIco); evRow.appendChild(evLbl);
+      const evTag=document.createElement('span'); evTag.className='ms-eval-tag'; evTag.textContent='ÉVAL';
+      evRow.appendChild(evCb); evRow.appendChild(evTag); evRow.appendChild(evIco); evRow.appendChild(evLbl);
 
       if(_curEv==='reported' || _curEv==='cancelled'){
         const isRep = _curEv==='reported';
