@@ -4850,7 +4850,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.46';
+const APP_VERSION = 'v11.5.47';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20149,6 +20149,7 @@ const _PAL_ECRANS_EXTRA = [
   {ic:'💞', full:'Affinités · Avec qui travailler (sondage des élèves)', kw:'affinites affinite sondage avec qui travailler binome groupe sociogramme', fn:()=>{ openAffinites(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.26
   {ic:'📊', full:'Évaluations · Carnet, évaluations, bibliothèque de grilles', kw:'evaluations evaluation notes carnet grille criteres bareme niveaux indicateurs pronote', fn:()=>{ openEvaluations({cls:(typeof curCls!=='undefined' ? curCls : '')}); }},   // V11.5.32
   {ic:'👥', full:'Groupes · Générateur de groupes de travail', kw:'groupes groupe generateur travail equipes binomes ilots roles', fn:()=>{ _grtChoix(typeof curCls!=='undefined' ? curCls : ''); }},   // V11.5.30
+  {ic:'➕', full:'Ajouter un cours · Cours exceptionnel, déplacé, rattrapé (EDT)', kw:'ajouter cours edt emploi du temps exceptionnel deplace deplacer rattrapage rattraper remplacer report reporter seance supplementaire', fn:()=>{ try{ _modalReinit(); }catch(e){} edtActAdd(); }},   // V11.5.47 — sans passer par un cours sélectionné
   {ic:'🤒', full:'Mes absences · Déclarer une absence (cours annulés)', kw:'absence absences absent malade maladie arret conge formation stage declarer annuler cours prof', fn:()=>{ openAbsencesModal(); }},   // V11.5.46
   {ic:'🗒', full:'Bloc-notes · À faire, à rendre, rappels, notes', kw:'bloc notes carnet a faire rendre rappel note semaine tdl', fn:()=>{ openBlocNotes(); }},   // V11.5.23
   {ic:'👁️', full:'Espace prof · Ma semaine est-elle prête ?',
