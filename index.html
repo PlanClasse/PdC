@@ -3026,6 +3026,14 @@ body:has(#imp-bg) #font-ctrl{display:none}
 .imp-hors{background:transparent;border:1px dashed #9FB09A;color:var(--tx2);font-weight:400}
 .imp-chip-r{background:#FDE2E0;color:#8E1B1B}
 .imp-chip-a{background:#FEF1C7;color:#7A4300}
+/* V11.5.45 — « non comptée » cliquable (déclarer la distribution) ; servie déclarée à la main */
+.imp-chip-clic{cursor:pointer;font-family:inherit;line-height:inherit}
+.imp-chip-clic.imp-vert{border:1px solid transparent}
+.imp-chip-clic.imp-hors:hover{border-color:#1D4ED8;color:#1D4ED8;background:#EFF4FF}
+.imp-chip-clic.imp-vert:hover{border-color:#1E5B1E}
+.imp-chip-clic.on{outline:2px solid #1D4ED8;outline-offset:1px}
+.imp-decl-t{font-size:13px;font-weight:600}
+.imp-decl-s{font-size:12px;color:var(--tx2)}
 .imp-n{font-size:15px;font-weight:700}
 .imp-muet{color:var(--tx3);font-weight:400;font-size:13px}
 .imp-puce{padding:6px 8px;border-radius:8px;font-size:13px;font-weight:800;text-align:center}
@@ -4842,7 +4850,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.44';
+const APP_VERSION = 'v11.5.45';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -17526,6 +17534,36 @@ function _impEnregistrerDistribution(cls, slotKey, seance){
   st.distrib=_impMajLedger(st.distrib, slotKey+'|'+cls+'|'+gid, entries, Date.now());
   _impTuileAt=0; _hmImpCache=null;
 }
+/** V11.5.45 — Distribution DÉCLARÉE À LA MAIN depuis « Gestion des impressions » : la classe
+ *  a reçu le document sans qu'il ait été déclaré dans « Saisir mes cours » (classe « non comptée »).
+ *  Entrée du registre marquée `manuel`, datée du jour (clé « date~manuel|cls|gid#doc ») :
+ *  le stock baisse de n ; la classe passe « servie ». Pure : rend un NOUVEL objet. */
+function _impDistribManuelle(distrib, cle, cls, gid, n, dateStr, maintenant){
+  const out=Object.assign({}, (distrib && typeof distrib==='object') ? distrib : {});
+  if(!cle || !cls) return out;
+  const slot=String(dateStr)+'~manuel|'+cls+'|'+(gid||'');
+  out[slot+'#'+cle]={doc:cle, slot, n:Math.max(0, Math.round(Number(n))||0), ts:maintenant, manuel:true};
+  return out;
+}
+/** V11.5.45 — Retire les distributions déclarées à la main d'un document pour un public. Pure. */
+function _impSansDistribManuelle(distrib, cle, cls, gid){
+  const out={}, src=(distrib && typeof distrib==='object') ? distrib : {};
+  Object.keys(src).forEach(k=>{ const d=src[k]; const p=String(d && d.slot || '').split('|');
+    if(d && d.manuel && d.doc===cle && p[1]===cls && (p[2]||'')===(gid||'')) return; out[k]=d; });
+  return out;
+}
+function _impDeclarerServi(d, cls, n){
+  const st=_impStore();
+  if(!st.docs[d.cle]) st.docs[d.cle]={label:_impLibelle(d.label), lv:String(d.lv||''), evts:[]};   // historique du document
+  st.distrib=_impDistribManuelle(st.distrib, d.cle, cls, '', n, _appToday(), Date.now());
+  _impTuileAt=0; _hmImpCache=null; saveS();
+  try{ showDropToast(String(cls).toUpperCase()+' : « '+d.label+' » déclaré servi ('+Math.max(0, Math.round(Number(n))||0)+')'); }catch(e){}
+}
+function _impAnnulerServi(d, cls, gid){
+  const st=_impStore();
+  st.distrib=_impSansDistribManuelle(st.distrib, d.cle, cls, gid);
+  _impTuileAt=0; _hmImpCache=null; saveS();
+}
 function _impAjouter(cle, lv, label, n, mode){
   const v=Math.round(Number(n));
   if(!cle || !isFinite(v) || v<0) return false;
@@ -17589,6 +17627,15 @@ function _impCollecte(du, au){
       });
     });
   });
+  // V11.5.45 — distributions déclarées à la main (classe « non comptée » → servie)
+  Object.keys(_impStore().distrib).forEach(k=>{
+    const x=_impStore().distrib[k]; if(!x || !x.manuel) return;
+    const d=docs[x.doc]; if(!d) return;
+    const dateStr=String(x.slot).slice(0,10); if(dateStr<depuis || dateStr>au) return;
+    const p=String(x.slot).split('|'), cls=p[1], gid=p[2]||'', cle=cls+'|'+gid;
+    if(!set.has(cls) || d.servis.some(s=>s.cle===cle)) return;
+    d.servis.push({cle, cls, gid, label:_impPublicLibelle(cls, gid), effectif:x.n, dateStr, slotKey:p[0], manuel:true});
+  });
   // V11.4.39 — Documents imprimés que plus aucun cours de l'horizon n'appelle : ils
   // RESTENT listés tant qu'il en reste en stock (arbitrage du 24/10), ou s'ils ont
   // été servis récemment ; « Retirer » les masque (_impRetirer) jusqu'à ce qu'ils
@@ -17609,7 +17656,7 @@ function _impCollecte(du, au){
     recents.forEach(x=>{
       const p=String(x.slot).split('|'), cls=p[1], gid=p[2]||'', cle=cls+'|'+gid;
       if(d.servis.some(s=>s.cle===cle)) return;
-      d.servis.push({cle, cls, gid, label:_impPublicLibelle(cls, gid), effectif:x.n, dateStr:String(x.slot).slice(0,10), slotKey:p[0]});
+      d.servis.push({cle, cls, gid, label:_impPublicLibelle(cls, gid), effectif:x.n, dateStr:String(x.slot).slice(0,10), slotKey:p[0], manuel:!!x.manuel});
     });
   });
   Object.keys(docs).forEach(k=>{
@@ -17748,6 +17795,33 @@ function _impFormImprime(d, defaut){
   inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); f.querySelector('.imp-valider').click(); } });
   return f;
 }
+/** V11.5.45 — Confirmation « [classe] a reçu ce document : [n] exemplaires · stock a → b ». */
+function _impFormDeclarer(d, cls){
+  const f=_impEl('div', 'imp-form imp-decl');
+  const C=String(cls).toUpperCase();
+  f.appendChild(_impEl('span', 'imp-decl-t', C+' a reçu « '+d.label+' » (oublié dans « Saisir mes cours ») :'));
+  const lab=_impEl('label', 'imp-form-l');
+  const inp=_impEl('input', 'imp-num'); inp.type='number'; inp.min='0'; inp.step='1';
+  inp.value=String(_impEffectif(cls, '')); inp.setAttribute('aria-label', 'Exemplaires distribués');
+  lab.appendChild(inp); lab.appendChild(document.createTextNode('exemplaires')); f.appendChild(lab);
+  const info=_impEl('span', 'imp-decl-s'); f.appendChild(info);
+  const maj=()=>{ const v=Math.max(0, Math.round(Number(inp.value))||0);
+    info.textContent=(d.stock==null) ? 'aucun stock déclaré : rien à retirer' : 'stock '+Math.max(0,d.stock)+' → '+(d.stock-v); };
+  inp.addEventListener('input', maj); maj();
+  f.appendChild(_impBtn('Confirmer', 'bp imp-valider', ()=>{ _impDeclarerServi(d, cls, inp.value); _imp.declarer=''; _impRendre(); }));
+  f.appendChild(_impBtn('Annuler', 'bs imp-form-x', ()=>{ _imp.declarer=''; _impRendre(); }));
+  setTimeout(()=>{ try{ inp.focus(); inp.select(); }catch(e){} }, 0);
+  inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); f.querySelector('.imp-valider').click(); } });
+  return f;
+}
+/** V11.5.45 — Annuler une distribution déclarée à la main (le stock remonte). */
+function _impFormAnnulerServi(d, s){
+  const f=_impEl('div', 'imp-form imp-decl');
+  f.appendChild(_impEl('span', 'imp-decl-t', s.label+' : distribution de « '+d.label+' » déclarée à la main le '+_homeFormatDate(s.dateStr)+' ('+s.effectif+').'));
+  f.appendChild(_btnSuppr(_impBtn('Retirer la déclaration', 'bs', ()=>{ _impAnnulerServi(d, s.cls, s.gid); _imp.declarer=''; _impRendre(); }, 'Le stock remonte de '+s.effectif)));
+  f.appendChild(_impBtn('Fermer', 'bs imp-form-x', ()=>{ _imp.declarer=''; _impRendre(); }));
+  return f;
+}
 function _impRendreGestion(zone, corps){
   _impHorizonSel(zone);
   const t=_appToday();
@@ -17774,7 +17848,7 @@ function _impRendreGestion(zone, corps){
   });
   _impBlocArchives(corps, col.archives.filter(a=>!_imp.niveau || a.lv===_imp.niveau));
   const leg=_impEl('div', 'imp-legende');
-  [['imp-vert','classe ✓ effectif','servie (effectif retiré du stock)'],['imp-neutre','classe · date · effectif','programmée'],['imp-hors','classe','pas encore programmée : non comptée']].forEach(([c,a,b])=>{
+  [['imp-vert','classe ✓ effectif','servie (effectif retiré du stock)'],['imp-neutre','classe · date · effectif','programmée'],['imp-hors','classe','pas encore programmée : non comptée (un clic : déclarer qu’elle l’a reçu)']].forEach(([c,a,b])=>{
     const s=_impEl('span', 'imp-leg-i'); s.appendChild(_impEl('span', 'imp-chip '+c, a)); s.appendChild(document.createTextNode(b)); leg.appendChild(s);
   });
   leg.appendChild(_impEl('span', 'imp-leg-i', 'Un document imprimé reste listé tant qu’il en reste en stock ; « Archiver » le range (impossible tant qu’un cours le prévoit) ; 🕘 = son historique.'));
@@ -17790,21 +17864,28 @@ function _impLigneGestion(d){
   if(ebep) c1.appendChild(_impEl('div', 'imp-doc-s imp-ebep', 'dont '+ebep+' adapté'+(ebep>1?'s':'')+' (EBEP photocopies'+(_ebP.length>1 ? ' : '+_ebP.map(x=>x.l+' '+x.n).join(' · ') : '')+')'));
   g.appendChild(c1);
   const chips=_impEl('div', 'imp-chips');
-  d.servis.filter(s=>!d.prevus.some(p=>p.cle===s.cle)).forEach(s=>chips.appendChild(_impEl('span', 'imp-chip imp-vert', s.label+' ✓ '+s.effectif)));
+  d.servis.filter(s=>!d.prevus.some(p=>p.cle===s.cle)).forEach(s=>{
+    if(!s.manuel){ chips.appendChild(_impEl('span', 'imp-chip imp-vert', s.label+' ✓ '+s.effectif)); return; }
+    const k='x|'+d.cle+'|'+s.cle;   // V11.5.45 — déclarée à la main : un clic propose de l'annuler
+    chips.appendChild(_impBtn(s.label+' ✓ '+s.effectif+' ✎', 'imp-chip imp-vert imp-chip-clic'+(_imp.declarer===k?' on':''), ()=>{ _imp.declarer=(_imp.declarer===k)?'':k; _imp.form=null; _impRendre(); }, 'Déclaré à la main : cliquer pour annuler'));
+  });
   d.prevus.slice().sort((a,b)=>(a.dateStr+a.debut).localeCompare(b.dateStr+b.debut)).forEach(p=>{
     const st=d.bilan.parPublic[p.cle]||{};
     const ch=_impEl('span', 'imp-chip '+(st.statut==='rouge'?'imp-chip-r':st.statut==='ambre'?'imp-chip-a':'imp-neutre'),
       p.label+' · '+_homeFormatDate(p.dateStr)+' · '+p.effectif);
     chips.appendChild(ch);
   });
-  d.horsCompte.forEach(c=>chips.appendChild(_impEl('span', 'imp-chip imp-hors', String(c).toUpperCase()+' · non comptée')));
+  d.horsCompte.forEach(c=>{   // V11.5.45 — un clic : déclarer que la classe l'a reçu (confirmation, stock réduit)
+    const k='d|'+d.cle+'|'+c;
+    chips.appendChild(_impBtn(String(c).toUpperCase()+' · non comptée', 'imp-chip imp-hors imp-chip-clic'+(_imp.declarer===k?' on':''), ()=>{ _imp.declarer=(_imp.declarer===k)?'':k; _imp.form=null; _impRendre(); }, 'Déclarer que '+String(c).toUpperCase()+' a reçu ce document (le stock baisse)'));
+  });
   g.appendChild(chips);
   const cR=_impEl('div', 'imp-n', String(d.bilan.reste)); cR.dataset.l='RESTE À SERVIR'; g.appendChild(cR);
   const cS=_impEl('div', 'imp-n'+(d.stock==null?' imp-muet':''), d.stock==null?'— aucun':String(Math.max(0,d.stock))); cS.dataset.l='STOCK'; g.appendChild(cS);
   g.appendChild(_impPuce(d.bilan));
   const besoin=(d.bilan.statut==='rouge'||d.bilan.statut==='ambre');
   const act=_impEl('div', 'imp-act'); g.appendChild(act);
-  act.appendChild(_impBtn('＋ Imprimé', 'bs imp-plus'+(besoin?' imp-plus-fort':''), ()=>{ _imp.form=d.cle; _impRendre(); }));
+  act.appendChild(_impBtn('＋ Imprimé', 'bs imp-plus'+(besoin?' imp-plus-fort':''), ()=>{ _imp.form=d.cle; _imp.declarer=''; _impRendre(); }));
   // V11.5.7 — 🕘 historique + « Archiver » (remplace « Retirer ») : impossible tant qu'un cours à venir le prévoit.
   const act2=_impEl('div', 'imp-act2'); act.appendChild(act2);
   act2.appendChild(_impBtn('🕘', 'bs imp-hist-b'+(_imp.hist===d.cle?' on':''), ()=>{ _imp.hist=(_imp.hist===d.cle)?'':d.cle; _impRendre(); }, 'Historique de ce document'));
@@ -17815,6 +17896,9 @@ function _impLigneGestion(d){
   if(!peut) bA.disabled=true;
   act2.appendChild(bA);
   if(_imp.form===d.cle) row.appendChild(_impFormImprime(d, d.bilan.manque));
+  const dc=String(_imp.declarer||'');
+  if(dc.indexOf('d|'+d.cle+'|')===0) row.appendChild(_impFormDeclarer(d, dc.slice(d.cle.length+3)));
+  else if(dc.indexOf('x|'+d.cle+'|')===0){ const s=d.servis.find(x=>x.manuel && x.cle===dc.slice(d.cle.length+3)); if(s) row.appendChild(_impFormAnnulerServi(d, s)); }
   if(_imp.hist===d.cle) row.appendChild(_impHistDoc(d.cle));
   return row;
 }
@@ -18057,7 +18141,7 @@ function _impHistorique(store){
   Object.keys(distrib).forEach(k=>{
     const d=distrib[k]; if(!d || !d.doc || !isFinite(d.ts)) return;
     const p=String(d.slot||'').split('|'), I=info(d.doc);
-    out.push({ts:d.ts, type:'servi', cle:d.doc, lv:I.lv, label:I.label, n:Math.max(0, d.n|0), cls:p[1]||'', gid:p[2]||'', date:String(p[0]||'').slice(0,10)});
+    out.push({ts:d.ts, type:'servi', cle:d.doc, lv:I.lv, label:I.label, n:Math.max(0, d.n|0), cls:p[1]||'', gid:p[2]||'', date:String(p[0]||'').slice(0,10), manuel:!!d.manuel});
   });
   const J=Array.isArray(st.journal)?st.journal:[], vus=new Set();
   J.forEach(e=>{ if(!e || !e.cle || !isFinite(e.ts)) return; const I=info(e.cle); vus.add(e.type+'|'+e.cle+'|'+e.ts);
@@ -18086,7 +18170,7 @@ function _impHistQuand(ts){
 function _impHistTexte(e, avecDoc){
   const T=_IMP_HIST_TYPES[e.type]||['•',e.type,''];
   let t=avecDoc ? e.label+' · '+T[1].toLowerCase() : T[1];
-  if(e.type==='servi') t+=' en '+_impPublicLibelle(e.cls, e.gid);
+  if(e.type==='servi') t+=' en '+_impPublicLibelle(e.cls, e.gid)+(e.manuel ? ' (déclaré à la main)' : '');
   if(e.type==='stock') t+=avecDoc ? '' : ' (retour du photocopieur)';
   return t;
 }
@@ -38285,6 +38369,7 @@ function closeStatusPopup(){
   popupCurrentName=null; popupAnchorEl=null;
   closeStCstrPopup();
   closeStBesoinPopup();
+  try{ _affPopUid=''; _affPopVoir=false; _affPopPas=false; }catch(e){}   // V11.5.45 — souhaits refermés
 }
 
 document.addEventListener('click',e=>{
@@ -60430,15 +60515,22 @@ function _affRendreImport(box){
     try{ showDropToast('Affinités importées : '+Object.keys(R).length+' élèves'); }catch(e){} }));
 }
 /* ── Fenêtre de l'élève (PdC) et accès ─────────────────────────────────── */
-let _affPopPas=false, _affPopUid='';
+let _affPopPas=false, _affPopUid='', _affPopVoir=false;
+/* V11.5.45 — souhaits MASQUÉS par défaut dans la fenêtre de l'élève (demande du 10/11) :
+   un bouton « 💞 Souhaits » les déplie ; refermés à chaque élève et à la fermeture de la fenêtre. */
 function _affLignePopup(uid){
   const head=document.getElementById('stp-name'); if(!head) return;
   let z=document.getElementById('stp-aff'); if(z) z.remove();
   const cls=(typeof curCls!=='undefined') ? curCls : ''; const A=((S.affinites||{})[cls]||{})[uid];
   if(!A || (!(A.avec||[]).length && !(A.pas||[]).length)) return;
-  if(_affPopUid!==uid){ _affPopPas=false; _affPopUid=uid; }   // « pas avec » refermé à chaque élève
+  if(_affPopUid!==uid){ _affPopPas=false; _affPopVoir=false; _affPopUid=uid; }   // souhaits et « pas avec » refermés à chaque élève
   z=_affEl('div','display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin:6px 0 2px;font-size:11.5px'); z.id='stp-aff';
-  z.appendChild(_affEl('span','color:var(--tx3);font-weight:700;margin-right:2px','💞 Avec :'));
+  if(!_affPopVoir){
+    z.appendChild(_affChip('💞 Souhaits', 'gris', ()=>{ _affPopVoir=true; _affLignePopup(uid); }, 'Afficher ses souhaits (avec qui travailler)'));
+    head.parentNode.insertBefore(z, head.nextSibling); return;
+  }
+  z.appendChild(_affChip('💞 ▾', 'gris', ()=>{ _affPopVoir=false; _affPopPas=false; _affLignePopup(uid); }, 'Masquer les souhaits'));
+  z.appendChild(_affEl('span','color:var(--tx3);font-weight:700;margin-right:2px','Avec :'));
   const B=(S.affinites[cls]||{});
   (A.avec||[]).forEach(v=>z.appendChild(_affChip(getFullName(v)+((B[v] && (B[v].avec||[]).indexOf(uid)>=0)?' ⇄':''), 'vert', null)));
   if(!(A.avec||[]).length) z.appendChild(_affEl('span','color:var(--tx3)','—'));
