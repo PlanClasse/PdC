@@ -1497,6 +1497,11 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .vd-item-num{font-size:10px;font-weight:700;color:var(--acc);min-width:14px;flex-shrink:0}
 .vd-priority-item{display:flex;align-items:center;gap:6px;padding:5px 7px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--bg);margin-bottom:4px;font-size:11px}
 .vd-priority-item .vd-pi-name{flex:1;font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vd-docgrp-hdr{display:flex;align-items:baseline;gap:6px;margin:8px 0 3px;padding:3px 7px;border-radius:4px;background:#EEF2FF;color:#3730A3;font-size:11px;font-weight:700}
+.vd-docgrp-hdr .vd-docgrp-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vd-docgrp-hdr .vd-docgrp-d{flex-shrink:0;font-size:9.5px;font-weight:600;color:#4F46E5}
+.vd-priority-item.vd-docgrp-el{margin-left:10px;cursor:pointer}
+.vd-priority-item .vd-pi-name.vd-done{text-decoration:line-through;color:var(--tx3)}
 .vd-priority-item .vd-pi-badge{font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:#FEE2E2;color:#991B1B;flex-shrink:0}
 .vd-priority-item input[type=checkbox]{flex-shrink:0;accent-color:#22C55E;width:14px;height:14px;cursor:pointer}
 .vd-empty{font-size:10px;color:var(--tx3);font-style:italic;padding:4px 2px}
@@ -4862,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.49';
+const APP_VERSION = 'v11.5.51';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -31228,6 +31233,7 @@ function _fdjGetEvalsToCatchUp(cls, slotKey){
 // Shape : [{titre, date, slotOrigineK, seqId, evalId, students:[{uid,label}, ...]}]
 // V020-v181.4.3.1 — Filtre par groupe courant (identique au PdC volet droit).
 function _fdjGetEvalsARattraperGrouped(cls, slotKey){
+  try{ _evalVerifsResync(cls); }catch(e){}   // V11.5.50
   if(!S.evalVerifs || !slotKey) return [];
   let eligibleStudents = null;
   if(typeof getCurrentGrpId === 'function'){
@@ -33319,6 +33325,69 @@ function _docsDusLigne(uid, it, slotKey, apres){
   bd.title=it.doc+' — distribué le '+(p.length===3 ? p[2]+'/'+p[1] : it.origine)+' (élève absent)';
   row.appendChild(cb); row.appendChild(nm); row.appendChild(bd);
   return row;
+}
+/** V11.5.50 — Documents à remettre groupés PAR DOCUMENT (demande du 12/11). Pure.
+ *  dus = {uid:[{cle, doc, origine, remisIci}]}, ordre = [uid] (ordre d'affichage des élèves).
+ *  Renvoie [{cle, doc, origine, eleves:[{uid, it}]}] trié par date de distribution puis document. */
+function _docsDusParDoc(dus, ordre){
+  const m=new Map();
+  (ordre||Object.keys(dus||{})).forEach(u=>((dus||{})[u]||[]).forEach(it=>{
+    if(!m.has(it.cle)) m.set(it.cle, {cle:it.cle, doc:it.doc, origine:it.origine, eleves:[]});
+    m.get(it.cle).eleves.push({uid:u, it});
+  }));
+  return [...m.values()].sort((a,b)=>String(a.origine).localeCompare(String(b.origine)) || String(a.doc).localeCompare(String(b.doc),'fr'));
+}
+/** V11.5.50 — Bloc « par document » : en-tête du document, puis une case par élève. createElement. */
+function _docsDusBlocParDoc(dus, ordre, slotKey, apres){
+  const out=[];
+  _docsDusParDoc(dus, ordre).forEach(g=>{
+    const h=document.createElement('div'); h.className='vd-docgrp-hdr';
+    const p=String(g.origine).slice(0,10).split('-');
+    const t=document.createElement('span'); t.className='vd-docgrp-t'; t.textContent='📄 '+g.doc; t.title=g.doc;
+    const d=document.createElement('span'); d.className='vd-docgrp-d';
+    const reste=g.eleves.filter(e=>!e.it.remisIci).length;
+    d.textContent=(p.length===3 ? 'du '+p[2]+'/'+p[1]+' · ' : '')+reste+'/'+g.eleves.length;
+    d.title='Distribué le '+(p.length===3 ? p[2]+'/'+p[1] : g.origine)+' : '+reste+' élève'+(reste>1?'s':'')+' encore à servir';
+    h.appendChild(t); h.appendChild(d); out.push(h);
+    g.eleves.forEach(e=>{
+      const row=document.createElement('label'); row.className='vd-priority-item vd-docgrp-el';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=e.it.remisIci; cb.title='Cocher quand le document est remis';
+      const nm=document.createElement('span'); nm.className='vd-pi-name'+(e.it.remisIci?' vd-done':''); const n=getFullName(e.uid)||e.uid; nm.textContent=n; nm.title=n;
+      cb.onchange=()=>{ _docsRemisBasculer(e.uid, e.it.cle, slotKey, cb.checked); nm.className='vd-pi-name'+(cb.checked?' vd-done':''); if(typeof apres==='function') apres(); };
+      row.appendChild(cb); row.appendChild(nm); out.push(row);
+    });
+  });
+  return out;
+}
+/** V11.5.50 — Rattrapages d'évaluation : les élèves à rattraper suivent les absences ACTUELLES
+ *  du cours de l'évaluation (avant : figés à l'instant où l'éval était cochée « faite » ; absences
+ *  saisies ensuite ou corrigées = jamais prises en compte). Pure.
+ *  Pour chaque décision 'done' de la classe : ajoute les absents sans entrée ; retire les entrées
+ *  encore 'pending' et jamais reportées d'élèves qui ne sont plus absents. */
+function _evalVerifsResyncCalcul(cls, decisions, verifs, absentsDe){
+  const aj=[], re=[], V=verifs||{};
+  Object.keys(decisions||{}).forEach(dk=>{
+    const d=decisions[dk]; if(!d || d.status!=='done') return;
+    const p=dk.split('|'); if(p.length<4 || p[1]!==cls) return;
+    const abs=new Set(absentsDe(p[0])||[]);
+    abs.forEach(u=>{ if(!V[dk+'|'+u]) aj.push(dk+'|'+u); });
+    Object.keys(V).forEach(vk=>{
+      if(vk.indexOf(dk+'|')!==0) return;
+      const u=vk.slice(dk.length+1), v=V[vk];
+      if(!abs.has(u) && v && v.status==='pending' && !(Array.isArray(v.reportHistory) && v.reportHistory.length)) re.push(vk);
+    });
+  });
+  return {aj, re};
+}
+function _evalVerifsResync(cls){
+  if(!cls || !S.evalDecisions) return 0;
+  const r=_evalVerifsResyncCalcul(cls, S.evalDecisions, S.evalVerifs||{}, sk=>getEvalAbsentsForSlot(sk, cls, (typeof getCurrentGrpId==='function') ? getCurrentGrpId(cls, sk) : ''));
+  if(!r.aj.length && !r.re.length) return 0;
+  if(!S.evalVerifs) S.evalVerifs={};
+  r.aj.forEach(k=>{ S.evalVerifs[k]={status:'pending', ts:Date.now(), reportHistory:[]}; });
+  r.re.forEach(k=>{ delete S.evalVerifs[k]; });
+  saveS();
+  return r.aj.length+r.re.length;
 }
 /** V11.3.84 — « Documents à remettre » aux absents du cours PRÉCÉDENT : ce qui a
  *  été distribué à CE cours-là (avant : la séance du cours courant). Volet de
@@ -46642,6 +46711,7 @@ function renderVoletDroit(){
   }
 
   // ── 1. Éval à rattraper ──
+  try{ _evalVerifsResync(clsCode); }catch(e){ console.warn('[rattrapages]', e); }   // V11.5.50
   // §5.31 (S24) : remplace l'ancienne logique evalsPrev ∩ absentsPrev (qui ne
   // remontait que les évals du slot N-1 et perdait le rappel à N+2). Désormais
   // on lit S.evalVerifs (status='pending') pour tous les slots d'origine
@@ -46756,7 +46826,7 @@ function renderVoletDroit(){
   if(_showDocsAbs || _showTracesSub){
     const {wrap, body}=mkSection('vd-docs','📄','Documents à remettre', _showDocsAbs ? _dusU.filter(u=>_dus[u].some(x=>!x.remisIci)).length : 0);
     if(_showDocsAbs){
-      _dusU.forEach(u=>_dus[u].forEach(it=>body.appendChild(_docsDusLigne(u, it, slotKey, null))));
+      _docsDusBlocParDoc(_dus, _dusU, slotKey, null).forEach(x=>body.appendChild(x));   // V11.5.50 — par document
     }
     // V019-v161 — Sous-volet traces EBEP (replié par défaut)
     if(_showTracesSub){
@@ -52567,6 +52637,8 @@ function openSaveSeance(){
           x.lbl&&(x.lbl.style.textDecoration='line-through',x.lbl.style.color='var(--tx3)');
           x.actDiv&&(x.actDiv.style.display='none');
         });
+        // V11.5.50 — l'évaluation prévue et non tranchée compte aussi (rattrapages des absents créés)
+        _evalFis.forEach(fi=>{ if(fi && !readEvalDecision(slotKey, curCls, fi.seqId, fi.evalId||'')) setEvalDecision(slotKey, curCls, fi.seqId, fi.evalId||'', 'done'); });
         buildTachesChecklist(); // rebuild pour afficher les contrôles CE/Gr/📅 sur les TAFs nouvellement cochés
       }
     };
@@ -52978,18 +53050,7 @@ function openSaveSeance(){
         docHdr.style.cssText='font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;margin:10px 0 6px;padding-top:8px;border-top:1px solid var(--brd)';
         docHdr.textContent='📄 Documents à remettre — élèves absents quand ils ont été distribués';
         tachesWrap.appendChild(docHdr);
-        _dus2U.forEach(nom=>_dus2[nom].forEach(it=>{
-            const row2=document.createElement('div'); row2.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--brd);border-radius:var(--r1);background:#EEF2FF;margin-bottom:4px';
-            const cb2=document.createElement('input'); cb2.type='checkbox'; cb2.checked=it.remisIci; cb2.style.cssText='flex-shrink:0;accent-color:#6366F1;width:14px;height:14px';
-            cb2.title='Cocher quand le document est remis';
-            cb2.onchange=()=>{ _docsRemisBasculer(nom, it.cle, slotKey, cb2.checked); };
-            const nm=document.createElement('span'); nm.style.cssText='flex:1;font-size:11px;font-weight:600;color:var(--tx)'; nm.textContent=getFullName(nom)||nom;
-            const p=String(it.origine).slice(0,10).split('-');
-            const bd=document.createElement('span'); bd.style.cssText='font-size:10px;background:#C7D2FE;color:#3730A3;padding:1px 6px;border-radius:3px;flex-shrink:0'; bd.textContent='📄 '+String(it.doc).slice(0,16)+(p.length===3?' · '+p[2]+'/'+p[1]:'');
-            bd.title=it.doc;
-            row2.appendChild(cb2); row2.appendChild(nm); row2.appendChild(bd);
-            tachesWrap.appendChild(row2);
-        }));
+        _docsDusBlocParDoc(_dus2, _dus2U, slotKey, null).forEach(x=>tachesWrap.appendChild(x));   // V11.5.50 — par document
       }
     }
     } // ── fin if(items.length) — section séance + docs absents
@@ -61186,6 +61247,14 @@ function _evlResultat(ev, grille, uid, gid){
   else if(ev.mode==='both') note=(r.note!=null && r.note!=='') ? Number(r.note) : (ev.noteCalc!==false ? _evlNoteCalc(grille, niv, ev.bareme) : null);
   return {niv, note, code:r.code||'', ajuste, noteForcee:r.note!=null && r.note!==''};
 }
+/** V11.5.51 — État d'une ligne de saisie : 'abs' (absent), 'code' (Disp / NR), 'note' (a reçu sa note :
+ *  note écrite, ou tous les critères évalués), '' (rien encore). Pure. */
+function _evlEtatLigne(ev, crit, R){
+  if(R.code) return R.code==='Abs' ? 'abs' : 'code';
+  if(ev.mode==='note') return R.note!=null ? 'note' : '';
+  if(R.noteForcee) return 'note';
+  const C=crit||[]; return (C.length && C.every(c=>R.niv && R.niv[c.id]!=null)) ? 'note' : '';
+}
 /** Moyenne /20 pondérée par les coefficients (notes seulement, codes ignorés). Pure. */
 function _evlMoyenne(items){
   let t=0, c=0; (items||[]).forEach(x=>{ if(x.note==null || isNaN(x.note)) return; const k=Number(x.coef)||1, b=Number(x.bareme)||20; t+=x.note/b*20*k; c+=k; });
@@ -61314,6 +61383,20 @@ function _evlRendre(){
   else if(_evl.vue==='evals') (_evl.saisie ? _evlRendreSaisie(corps) : _evlRendreEvals(corps));
   else _evlRendreBiblio(corps);
   corps.scrollTop=y;
+  if(_evl.saisie && _evl.clavier) _evlVoirCurseur(corps);   // V11.5.51 — après la restauration du défilement
+}
+/** V11.5.51 — Fait défiler la saisie pour que la ligne du curseur soit visible (avec une marge d'une ligne). */
+function _evlVoirCurseur(corps){
+  const c=document.getElementById('evl-cur'); if(!corps || !c) return;
+  if(c.dataset.r==='0'){ corps.scrollTop=0; return; }   // 1re ligne : en-têtes et aide visibles
+  const z=corps.getBoundingClientRect(), b=c.getBoundingClientRect(), m=Math.max(24, b.height+6);
+  const dy=_evlDecalage(z.top, z.bottom, b.top, b.bottom, m); if(dy) corps.scrollTop+=dy;
+}
+/** Décalage de défilement pour amener [haut, bas] dans [zHaut+marge, zBas-marge]. Pure. */
+function _evlDecalage(zHaut, zBas, haut, bas, marge){
+  if(haut < zHaut+marge) return Math.round(haut-zHaut-marge);
+  if(bas > zBas-marge) return Math.round(bas-zBas+marge);
+  return 0;
 }
 /* Carnet */
 function _evlRendreCarnet(corps){
@@ -61489,7 +61572,9 @@ function _evlRendreSaisie(corps){
       if(ev.mode!=='crit'){ const v=_evlNoteCalc(g, rg.niv, ev.bareme); const z=td('font-weight:800'); tr.appendChild(z); marquer(z, ri, crit.length); z.textContent=(ev.mode==='both' && ev.noteCalc!==false && v!=null) ? String(v).replace('.',',') : ''; }
       tr.appendChild(td()); return; }
     const u=L.u, gid=L.gid, tr=_evlEl('tr'); tr.dataset.u=u; T.appendChild(tr); const r=ev.res[u]=ev.res[u]||{}; const R=_evlResultat(ev, g, u, gid);
-    const n=td('font-weight:700;'+(gid?'padding-left:20px':'')+(ri===cur.r?';color:#2563EB':'')); n.textContent=getFullName(u)||u; if(R.ajuste){ n.appendChild(_evlEl('span','font-size:10.5px;color:#B45309;font-weight:600',' · ajusté')); } tr.appendChild(n);
+    const etat=_evlEtatLigne(ev, crit, R); tr.dataset.etat=etat;   // V11.5.51
+    if(etat==='abs') tr.style.background='rgba(239,68,68,.5)';
+    const n=td('font-weight:700;'+(gid?'padding-left:20px':'')+(ri===cur.r?';color:#2563EB':'')+(etat==='note'?';opacity:.5':'')); n.textContent=getFullName(u)||u; if(R.ajuste){ n.appendChild(_evlEl('span','font-size:10.5px;color:#B45309;font-weight:600',' · ajusté')); } tr.appendChild(n);
     const Gn=gid ? (((ev.resG[gid])||{}).niv||{}) : {};
     crit.forEach((c, ci)=>{ const z=td(); tr.appendChild(z); marquer(z, ri, ci);
       if(R.code){ z.textContent='—'; z.style.color='var(--tx3)'; return; }
@@ -61504,7 +61589,7 @@ function _evlRendreSaisie(corps){
         i.addEventListener('focus', ()=>{ cur.r=ri; cur.c=crit.length; });
         z.appendChild(i); if(R.noteForcee && ev.mode==='both' && ev.noteCalc!==false) z.appendChild(_evlEl('span','font-size:10.5px;color:#B45309',' forcée')); } }
     const zc=td(); tr.appendChild(zc);
-    EVL_CODES.forEach(k=>zc.appendChild(_evlChip(k, r.code===k, ()=>{ cur.r=ri; r.code=r.code===k?'':k; if(!r.code) delete r.code; refaire(); }, {Abs:'Absent',Disp:'Dispensé',NR:'Non rendu'}[k])));
+    if(etat!=='note') EVL_CODES.forEach(k=>zc.appendChild(_evlChip(k, r.code===k, ()=>{ cur.r=ri; r.code=r.code===k?'':k; if(!r.code) delete r.code; refaire(); }, {Abs:'Absent',Disp:'Dispensé',NR:'Non rendu'}[k])));
   });
   wrap.addEventListener('keydown', (e)=>{
     if(e.target && e.target.tagName==='INPUT') return;
