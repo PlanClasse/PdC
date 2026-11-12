@@ -4867,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.52';
+const APP_VERSION = 'v11.5.53';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -46783,7 +46783,7 @@ function renderVoletDroit(){
         nameEl.textContent=_full; nameEl.title=_full;
         const badge=document.createElement('span'); badge.className='vd-pi-badge';
         badge.textContent='🏆 '+_evalLabel;
-        badge.style.background='#FEF3C7'; badge.style.color='#92400E';
+        badge.style.background='#EDE9FE'; badge.style.color='#5B21B6'; badge.style.border='1px solid #7C3AED';   // V11.5.53 — mauve, comme la ligne ÉVAL du modal Séance
         item.appendChild(cb); item.appendChild(nameEl); item.appendChild(badge);
         body.appendChild(item);
       });
