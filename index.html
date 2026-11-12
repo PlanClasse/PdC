@@ -4867,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.51';
+const APP_VERSION = 'v11.5.52';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -44933,10 +44933,10 @@ function deleteTafVerif(slotOrigineK, clsCode, grpId, tafIdx){
 ============================================================ */
 
 function _evalDecisionKey(slotOrigineK, clsCode, seqId, evalId){
-  return slotOrigineK+'|'+clsCode+'|'+seqId+'|'+(evalId||'');
+  return slotOrigineK+'|'+clsCode+'|'+(seqId||'')+'|'+(evalId||'');   // V11.5.52 — éval sans chapitre : '' (et non « undefined »)
 }
 function _evalVerifKey(slotOrigineK, clsCode, seqId, evalId, studentId){
-  return slotOrigineK+'|'+clsCode+'|'+seqId+'|'+(evalId||'')+'|'+studentId;
+  return slotOrigineK+'|'+clsCode+'|'+(seqId||'')+'|'+(evalId||'')+'|'+studentId;
 }
 
 /** Lit la décision pour l'éval. Retourne null si absente (= pending). */
@@ -44977,7 +44977,7 @@ function deleteEvalVerif(slotOrigineK, clsCode, seqId, evalId, studentId){
 /** Supprime toutes les entrées rattrapage pour une éval (tous élèves confondus). */
 function deleteAllEvalVerifsForEval(slotOrigineK, clsCode, seqId, evalId){
   if(!S.evalVerifs) return;
-  const prefix = slotOrigineK+'|'+clsCode+'|'+seqId+'|'+(evalId||'')+'|';
+  const prefix = slotOrigineK+'|'+clsCode+'|'+(seqId||'')+'|'+(evalId||'')+'|';
   Object.keys(S.evalVerifs).forEach(k=>{
     if(k.indexOf(prefix)===0) delete S.evalVerifs[k];
   });
@@ -45003,7 +45003,7 @@ function findEvalFreeItemAt(slotKey, clsCode, seqId, evalId){
   if(!entry || !Array.isArray(entry.freeItems)) return null;
   for(let i=0;i<entry.freeItems.length;i++){
     const fi = entry.freeItems[i];
-    if(!fi || fi.type!=='eval' || fi.seqId!==seqId) continue;
+    if(!fi || fi.type!=='eval' || (fi.seqId||'')!==(seqId||'')) continue;   // V11.5.52 — sans chapitre : '' = undefined
     // Match strict par evalId si dispo des 2 côtés
     if(evalId && fi.evalId){
       if(fi.evalId === evalId) return {fi, idx:i};
