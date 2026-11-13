@@ -4867,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.57';
+const APP_VERSION = 'v11.5.58';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -51314,6 +51314,14 @@ function _aboutRubriques(liste){
   });
   return wrap;
 }
+/** V11.5.58 — rubriques d'un mois passé, repliées (details/summary). createElement pur. */
+function _aboutRubriquesRepliees(titre, liste){
+  const d=document.createElement('details'); d.style.cssText='margin-bottom:10px';
+  const s=document.createElement('summary'); s.style.cssText='cursor:pointer;font-size:12px;font-weight:700;color:var(--acc)';
+  s.textContent=titre+' ('+(liste||[]).length+' rubriques)'; d.appendChild(s);
+  const c=_aboutRubriques(liste); c.style.margin='6px 0 0 4px'; if(c.firstChild) c.removeChild(c.firstChild); d.appendChild(c);
+  return d;
+}
 function _aboutBlock(titre, node){
   const w=document.createElement('div'); w.style.cssText='margin-top:12px';
   const h=document.createElement('div');
@@ -51515,13 +51523,34 @@ function showAboutModal(){
   // V11.3.72 — journal des nouveautés RÉSUMÉ par thème (demande du 26/09) : ce
   // que l'utilisateur voit ou fait, pas le récit des corrections — ce détail vit
   // dans le mémo de passation. Une rubrique = un thème, une ou deux phrases.
+  // V11.5.58 — novembre en clair, octobre replié (demande du 13/11)
   root.appendChild(_aboutRubriques([
+    ['📊 Évaluations', 'novembre 2026',
+     'Nouvelle page : carnet de notes, évaluations notées ou par critères, bibliothèque de grilles (niveaux, indicateurs, versions). Saisie rapide au clavier, par groupe ou par élève ; une évaluation pour plusieurs classes ; grilles imprimées. Filtres Tout / niveau / classe. Export Pronote, copié aussi sur l’ordinateur.'],
+    ['🏆 Rattrapages et documents des absents', 'novembre 2026',
+     'Les élèves à rattraper suivent les absences du cours de l’évaluation. Documents à remettre : cumulés jusqu’à « remis », présentés par document avec une case par élève.'],
+    ['👁️ Espace prof', 'novembre 2026',
+     'Bouton « Public » : la semaine, tout ce qui reste à faire, l’avancement par niveau, une fiche par classe, les élèves à surveiller.'],
+    ['👥 Groupes et affinités', 'novembre 2026',
+     'Sondage d’affinités importé depuis un tableur, transformé en contraintes. Générateur de groupes : rôles, niveaux, mixité, « Proposer ».'],
+    ['🗒 Journal, bloc-notes et réunions', 'novembre 2026',
+     'Journal de chaque élève et fiche de suivi (FS). Bloc-notes du plan de classe (flouté) : « Prochain cours » et observations vont dans la séance. Réunions : notes horodatées, à faire, compte rendu Word.'],
+    ['🔎 Recherche', 'novembre 2026',
+     'Ctrl+K cherche aussi dans vos données : élèves, journal, observations, réunions, cahier de texte, cours préparés, bibliothèque.'],
+    ['🗓️ Saisir mes cours', 'novembre 2026',
+     'Insertion rapide en début de ligne. « Compléter » un cours déjà enregistré (évaluation, document, travail à faire) ; l’évaluation ressort en violet « ÉVAL » dans la séance.'],
+    ['🪑 Plan de classe', 'novembre 2026',
+     '« ⏮ Précédent » pour revenir au cours précédent de la journée. Touche P : ouvre ⋯ Plus, chaque action a sa lettre. Ctrl+K : « Mes absences », « Ajouter un cours ».'],
+    ['🖨️ Impressions et accueil', 'novembre 2026',
+     'Documents archivés quand plus rien ne les prévoit ; demi-groupe non compté déclarable. Disposition des tuiles de l’accueil réglable ; thème de Noël.']
+  ]));
+  root.appendChild(_aboutRubriquesRepliees('🍂 Octobre 2026', [
     ['🗓️ Saisir mes cours', 'octobre 2026',
      'Composer chaque cours en piochant dans la bibliothèque, la progression ou dans les cours déjà faits d’autres classes du niveau ; ce qui reste du cours précédent est proposé, la complétion suggère pendant la frappe, l’étoile ☆ enrichit la bibliothèque. Le réalisé du cours précédent reste visible. Le planning d’affectation devient une vue d’ensemble. Un cours peut mêler plusieurs séances, ou un chapitre seul ; votre titre de séance est repris partout.'],
     ['📖 Progression', 'octobre 2026',
-     'La saisie rapide lit et écrit compétences, connaissances, contenus et groupes ; elle ouvre une séquence existante et la modifie par le texte. Couverture : compétences × séquences.'],
+     'Saisie rapide complète ; une séquence existante s’ouvre et on la modifie par le texte ; couverture du programme.'],
     ['🖨️ Impressions', 'octobre 2026',
-     'Stock de chaque document par niveau, décompté à chaque séance faite ; liste du jour pour le photocopieur, copies EBEP comprises.'],
+     'Stock par document, décompté à chaque séance ; liste du jour, copies EBEP comprises.'],
     ['🧩 EBEP', 'octobre 2026',
      'Tableau élèves × adaptations, détail au clic (besoin, à préparer, notes datées) ; vos propres adaptations s’ajoutent.'],
     ['📋 Cahier de texte du jour', 'octobre 2026',
@@ -51537,7 +51566,9 @@ function showAboutModal(){
     ['📚 Référentiels et disciplines', 'octobre 2026',
      'Votre discipline et son référentiel importé deviennent le socle de la progression. L’import des classes est plus tolérant. Technologie : programme 2024 en mosaïque, aligné sur le Boizard, une fiche par compétence.'],
     ['⌨️ Prise en main', 'octobre 2026',
-     'Palette d’actions (Ctrl+K), démarrage guidé. Un clic à côté ferme les fenêtres ; ce qui supprime est en rouge.']
+     'Palette d’actions (Ctrl+K), démarrage guidé. Un clic à côté ferme les fenêtres ; ce qui supprime est en rouge.'],
+    ['🎃 Accueil et mises à jour', 'fin octobre 2026',
+     'Thèmes de saison. Nouvelles versions détectées et installées à l’ouverture.']
   ]));
 
   root.appendChild(_aboutBlock('Éditeur', 'N. Jeunehomme — Développé avec l\u2019aide de Claude AI.'));
