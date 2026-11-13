@@ -4867,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.56';
+const APP_VERSION = 'v11.5.57';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61988,7 +61988,9 @@ function _prnOuEnregistre(r, nom){
 }
 /** V11.5.56 — Nom écrit dans le fichier sans liste : NOM en majuscules + prénom tel qu'importé de Pronote (plus en majuscules). Pure. */
 function _prnNomPronote(e){ return (String(e.nom||'').trim()+' '+String(e.prenom||'').trim()).trim(); }
-function _prnEleves(cls){ return ((S.cl[cls]||{}).students||[]).map(u=>{ const sd=(S.studentData||{})[u]||{}; return {uid:u, nom:String((sd.noms&&sd.noms[0])||'').toUpperCase(), prenom:(sd.prenoms&&sd.prenoms[0])||''}; }); }
+function _prnEleves(cls){ return ((S.cl[cls]||{}).students||[]).map(u=>_prnEleveDe(u, (S.studentData||{})[u]||{})); }
+/** V11.5.57 — TOUS les noms et TOUS les prénoms (l'import les découpe aux espaces : noms:['DE','LA','FONTAINE']). Pure. */
+function _prnEleveDe(u, sd){ const j=(a)=>(Array.isArray(a) ? a : [a]).map(x=>String(x||'').trim()).filter(Boolean).join(' '); return {uid:u, nom:j(sd.noms).toUpperCase(), prenom:j(sd.prenoms)}; }
 function openExportPronote(cls, evId){
   const E=_evlDe(cls).filter(e=>e.mode!=='crit'); _prn={evId:evId && E.some(e=>e.id===evId) ? evId : ((E[0]||{}).id||''), cls, choix:{}};
   const mem=((S.pronoteListes||{})[cls])||null; _prn.liste=mem ? mem.noms.slice() : null; _prn.date=mem ? mem.date : '';
