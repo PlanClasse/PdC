@@ -4867,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.54';
+const APP_VERSION = 'v11.5.55';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61411,15 +61411,15 @@ function _evlClassesFiltre(classes, niv, cls){
   return (classes||[]).filter(c=>niv==='*' || _evlNivCls(c)===niv).slice().sort((a,b)=>_evlNivCls(a).localeCompare(_evlNivCls(b)) || String(a).localeCompare(String(b),'fr',{numeric:true}));
 }
 function _evlBarreFiltres(){
-  const L=_reuClasses(), bar=_evlEl('div','display:flex;flex-direction:column;gap:4px;padding:7px 14px;background:var(--sur);border-bottom:1px solid var(--brd)'); bar.id='evl-filtres';
-  const l1=_evlEl('div','display:flex;align-items:center;gap:2px;flex-wrap:wrap'); bar.appendChild(l1);
+  // V11.5.55 — une seule ligne : Tout · niveaux, puis (niveau choisi seulement) les classes du niveau
+  const L=_reuClasses(), bar=_evlEl('div','display:flex;align-items:center;gap:2px;flex-wrap:wrap;padding:6px 14px;background:var(--sur);border-bottom:1px solid var(--brd)'); bar.id='evl-filtres';
   const choisir=(niv, cls)=>{ _evl.niv=niv; _evl.cls=cls; _evl.evId=''; _evl.saisie=false; _evl.nouvCls=false; _evlRendre(); };
-  l1.appendChild(_evlChip('Tout', _evl.niv==='*' && !_evl.cls, ()=>choisir('*','')));
-  _evlNiveaux(L).forEach(n=>l1.appendChild(_evlChip(n+'e', _evl.niv===n && !_evl.cls, ()=>choisir(n,''))));
-  const l2=_evlEl('div','display:flex;align-items:center;gap:2px;flex-wrap:wrap'); bar.appendChild(l2);
-  _evlClassesFiltre(L, _evl.niv, '').forEach(c=>{ const on=_evl.cls===c;
-    const b=_evlChip(String(c).toUpperCase(), on, ()=>choisir(_evlNivCls(c)||'*', on ? '' : c), on ? 'Revenir au niveau' : 'Seulement '+String(c).toUpperCase());
-    b.style.fontSize='11px'; b.style.padding='2px 8px'; b.style.minHeight='24px'; l2.appendChild(b); });
+  bar.appendChild(_evlChip('Tout', _evl.niv==='*', ()=>choisir('*','')));
+  _evlNiveaux(L).forEach(n=>bar.appendChild(_evlChip(n+'e', _evl.niv===n, ()=>choisir(n,''))));
+  if(_evl.niv!=='*'){ bar.appendChild(_evlEl('span','width:1px;height:20px;background:var(--brd);margin:0 6px'));
+    _evlClassesFiltre(L, _evl.niv, '').forEach(c=>{ const on=_evl.cls===c;
+      const b=_evlChip(String(c).toUpperCase(), on, ()=>choisir(_evl.niv, on ? '' : c), on ? 'Revenir au niveau' : 'Seulement '+String(c).toUpperCase());
+      b.className='evl-f-cls'; b.style.fontSize='11px'; b.style.padding='2px 8px'; b.style.minHeight='24px'; bar.appendChild(b); }); }
   return bar;
 }
 /** Carnet sans classe choisie : une carte par classe du filtre (évaluations, dernière, à saisir). createElement. */
@@ -61956,6 +61956,29 @@ function _prnDecoder(bytes){
 }
 /* ── Fenêtre ── */
 let _prn={evId:'', liste:null, choix:{}};
+/* V11.5.55 — Copie locale de l'export Pronote, EN PLUS du cloud : Téléchargements (défaut) ou un dossier choisi
+   (poignée gardée dans la base « handles », clé « pronote-dossier » ; S.reglages.prnCopie = 'dl' | 'dossier', prnDossierNom). */
+async function _prnDossierHandle(){
+  try{ const db=await openHandlesDb(); const h=await new Promise((ok,ko)=>{ const r=db.transaction('handles','readonly').objectStore('handles').get('pronote-dossier'); r.onsuccess=()=>ok(r.result||null); r.onerror=()=>ko(r.error); }); db.close(); return h; }catch(e){ return null; }
+}
+async function _prnChoisirDossier(){
+  if(!window.showDirectoryPicker){ alert('Ce navigateur ne permet pas de choisir un dossier : le fichier ira dans Téléchargements.'); return false; }
+  try{ const h=await window.showDirectoryPicker({id:'planclasse-pronote', mode:'readwrite'});
+    const db=await openHandlesDb(); await new Promise((ok,ko)=>{ const tx=db.transaction('handles','readwrite'); tx.objectStore('handles').put(h,'pronote-dossier'); tx.oncomplete=()=>ok(); tx.onerror=()=>ko(tx.error); }); db.close();
+    if(!S.reglages) S.reglages={}; S.reglages.prnCopie='dossier'; S.reglages.prnDossierNom=h.name||''; saveS(); return true;
+  }catch(e){ if(!(e && e.name==='AbortError')) console.warn('[pronote dossier]', e); return false; }
+}
+/** Écrit la copie locale. Renvoie le message ('⬇ …' ou '💾 …'). Le dossier n'est essayé que s'il est choisi ; sinon, ou en échec : téléchargement. */
+async function _prnCopieLocale(blob, nom){
+  if(((S.reglages||{}).prnCopie)==='dossier'){
+    try{ const h=await _prnDossierHandle();
+      if(h){ let p=await h.queryPermission({mode:'readwrite'}); if(p!=='granted') p=await h.requestPermission({mode:'readwrite'});
+        if(p==='granted'){ const fh=await h.getFileHandle(nom, {create:true}); const w=await fh.createWritable(); await w.write(blob); await w.close(); return '💾 Dossier « '+(h.name||'')+' » : '+nom; } }
+    }catch(e){ console.warn('[pronote copie dossier]', e); }
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nom; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  return '⬇ Téléchargé : '+nom;
+}
 /** V11.5.54 — Message après l'enregistrement d'un fichier (résultat de saveBlobFile). Pure. */
 function _prnOuEnregistre(r, nom){
   if(!r || r.method==='cancel') return '';
@@ -62028,10 +62051,20 @@ function _prnRendre(){
       S.pronoteListes[cls]={noms:_prn.liste.slice(), date:_prn.date||_appToday(), apparie:ap}; try{ saveS(); }catch(e){} }
     const blob=new Blob([_prnUtf16(_prnFichier(lignes, ev.bareme))], {type:'text/csv'});
     const nom='pronote-'+cls+'-'+String(ev.titre).replace(/[^\w\u00C0-\u017F-]+/g,'_').slice(0,40)+'-'+ev.date+'.csv';
-    // V11.5.54 — dire où le fichier est parti (Dropbox ou dossier d'export : aucun téléchargement visible avant)
-    Promise.resolve().then(()=>saveBlobFile(blob, nom)).then(r=>{ const t=_prnOuEnregistre(r, nom); if(t) try{ showDropToast(t); }catch(e){} })
-      .catch(e=>{ console.warn('[pronote]', e); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nom; a.click(); try{ showDropToast('⬇ Fichier téléchargé : '+nom); }catch(x){} });
+    // V11.5.55 — copie locale d'abord (dans le geste du clic : autorisation du dossier), puis la synchro cloud (Dropbox) si connectée
+    (async()=>{ const M=[]; try{ M.push(await _prnCopieLocale(blob, nom)); }catch(e){ console.warn('[pronote]', e); }
+      if(window.PCDropbox && window.PCDropbox.isConnected && window.PCDropbox.isConnected()){
+        try{ const r=await saveBlobFile(blob, nom, null, {dest:'dropbox'}); const t=_prnOuEnregistre(r, nom); if(t && r.method==='dropbox') M.push(t); }catch(e){ console.warn('[pronote dropbox]', e); } }
+      if(M.length) try{ showDropToast(M.join('  ·  ')); }catch(e){} })();
   }));
+  // V11.5.55 — où va la copie sur cet ordinateur
+  const cp=_evlEl('div','display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:0 16px 10px;font-size:12px'); cp.id='prn-copie'; box.appendChild(cp);
+  const R=S.reglages||{}, dos=R.prnCopie==='dossier' && R.prnDossierNom;
+  cp.appendChild(_evlEl('span','color:var(--tx3);margin-right:4px','Copie sur cet ordinateur :'));
+  cp.appendChild(_evlChip('⬇ Téléchargements', !dos, ()=>{ if(!S.reglages) S.reglages={}; S.reglages.prnCopie='dl'; saveS(); _prnRendre(); }));
+  if(R.prnDossierNom) cp.appendChild(_evlChip('📁 '+R.prnDossierNom, !!dos, ()=>{ S.reglages.prnCopie='dossier'; saveS(); _prnRendre(); }));
+  cp.appendChild(_evlChip(R.prnDossierNom ? 'Changer de dossier…' : '📁 Choisir un dossier…', false, async()=>{ if(await _prnChoisirDossier()) _prnRendre(); }));
+  if(window.PCDropbox && window.PCDropbox.isConnected && window.PCDropbox.isConnected()) cp.appendChild(_evlEl('span','color:var(--tx3);margin-left:6px','+ ☁️ Dropbox (synchro)'));
 }
 
 
