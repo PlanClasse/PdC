@@ -4867,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.55';
+const APP_VERSION = 'v11.5.56';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61986,6 +61986,8 @@ function _prnOuEnregistre(r, nom){
   if(r.method==='directory') return '💾 Fichier enregistré dans le dossier « '+(r.dirName||'export')+' » : '+nom;
   return '⬇ Fichier téléchargé : '+nom;
 }
+/** V11.5.56 — Nom écrit dans le fichier sans liste : NOM en majuscules + prénom tel qu'importé de Pronote (plus en majuscules). Pure. */
+function _prnNomPronote(e){ return (String(e.nom||'').trim()+' '+String(e.prenom||'').trim()).trim(); }
 function _prnEleves(cls){ return ((S.cl[cls]||{}).students||[]).map(u=>{ const sd=(S.studentData||{})[u]||{}; return {uid:u, nom:String((sd.noms&&sd.noms[0])||'').toUpperCase(), prenom:(sd.prenoms&&sd.prenoms[0])||''}; }); }
 function openExportPronote(cls, evId){
   const E=_evlDe(cls).filter(e=>e.mode!=='crit'); _prn={evId:evId && E.some(e=>e.id===evId) ? evId : ((E[0]||{}).id||''), cls, choix:{}};
@@ -62030,7 +62032,7 @@ function _prnRendre(){
   const mem=((S.pronoteListes||{})[cls]||{}).apparie||{};
   let lignes;
   if(_prn.liste){ const A=_prnApparier(_prn.liste, eleves, Object.assign({}, mem, _prn.choix)); lignes=A.map(a=>({nom:a.nom, uid:a.uid, etat:a.etat, note:noteDe(a.uid)})); }
-  else lignes=eleves.slice().sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(e=>({nom:e.nom+' '+e.prenom.toUpperCase(), uid:e.uid, etat:'ok', note:noteDe(e.uid)}));
+  else lignes=eleves.slice().sort((a,b)=>(a.nom+' '+a.prenom).localeCompare(b.nom+' '+b.prenom,'fr')).map(e=>({nom:_prnNomPronote(e), uid:e.uid, etat:'ok', note:noteDe(e.uid)}));   // V11.5.56 — « DUPONT Jean », comme Pronote
   const nOk=lignes.filter(l=>l.etat==='ok').length, nAp=lignes.filter(l=>l.etat==='approx').length, nKo=lignes.filter(l=>l.etat==='ko').length;
   corps.appendChild(_evlLab('3 · Vérification · ✓ '+nOk+(nAp?' · ~ '+nAp+' approché'+(nAp>1?'s':''):'')+(nKo?' · ✕ '+nKo+' non trouvé'+(nKo>1?'s':''):'')));
   const T=_evlEl('table','border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px'); T.id='prn-table'; corps.appendChild(T);
