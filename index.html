@@ -4867,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.53';
+const APP_VERSION = 'v11.5.54';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61353,7 +61353,7 @@ function _evlPourJournal(cls){
 }
 
 /* ── Page ── */
-let _evl={cls:'', vue:'carnet', evId:'', saisie:false, grId:'', q:'', portee:'*', tag:'', filtre:'*', icone:false};
+let _evl={niv:'*', cls:'', vue:'carnet', evId:'', saisie:false, grId:'', q:'', portee:'*', tag:'', filtre:'*', icone:false};
 function _evlEl(tag, css, txt){ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
 function _evlBtn(t, css, fn, titre){ const b=_evlEl('button','padding:6px 12px;border-radius:9px;border:1.5px solid var(--brd);background:var(--sur);color:var(--tx);font-weight:800;font-size:12.5px;cursor:pointer;font-family:inherit;min-height:32px;'+(css||''), t); b.type='button'; if(titre) b.title=titre; b.onclick=fn; return b; }
 function _evlChip(t, on, fn, titre){ const b=_evlEl('button','font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;border:1.5px solid '+(on?'#1A3D1A':'var(--brd)')+';background:'+(on?'#1A3D1A':'var(--sur2)')+';color:'+(on?'#fff':'var(--tx2)')+';cursor:pointer;font-family:inherit;margin:2px;min-height:28px', t); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }
@@ -61361,7 +61361,10 @@ function _evlNiv(n, on, titre, fn, css){ const C=EVL_NIV_COUL[n]||EVL_NIV_COUL[0
 function _evlLab(t){ return _evlEl('div','font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);margin:10px 0 4px', t); }
 function openEvaluations(o){
   o=o||{}; const L=_reuClasses();
-  _evl.cls=(o.cls && S.cl[o.cls]) ? o.cls : (typeof curCls!=='undefined' && S.cl[curCls] ? curCls : (_evl.cls && S.cl[_evl.cls] ? _evl.cls : (L[0]||'')));
+  // V11.5.54 — filtres Tout / niveau / classe : une classe passée par l'appelant est choisie ; sinon le filtre est gardé (1er accès : Tout)
+  if(o.cls && S.cl[o.cls]){ _evl.cls=o.cls; _evl.niv=_evlNivCls(o.cls); }
+  else if(_evl.cls && !S.cl[_evl.cls]) _evl.cls='';
+  if(!_evl.niv) _evl.niv='*';
   _evl.vue=o.vue||'carnet'; _evl.evId=o.evId||''; _evl.saisie=!!o.saisie;
   let pg=document.getElementById('evl-page'); if(pg) pg.remove();
   pg=_evlEl('div','position:fixed;inset:0;z-index:465;background:var(--bg);color:var(--tx);display:flex;flex-direction:column;font-family:"DM Sans",sans-serif'); pg.id='evl-page';
@@ -61373,13 +61376,13 @@ function _evlRendre(){
   const pg=document.getElementById('evl-page'); if(!pg) return; const y=(document.getElementById('evl-corps')||{}).scrollTop||0; pg.textContent='';
   const hd=_evlEl('div','display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--sur);border-bottom:1px solid var(--brd);flex-wrap:wrap'); pg.appendChild(hd);
   hd.appendChild(_evlEl('span','font-family:Georgia,serif;font-size:21px','📊 Évaluations'));
-  const sc=_evlEl('select','padding:5px 8px;border:1.5px solid var(--brd);border-radius:9px;background:var(--sur2);color:var(--tx);font:inherit;font-weight:700;min-height:32px');
-  _reuClasses().forEach(c=>sc.appendChild(new Option(String(c).toUpperCase(), c))); sc.value=_evl.cls; sc.onchange=()=>{ _evl.cls=sc.value; _evl.evId=''; _evl.saisie=false; _evlRendre(); }; hd.appendChild(sc);
   [['carnet','Carnet'],['evals','Évaluations'],['biblio','Bibliothèque']].forEach(([v,l])=>{ const b=_evlEl('button',null,l); b.type='button'; b.className='fp-tab'+(_evl.vue===v?' act':''); b.onclick=()=>{ _evl.vue=v; _evl.saisie=false; _evlRendre(); }; hd.appendChild(b); });
   hd.appendChild(_evlEl('span','flex:1'));
   hd.appendChild(_evlBtn('✕','', closeEvaluations, 'Fermer'));
+  if(!_evl.saisie) pg.appendChild(_evlBarreFiltres());   // V11.5.54 — Tout / niveaux / classes
   const corps=_evlEl('div','flex:1;overflow:auto;padding:14px 16px 40px'); corps.id='evl-corps'; pg.appendChild(corps);
-  if(_evl.vue==='carnet') _evlRendreCarnet(corps);
+  if(_evl.vue==='carnet' && !_evl.cls) _evlRendreClasses(corps);
+  else if(_evl.vue==='carnet') _evlRendreCarnet(corps);
   else if(_evl.vue==='evals') (_evl.saisie ? _evlRendreSaisie(corps) : _evlRendreEvals(corps));
   else _evlRendreBiblio(corps);
   corps.scrollTop=y;
@@ -61397,6 +61400,40 @@ function _evlDecalage(zHaut, zBas, haut, bas, marge){
   if(haut < zHaut+marge) return Math.round(haut-zHaut-marge);
   if(bas > zBas-marge) return Math.round(bas-zBas+marge);
   return 0;
+}
+/* ═══ V11.5.54 — Filtres de la page Évaluations : Tout / 3e 4e 5e 6e / classes (demande du 13/11) ═══ */
+function _evlNivCls(cls){ const m=String(cls||'').match(/^(\d)/); return m ? m[1] : ''; }
+/** Niveaux présents, dans l'ordre 3e, 4e, 5e, 6e. Pure. */
+function _evlNiveaux(classes){ return [...new Set((classes||[]).map(_evlNivCls).filter(Boolean))].sort(); }
+/** Classes dans le filtre (niv '*' = toutes ; cls choisie = elle seule). Pure. */
+function _evlClassesFiltre(classes, niv, cls){
+  if(cls) return (classes||[]).indexOf(cls)>=0 ? [cls] : [];
+  return (classes||[]).filter(c=>niv==='*' || _evlNivCls(c)===niv).slice().sort((a,b)=>_evlNivCls(a).localeCompare(_evlNivCls(b)) || String(a).localeCompare(String(b),'fr',{numeric:true}));
+}
+function _evlBarreFiltres(){
+  const L=_reuClasses(), bar=_evlEl('div','display:flex;flex-direction:column;gap:4px;padding:7px 14px;background:var(--sur);border-bottom:1px solid var(--brd)'); bar.id='evl-filtres';
+  const l1=_evlEl('div','display:flex;align-items:center;gap:2px;flex-wrap:wrap'); bar.appendChild(l1);
+  const choisir=(niv, cls)=>{ _evl.niv=niv; _evl.cls=cls; _evl.evId=''; _evl.saisie=false; _evl.nouvCls=false; _evlRendre(); };
+  l1.appendChild(_evlChip('Tout', _evl.niv==='*' && !_evl.cls, ()=>choisir('*','')));
+  _evlNiveaux(L).forEach(n=>l1.appendChild(_evlChip(n+'e', _evl.niv===n && !_evl.cls, ()=>choisir(n,''))));
+  const l2=_evlEl('div','display:flex;align-items:center;gap:2px;flex-wrap:wrap'); bar.appendChild(l2);
+  _evlClassesFiltre(L, _evl.niv, '').forEach(c=>{ const on=_evl.cls===c;
+    const b=_evlChip(String(c).toUpperCase(), on, ()=>choisir(_evlNivCls(c)||'*', on ? '' : c), on ? 'Revenir au niveau' : 'Seulement '+String(c).toUpperCase());
+    b.style.fontSize='11px'; b.style.padding='2px 8px'; b.style.minHeight='24px'; l2.appendChild(b); });
+  return bar;
+}
+/** Carnet sans classe choisie : une carte par classe du filtre (évaluations, dernière, à saisir). createElement. */
+function _evlRendreClasses(corps){
+  const C=_evlClassesFiltre(_reuClasses(), _evl.niv, '');
+  corps.appendChild(_evlEl('div','font-size:12.5px;color:var(--tx3);margin-bottom:8px','Choisis une classe pour ouvrir son carnet.'));
+  const grille=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px'); corps.appendChild(grille);
+  C.forEach(c=>{ const E=_evlDe(c), d=E[0];
+    const k=_evlEl('button','text-align:left;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:10px 12px;cursor:pointer;font-family:inherit;color:var(--tx)'); k.type='button'; k.className='evl-carte-cls';
+    k.appendChild(_evlEl('div','font-weight:800;font-size:16px', String(c).toUpperCase()));
+    k.appendChild(_evlEl('div','font-size:12px;color:var(--tx2)', E.length ? E.length+' évaluation'+(E.length>1?'s':'') : 'Aucune évaluation'));
+    if(d){ const p=String(d.date).split('-'); k.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis', 'Dernière : '+_evlType(d.type).ic+' '+d.titre+' · '+(p[2]||'')+'/'+(p[1]||''))); }
+    k.onclick=()=>{ _evl.cls=c; _evl.niv=_evlNivCls(c)||'*'; _evlRendre(); }; grille.appendChild(k); });
+  if(!C.length) corps.appendChild(_evlEl('div','padding:12px;color:var(--tx3)','Aucune classe.'));
 }
 /* Carnet */
 function _evlRendreCarnet(corps){
@@ -61444,16 +61481,22 @@ function _evlExporterCsv(cls, E){
 }
 /* Évaluations : liste + fiche */
 function _evlRendreEvals(corps){
-  const cls=_evl.cls, E=_evlDe(cls); let ev=E.find(e=>e.id===_evl.evId)||E[0]||null; if(ev) _evl.evId=ev.id;
+  const cls=_evl.cls, multi=!cls, Cf=_evlClassesFiltre(_reuClasses(), _evl.niv, cls);   // V11.5.54
+  const E=multi ? _evlListe().filter(e=>Cf.indexOf(e.cls)>=0).sort((a,b)=>String(b.date).localeCompare(String(a.date)) || (b.cree||0)-(a.cree||0)) : _evlDe(cls);
+  let ev=E.find(e=>e.id===_evl.evId)||E[0]||null; if(ev) _evl.evId=ev.id;
   const row=_evlEl('div','display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap'); corps.appendChild(row);
   const lst=_evlEl('div','flex:1;min-width:250px;max-width:340px;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:10px'); row.appendChild(lst);
-  lst.appendChild(_evlBtn('＋ Nouvelle évaluation','width:100%;background:#166534;border-color:#166534;color:#fff;margin-bottom:8px', ()=>{ const e=_evlNouvelle(cls); _evl.evId=e.id; _evl.ajoutCls=false; _evl.ajoutSel={}; _evlSauver(e); _evlRendre(); }));
+  const creer=(c)=>{ const e=_evlNouvelle(c); _evl.evId=e.id; _evl.ajoutCls=false; _evl.ajoutSel={}; _evl.nouvCls=false; _evlSauver(e); _evlRendre(); };
+  lst.appendChild(_evlBtn('＋ Nouvelle évaluation','width:100%;background:#166534;border-color:#166534;color:#fff;margin-bottom:8px', ()=>{ if(multi){ _evl.nouvCls=!_evl.nouvCls; _evlRendre(); } else creer(cls); }));
+  if(multi && _evl.nouvCls){ const pc=_evlEl('div','border:1px solid var(--brd);border-radius:10px;padding:6px;margin-bottom:8px;background:var(--sur2)'); pc.id='evl-nouv-cls';
+    pc.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-bottom:2px','Pour quelle classe ? (d’autres classes s’ajoutent ensuite dans la fiche)'));
+    Cf.forEach(c=>pc.appendChild(_evlChip(String(c).toUpperCase(), false, ()=>creer(c)))); lst.appendChild(pc); }
   if(!E.length) lst.appendChild(_evlEl('div','padding:8px;color:var(--tx3);font-size:12.5px','Aucune évaluation.'));
   E.forEach(e=>{ const it=_evlEl('div','padding:8px 10px;border-radius:10px;cursor:pointer;border:1.5px solid '+(ev&&e.id===ev.id?'#1A3D1A':'transparent')+';background:'+(ev&&e.id===ev.id?'var(--sur2)':'transparent')); it.className='evl-it';
     it.appendChild(_evlEl('div','font-weight:800;font-size:13.5px', _evlType(e.type).ic+' '+e.titre));
     const g=_evlGrille(e.grilleId), p=String(e.date).split('-');
     const nl=e.lot ? _evlListe().filter(x=>x.lot===e.lot).length-1 : 0;
-    it.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3)', (p[2]||'')+'/'+(p[1]||'')+(nl?' · 🏫 +'+nl+' classe'+(nl>1?'s':''):'')+(g?' · '+g.titre:'')+' · '+({crit:'critères seuls', note:'note seule', both:'critères + note'}[e.mode])+(e.mode!=='crit'?' /'+e.bareme:'')+(e.coef!=1?' ×'+e.coef:'')));
+    it.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3)', (multi ? String(e.cls).toUpperCase()+' · ' : '')+(p[2]||'')+'/'+(p[1]||'')+(nl?' · 🏫 +'+nl+' classe'+(nl>1?'s':''):'')+(g?' · '+g.titre:'')+' · '+({crit:'critères seuls', note:'note seule', both:'critères + note'}[e.mode])+(e.mode!=='crit'?' /'+e.bareme:'')+(e.coef!=1?' ×'+e.coef:'')));
     it.onclick=()=>{ _evl.evId=e.id; _evlRendre(); }; lst.appendChild(it); });
   if(!ev) return;
   const f=_evlEl('div','flex:2;min-width:320px;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:12px 14px'); f.id='evl-fiche'; row.appendChild(f);
@@ -61734,7 +61777,7 @@ function _evlRendreBiblio(corps){
   const bar=_evlEl('div','display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:10px'); corps.appendChild(bar);
   const q=_evlEl('input','font:inherit;padding:6px 9px;border:1.5px solid var(--brd);border-radius:9px;background:var(--sur);color:var(--tx);min-width:220px;min-height:32px'); q.placeholder='🔍 Grille, critère, étiquette…'; q.value=_evl.q;
   q.oninput=()=>{ _evl.q=q.value; clearTimeout(q._t); q._t=setTimeout(()=>{ _evlRendre(); const n=document.querySelector('#evl-page input[placeholder^="🔍"]'); if(n){ n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); }; bar.appendChild(q);
-  [['*','Toutes'],['6','6e'],['5','5e'],['4','4e'],['3','3e'],[cls, String(cls).toUpperCase()]].forEach(([v,l])=>bar.appendChild(_evlChip(l, _evl.portee===v, ()=>{ _evl.portee=v; _evlRendre(); })));
+  [['*','Toutes'],['6','6e'],['5','5e'],['4','4e'],['3','3e']].concat(cls ? [[cls, String(cls).toUpperCase()]] : []).forEach(([v,l])=>bar.appendChild(_evlChip(l, _evl.portee===v, ()=>{ _evl.portee=v; _evlRendre(); })));
   const tags=[...new Set(Gall.flatMap(g=>g.tags||[]))].sort();
   if(tags.length) bar.appendChild(_evlEl('span','width:8px'));
   tags.forEach(t=>bar.appendChild(_evlChip('🏷 '+t, _evl.tag===t, ()=>{ _evl.tag=_evl.tag===t?'':t; _evlRendre(); })));
@@ -61913,6 +61956,13 @@ function _prnDecoder(bytes){
 }
 /* ── Fenêtre ── */
 let _prn={evId:'', liste:null, choix:{}};
+/** V11.5.54 — Message après l'enregistrement d'un fichier (résultat de saveBlobFile). Pure. */
+function _prnOuEnregistre(r, nom){
+  if(!r || r.method==='cancel') return '';
+  if(r.method==='dropbox') return '☁️ Fichier envoyé dans Dropbox'+(r.path ? ' : '+r.path : ' : '+nom);
+  if(r.method==='directory') return '💾 Fichier enregistré dans le dossier « '+(r.dirName||'export')+' » : '+nom;
+  return '⬇ Fichier téléchargé : '+nom;
+}
 function _prnEleves(cls){ return ((S.cl[cls]||{}).students||[]).map(u=>{ const sd=(S.studentData||{})[u]||{}; return {uid:u, nom:String((sd.noms&&sd.noms[0])||'').toUpperCase(), prenom:(sd.prenoms&&sd.prenoms[0])||''}; }); }
 function openExportPronote(cls, evId){
   const E=_evlDe(cls).filter(e=>e.mode!=='crit'); _prn={evId:evId && E.some(e=>e.id===evId) ? evId : ((E[0]||{}).id||''), cls, choix:{}};
@@ -61942,12 +61992,17 @@ function _prnRendre(){
   const se=_evlEl('select','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px;max-width:100%');
   E.forEach(e=>se.appendChild(new Option(_evlType(e.type).ic+' '+e.titre+' · '+e.date.split('-').reverse().slice(0,2).join('/')+' · /'+e.bareme, e.id))); se.value=_prn.evId; se.onchange=()=>{ _prn.evId=se.value; _prnRendre(); }; corps.appendChild(se);
   const ev=E.find(e=>e.id===_prn.evId)||E[0]; _prn.evId=ev.id;
-  corps.appendChild(_evlLab('2 · Liste Pronote de la classe'));
-  const lr=_evlEl('div','display:flex;align-items:center;gap:8px;flex-wrap:wrap'); corps.appendChild(lr);
+  // V11.5.54 — la liste Pronote est FACULTATIVE (les élèves de l'appli viennent de Pronote) : repliée tant qu'elle n'est pas utilisée
+  corps.appendChild(_evlLab('2 · Noms des élèves'));
+  if(!_prn.liste && !_prn.voirListe){ const z=_evlEl('div','display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px'); z.id='prn-sans-liste'; corps.appendChild(z);
+    z.appendChild(_evlEl('span',null,'Ceux de l’appli (importés de Pronote), par ordre alphabétique. Rien à charger.'));
+    z.appendChild(_evlBtn('Utiliser une liste Pronote…','font-size:11.5px', ()=>{ _prn.voirListe=true; _prnRendre(); }, 'Seulement si Pronote refuse le fichier (noms ou ordre différents)')); }
+  const lr=_evlEl('div','display:flex;align-items:center;gap:8px;flex-wrap:wrap'); if(_prn.liste || _prn.voirListe) corps.appendChild(lr);
   const lab=_evlEl('label','padding:6px 12px;border-radius:9px;border:1.5px solid var(--brd);background:var(--sur);font-weight:800;font-size:12.5px;cursor:pointer;min-height:32px;display:inline-flex;align-items:center', _prn.liste ? '🔄 Recharger la liste' : '📥 Charger la liste (CSV)');
   const inp=_evlEl('input'); inp.type='file'; inp.accept='.csv,.txt'; inp.style.display='none'; inp.onchange=()=>_prnLireFichier(inp.files && inp.files[0]); lab.appendChild(inp); lr.appendChild(lab);
   lr.appendChild(_evlEl('span','font-size:12px;color:var(--tx3)', _prn.liste ? _prn.liste.length+' élèves · liste du '+String(_prn.date||'').split('-').reverse().join('/') : 'Sans liste : ordre alphabétique de l’appli (Pronote attend l’ordre de SA liste).'));
-  corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:4px','Pronote › Notes › la classe › « Copier la liste (format CSV) » → coller dans Excel → Enregistrer sous « CSV UTF-8 (délimité par des points-virgules) ».'));
+  if(_prn.liste) lr.appendChild(_evlBtn('✕ Ne plus l’utiliser','font-size:11.5px', ()=>{ if(S.pronoteListes) delete S.pronoteListes[cls]; try{ saveS(); }catch(e){} _prn.liste=null; _prn.date=''; _prn.voirListe=false; _prnRendre(); }, 'Revenir aux noms de l’appli'));
+  if(_prn.liste || _prn.voirListe) corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:4px','Pronote › Notes › la classe › « Copier la liste (format CSV) » → coller dans Excel → Enregistrer sous « CSV UTF-8 (délimité par des points-virgules) ».'));
   const g=_evlGrille(ev.grilleId), C=_evlCible(ev), eleves=_prnEleves(cls), noteDe=(u)=>{ if(!u || C.eleves.indexOf(u)<0) return null; const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C,u) : ''); return r.code ? null : r.note; };
   const mem=((S.pronoteListes||{})[cls]||{}).apparie||{};
   let lignes;
@@ -61973,7 +62028,9 @@ function _prnRendre(){
       S.pronoteListes[cls]={noms:_prn.liste.slice(), date:_prn.date||_appToday(), apparie:ap}; try{ saveS(); }catch(e){} }
     const blob=new Blob([_prnUtf16(_prnFichier(lignes, ev.bareme))], {type:'text/csv'});
     const nom='pronote-'+cls+'-'+String(ev.titre).replace(/[^\w\u00C0-\u017F-]+/g,'_').slice(0,40)+'-'+ev.date+'.csv';
-    try{ saveBlobFile(blob, nom); }catch(e){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nom; a.click(); }
+    // V11.5.54 — dire où le fichier est parti (Dropbox ou dossier d'export : aucun téléchargement visible avant)
+    Promise.resolve().then(()=>saveBlobFile(blob, nom)).then(r=>{ const t=_prnOuEnregistre(r, nom); if(t) try{ showDropToast(t); }catch(e){} })
+      .catch(e=>{ console.warn('[pronote]', e); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=nom; a.click(); try{ showDropToast('⬇ Fichier téléchargé : '+nom); }catch(x){} });
   }));
 }
 
