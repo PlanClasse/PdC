@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.67';
+const APP_VERSION = 'v11.5.68';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59107,6 +59107,9 @@ function _jnlFicheEntrees(src, uid, cls, du, au){
     out.push({genre:'eval', dateStr:String(se.slotKey).slice(0,10), heure:h?h[1]:'', slotKey:se.slotKey, comps});
   });
   (src.evals||[]).forEach(v=>{ const t=v && v.res && v.res[uid]; if(t && dans(v.date)) out.push({genre:'evl', dateStr:v.date, heure:v.heure||'', texte:t}); });   // V11.5.32
+  (src.evlComps||[]).forEach(v=>{ const m=v && v.comps && v.comps[uid]; if(!m || !dans(v.date)) return;   // V11.5.68 — compétences évaluées par une grille reliée
+    const comps=Object.keys(m).filter(c=>m[c]>0).map(c=>({cid:c, label:(src.libComp ? src.libComp(c) : c), niv:JNL_NIV[m[c]]||String(m[c])}));
+    if(comps.length) out.push({genre:'eval', dateStr:v.date, heure:v.heure||'', comps, source:v.titre||'Évaluation'}); });
   ((src.fsHist||{})[uid]||[]).forEach(p=>{
     if(p && dans(p.depuis)) out.push({genre:'fs', dateStr:p.depuis, heure:'', texte:'Fiche de suivi posée'});
     if(p && dans(p.jusqua)) out.push({genre:'fs', dateStr:p.jusqua, heure:'', texte:'Fiche de suivi retirée'});
@@ -59125,7 +59128,7 @@ function _jnlTexteFiche(nom, cls, entrees){
     let t='';
     if(e.genre==='note') t=_jnlType(e.note.type).l+' · '+e.note.texte;
     else if(e.genre==='cours') t=[e.statuts.join(', '), e.partic?'✋ '+e.partic:'', e.tnf?e.tnf+' TAF non fait'+(e.tnf>1?'s':''):'', e.texte].filter(Boolean).join(' · ');
-    else if(e.genre==='eval') t='Compétences · '+e.comps.map(c=>c.label+' '+c.niv).join(' · ');
+    else if(e.genre==='eval') t='Compétences'+(e.source?' (📊 '+e.source+')':'')+' · '+e.comps.map(c=>c.label+' '+c.niv).join(' · ');
     else t=e.texte||'';
     if(t) L.push(d+' · '+t);
   });
@@ -59206,7 +59209,8 @@ function _jnlSourcesFiche(cls){
   let def=[]; try{ def=getStatuts(); }catch(e){ def=[]; }
   return {J:S.journalEleves||{}, obsCours:S.obsCours, statutsCours:S.statutsCours, participations:S.participations, tafCoches:S.tafCoches,
     seances, statutsDef:def, fs:S.ficheSuivi||{}, fsHist:S.ficheSuiviHist||{},
-    evals:(()=>{ try{ return _evlPourJournal(cls); }catch(e){ return []; } })(),   // V11.5.32
+    evals:(()=>{ try{ return _evlPourJournal(cls); }catch(e){ return []; } })(),
+    evlComps:(()=>{ try{ return _evlCompsPourJournal(cls); }catch(e){ return []; } })(),   // V11.5.68 — compétences des grilles reliées   // V11.5.32
     libComp:(c)=>{ try{ const l=String(getCompLabelForCourse(c, cls)||c); return l.length>48 ? l.slice(0,47)+'…' : l; }catch(e){ return c; } }};
 }
 function _jnlRendreFiche(){
@@ -59306,6 +59310,7 @@ function _jnlFicheContenu(box, uid, cls, o){
       if(e.texte) z.appendChild(_jnlEl('span','white-space:pre-wrap;color:var(--tx)', e.texte));
     } else if(e.genre==='eval'){
       z.appendChild(_jnlPuce('🎯 Compétences','#CCFBF1','#115E59'));
+      if(e.source) z.appendChild(_jnlPuce('📊 '+e.source,'#FEF9C3','#854D0E'));   // V11.5.68 — venues d'une évaluation
       e.comps.forEach(c=>z.appendChild(_jnlEl('span','color:var(--tx)', c.label+' ')).appendChild(_jnlEl('b',null,c.niv)));
     } else if(e.genre==='evl'){   // V11.5.32
       z.appendChild(_jnlPuce('📊 Évaluation','#FEF9C3','#854D0E')); z.appendChild(_jnlEl('span','color:var(--tx)', e.texte));
@@ -62054,7 +62059,7 @@ function _evlRendreSaisie(corps){
   const T=_evlEl('table','border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px'); T.id='evl-saisie'; wrap.appendChild(T);
   const th=(t)=>_evlEl('th','padding:7px 8px;text-align:left;font-size:10.5px;color:var(--tx3);background:var(--sur2);border-bottom:1px solid var(--brd);position:sticky;top:0;white-space:nowrap', t);
   const h=_evlEl('tr'); T.appendChild(h); h.appendChild(th(''));
-  crit.forEach(c=>{ const x=th(c.l+(c.poids>1?' ×'+c.poids:'')); x.title=(c.comp?'🎯 '+c.comp+'\n':'')+(c.ind||[]).map((t,i)=>i+' '+N[i]+' : '+t).join('\n'); h.appendChild(x); });
+  crit.forEach(c=>{ const x=th(c.l+(c.poids>1?' ×'+c.poids:'')); x.title=(c.compId?'🎯 '+c.compId+'\n':(c.comp?'🎯 '+c.comp+'\n':''))+(c.ind||[]).map((t,i)=>i+' '+N[i]+' : '+t).join('\n'); h.appendChild(x); });
   const nCol=crit.length+(ev.mode!=='crit'?1:0);
   if(ev.mode!=='crit') h.appendChild(th('Note /'+ev.bareme)); h.appendChild(th(''));
   const td=(css)=>_evlEl('td','padding:5px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;'+(css||''));
@@ -62119,6 +62124,65 @@ function _evlRendreSaisie(corps){
   wrap.addEventListener('pointerdown', (e)=>{ if(!(e.target && e.target.tagName==='INPUT')) _evl.clavier=true; });
   corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px', (ev.parGroupe && C.groupes.length ? 'Ligne du groupe → appliquée à tous ses membres (pâle = hérité). Niveau d’un élève → ajusté pour lui seul (cadre orange). ' : '')+'Survol d’un niveau → son indicateur. Abs / Disp / NR : l’élève n’est pas noté.'));
   if(_evl.clavier) _evlFocusSaisie();   // synchrone : aucune frappe perdue entre deux rendus
+}
+/* ═══ V11.5.68 — Grilles reliées au référentiel : critère → compétence du programme (c.compId) ═══ */
+/** Niveau de grille (0…N-1) → échelle des compétences (1 Non acquis … 4 Expert). Pure. */
+function _evlNivVersComp(n, nNiv){ const N=Math.max(2, Number(nNiv)||4); if(n==null || n==='' || isNaN(Number(n))) return 0; return Math.max(1, Math.min(4, 1+Math.round(Number(n)*3/(N-1)))); }
+/** Compétence proposée pour une ancienne étiquette libre : un identifiant cité (le plus long), sinon un intitulé. Pure. */
+function _evlCompSuggere(texte, items){
+  const nz=(x)=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(), cp=(x)=>nz(x).replace(/[^a-z0-9]/g,'');
+  const t=nz(texte), tc=cp(texte); if(!t) return '';
+  const parId=(items||[]).filter(it=>it && it.id && cp(it.id).length>=3 && tc.indexOf(cp(it.id))>=0).sort((a,b)=>cp(b.id).length-cp(a.id).length)[0];
+  if(parId) return parId.id;
+  const parL=(items||[]).find(it=>it && it.label && (nz(it.label)===t || (t.length>=8 && nz(it.label).indexOf(t)>=0)));
+  return parL ? parL.id : '';
+}
+/** Compétences évaluées par une évaluation : {uid: {compId: 1…4}} (critères reliés, élèves sans code). */
+function _evlCompsDe(ev){
+  const g=ev && _evlGrille(ev.grilleId); if(!g || ev.mode==='note') return {};
+  const crit=(g.criteres||[]).filter(c=>c && c.compId); if(!crit.length) return {};
+  const C=_evlCible(ev), nN=(g.niveaux||EVL_NIV_DEFAUT).length, out={};
+  C.eleves.forEach(u=>{ const R=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C, u) : ''); if(R.code) return;
+    crit.forEach(c=>{ const n=R.niv[c.id]; if(n!=null){ (out[u]=out[u]||{})[c.compId]=_evlNivVersComp(n, nN); } }); });
+  return out;
+}
+function _evlCompsPourJournal(cls){
+  return _evlListe().filter(e=>e && e.cls===cls).map(ev=>({date:ev.date, heure:((/_(\d{2}:\d{2})/.exec(String(ev.slotKey||''))||[])[1])||'', titre:ev.titre, comps:_evlCompsDe(ev)})).filter(x=>Object.keys(x.comps).length);
+}
+/** Compétences du référentiel pour la portée d'une grille (niveau, classe, ou tous les niveaux), sans doublon. */
+function _evlCompsRef(G){
+  const p=(G && G.portee)||{type:'tous'};
+  const lv=p.type==='niveau' ? [String(p.val)+'e'] : p.type==='classe' ? [String(p.val).replace(/[0-9]+$/,'')] : ((typeof _refNiveauxPage==='function') ? _refNiveauxPage() : ['5e','4e','3e']);
+  const M={}, out=[]; lv.forEach(l=>{ let L=[]; try{ L=_refItemsUniverse(l, 'comps')||[]; }catch(e){ L=[]; } L.forEach(it=>{ if(it && it.id && !M[it.id]){ M[it.id]=1; out.push(it); } }); });
+  return out;
+}
+/** Intitulé court d'un critère créé depuis une compétence. Pure. */
+function _evlLibCourt(t, n){ const s=String(t||'').trim(); n=n||60; if(s.length<=n) return s; const c=s.slice(0, n); const i=c.lastIndexOf(' '); return (i>30 ? c.slice(0, i) : c)+'…'; }
+/** Bibliothèque : choisir des compétences → un critère chacune. createElement. */
+function _evlChoixRef(f, G, structurel){
+  const RC=_evlCompsRef(G), deja=new Set((G.criteres||[]).map(c=>c.compId).filter(Boolean)), sel=_evl.refSel=_evl.refSel||{};
+  const z=_evlEl('div','margin-top:8px;border:2px solid #0F766E;border-radius:12px;padding:10px 12px;background:var(--sur)'); z.id='evl-choix-ref'; f.appendChild(z);
+  const hd=_evlEl('div','display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px'); z.appendChild(hd);
+  hd.appendChild(_evlEl('b','font-size:14px', '🎯 Compétences du programme ('+RC.length+')'));
+  const q=_evlEl('input','flex:1;min-width:180px;font:inherit;padding:5px 9px;border:2px solid #8A9099;border-radius:8px;background:var(--sur);color:var(--tx)'); q.type='search'; q.placeholder='Chercher (code ou mots)…'; q.value=_evl.refQ||''; hd.appendChild(q);
+  const ok=_evlBtn('', 'background:#0F766E;border-color:#0F766E;color:#fff', ()=>{ const ids=Object.keys(sel).filter(k=>sel[k] && !deja.has(k)); if(!ids.length) return;
+    structurel('Ajouter '+ids.length+' critère'+(ids.length>1?'s':'')+' (compétences)', X=>{ X.criteres=X.criteres||[]; const N=X.niveaux||EVL_NIV_DEFAUT;
+      ids.forEach((id, k)=>{ const it=RC.find(x=>x.id===id)||{id, label:id}; X.criteres.push({id:'c'+Date.now().toString(36)+k, l:_evlLibCourt(it.label||id), poids:1, comp:'', compId:id, ind:N.map(()=>'')}); }); });
+    _evl.refPick=false; _evl.refSel={}; _evlRendre(); });
+  hd.appendChild(ok);
+  const liste=_evlEl('div','max-height:300px;overflow:auto;margin-top:4px'); z.appendChild(liste);
+  const nz=(x)=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const dessiner=()=>{ liste.textContent=''; const T=nz(_evl.refQ||'').split(/\s+/).filter(Boolean); let dom='';
+    const n=Object.keys(sel).filter(k=>sel[k] && !deja.has(k)).length; ok.textContent='Ajouter '+n+' critère'+(n>1?'s':''); ok.style.opacity=n?'1':'.5';
+    RC.filter(it=>T.every(t=>nz(it.id+' '+it.label+' '+(it.domaine||'')).indexOf(t)>=0)).forEach(it=>{
+      if((it.domaine||'')!==dom){ dom=it.domaine||''; liste.appendChild(_evlEl('div','font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#0F766E;margin:8px 0 2px', dom||'Autres')); }
+      const l=_evlEl('label','display:flex;gap:8px;align-items:flex-start;padding:4px 2px;font-size:13px;cursor:pointer'+(deja.has(it.id)?';opacity:.55':'')); l.className='evl-ref-it';
+      const cb=_evlEl('input','margin-top:3px'); cb.type='checkbox'; cb.checked=deja.has(it.id) || !!sel[it.id]; cb.disabled=deja.has(it.id); cb.value=it.id;
+      cb.onchange=()=>{ sel[it.id]=cb.checked; dessiner(); }; l.appendChild(cb);
+      const t=_evlEl('span'); t.appendChild(_evlEl('b','', it.id+' ')); t.appendChild(document.createTextNode(it.label||'')); if(deja.has(it.id)) t.appendChild(_evlEl('span','font-weight:700',' · déjà dans la grille')); l.appendChild(t); liste.appendChild(l); });
+    if(!liste.children.length) liste.appendChild(_evlEl('div','color:var(--tx2);font-size:13px;padding:6px','Aucune compétence.')); };
+  q.oninput=()=>{ _evl.refQ=q.value; dessiner(); };
+  dessiner();
 }
 /* ═══ V11.5.67 — Commentaire par élève et par évaluation (res[uid].com) ═══ */
 function _evlCom(ev, u){ return String((((ev && ev.res)||{})[u]||{}).com||'').trim(); }
@@ -62256,7 +62320,7 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
     const co=['#DC2626','#EA580C','#15803D','#1D4ED8','#7C3AED','#0F766E'], fo=['#B91C1C','#C2410C','#15803D','#1D4ED8','#6D28D9','#0F766E'];
     crit.forEach((c, ci)=>{ const sel=!PQ && ci===cur.c, calc=PQ ? R.pq.niv[c.id] : null, v=R.niv[c.id], aj=PQ && r.niv && r.niv[c.id]!=null && calc!=null && r.niv[c.id]!==calc;
       const ln=_evlEl('div','display:grid;grid-template-columns:minmax(170px,1fr) auto;gap:12px;align-items:center;padding:10px 8px;border-bottom:1px solid #C9CDD3;border-radius:8px;'+(sel?'outline:4px solid #111418;outline-offset:-4px;background:#FFFFFF':'')); ln.className='evl-crit'+(sel?' sel':''); zc.appendChild(ln);
-      const t=_evlEl('div'); t.appendChild(_evlEl('div','font-size:17px;font-weight:800', c.l+((c.poids||1)>1?' ×'+c.poids:'')+(aj?' · ajusté':''))); if(v!=null && (c.ind||[])[v]) t.appendChild(_evlEl('div','font-size:13px;color:var(--tx2)', v+' : '+c.ind[v])); ln.appendChild(t);
+      const t=_evlEl('div'); t.appendChild(_evlEl('div','font-size:17px;font-weight:800', c.l+((c.poids||1)>1?' ×'+c.poids:'')+(aj?' · ajusté':''))); if(c.compId) t.appendChild(_evlEl('div','font-size:12px;font-weight:800;color:#0F766E', '🎯 '+c.compId)); if(v!=null && (c.ind||[])[v]) t.appendChild(_evlEl('div','font-size:13px;color:var(--tx2)', v+' : '+c.ind[v])); ln.appendChild(t);
       const bt=_evlEl('div','display:flex;flex-wrap:wrap;gap:6px'); ln.appendChild(bt);
       N.forEach((nl, i)=>{ const on=v===i; const b=_evlEl('button','font:inherit;font-size:14px;font-weight:800;min-width:104px;height:48px;border-radius:10px;cursor:pointer;border:2px solid '+co[i%co.length]+';background:'+(on?co[i%co.length]:'var(--sur)')+';color:'+(on?'#fff':fo[i%fo.length]), i+' '+nl); b.type='button'; b.title=(c.ind||[])[i]||nl;
         b.onclick=()=>{ cur.c=ci; r.niv=r.niv||{}; if(PQ && calc===i) delete r.niv[c.id]; else if(r.niv[c.id]===i && !PQ) delete r.niv[c.id]; else r.niv[c.id]=i; delete r.code; refaire(); }; bt.appendChild(b); });
@@ -62464,7 +62528,13 @@ function _evlRendreBiblio(corps){
     a.appendChild(fi(c.l, v=>{ c.l=v.trim()||'Critère'; }, 'width:100%;font-weight:800'));
     const ln=_evlEl('div','display:flex;gap:4px;margin-top:4px;align-items:center'); a.appendChild(ln);
     const po=_evlEl('select','font:inherit;font-size:11.5px;padding:2px 4px;border:1.5px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx)'); [1,2,3,4].forEach(n=>po.appendChild(new Option('×'+n, String(n)))); po.value=String(c.poids||1); po.title='Poids dans la note'; po.onchange=()=>{ const v=Number(po.value); structurel('Changer le poids de « '+c.l+' »', X=>{ X.criteres[ci].poids=v; }); }; ln.appendChild(po);
-    ln.appendChild(fi(c.comp, v=>{ c.comp=v.trim(); }, 'flex:1;font-size:11px;min-height:24px;padding:2px 6px', '🎯 compétence (facultatif)'));
+    { const RC=_evlCompsRef(G), se=_evlEl('select','flex:1;min-width:0;max-width:100%;font:inherit;font-size:11.5px;padding:2px 4px;border:2px solid '+(c.compId?'#0F766E':'#8A9099')+';border-radius:6px;background:var(--sur);color:var(--tx)'); se.className='evl-comp-sel'; se.title='Compétence du programme évaluée par ce critère (les niveaux remontent dans le suivi des compétences)';   // V11.5.68
+      se.appendChild(new Option('🎯 compétence du programme…',''));
+      RC.forEach(it=>se.appendChild(new Option(it.id+' · '+_evlLibCourt(it.label, 80), it.id)));
+      if(c.compId && !RC.some(it=>it.id===c.compId)) se.appendChild(new Option(c.compId, c.compId));
+      se.value=c.compId||''; se.onchange=()=>{ if(se.value) c.compId=se.value; else delete c.compId; maj(); }; ln.appendChild(se);
+      if(!c.compId && c.comp){ const sg=_evlCompSuggere(c.comp, RC), zz=_evlEl('div','font-size:11px;color:var(--tx2);margin-top:3px', 'Ancienne étiquette : « '+c.comp+' »'); zz.className='evl-comp-ancien';
+        if(sg) zz.appendChild(_evlBtn('→ '+sg+' ?','padding:0 7px;min-height:22px;font-size:11px;margin-left:6px', ()=>{ c.compId=sg; maj(); }, 'Relier à cette compétence')); a.appendChild(zz); } }
     N.forEach((nl,i)=>{ const z=_evlEl('td','padding:6px;border-bottom:1px solid var(--brd);vertical-align:top'); tr.appendChild(z);
       const ta=_evlEl('textarea','width:100%;min-height:52px;font:inherit;font-size:11.5px;padding:5px 6px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);resize:vertical'); ta.value=(c.ind||[])[i]||''; ta.placeholder='Indicateur : ce qu’on observe';
       ta.onchange=()=>{ c.ind=c.ind||[]; c.ind[i]=ta.value; maj(false); }; z.appendChild(ta); });
@@ -62472,6 +62542,8 @@ function _evlRendreBiblio(corps){
     if(ci>0) zd.appendChild(_evlBtn('↑','padding:2px 7px;min-height:26px', ()=>{ const t=G.criteres[ci-1]; G.criteres[ci-1]=c; G.criteres[ci]=t; maj(); }, 'Monter'));
     zd.appendChild(_evlBtn('🗑',BTN_SUPPR+';padding:2px 7px;min-height:26px', ()=>{ structurel('Supprimer le critère « '+c.l+' »', X=>{ X.criteres.splice(ci,1); }); }, 'Supprimer le critère')); });
   f.appendChild(_evlBtn('＋ Critère','margin-top:8px', ()=>{ structurel('Ajouter un critère', X=>{ X.criteres=X.criteres||[]; X.criteres.push({id:'c'+Date.now().toString(36), l:'Critère '+(X.criteres.length+1), poids:1, comp:'', ind:(X.niveaux||EVL_NIV_DEFAUT).map(()=>'')}); }); }));
+  f.appendChild(_evlBtn(_evl.refPick ? '✕ Fermer le référentiel' : '＋ Critères depuis le référentiel','margin-top:8px;margin-left:6px;border-color:#0F766E;color:#0F766E', ()=>{ _evl.refPick=!_evl.refPick; _evl.refSel={}; _evl.refQ=''; _evlRendre(); }));   // V11.5.68
+  if(_evl.refPick) _evlChoixRef(f, G, structurel);
   f.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px','Points : '+N.map((n,i)=>n+' = '+i).join(' · ')+'. Les indicateurs s’affichent au survol pendant la saisie.'));
   _evlEditeurQuestions(f, G, maj);   // V11.5.66
 }
@@ -72921,6 +72993,7 @@ function _refUsageDuNiveau(lv){
     const p=k.split('|'); if(!set.has(p[1]) || enreg.has(p[0]+'|'+p[1])) return;
     live.push(S.evalComps[k]);
   });
+  try{ _evlListe().forEach(ev=>{ if(!set.has(ev.cls)) return; const m=_evlCompsDe(ev); if(Object.keys(m).length) live.push(m); }); }catch(e){}   // V11.5.68 — évaluations (grilles reliées)
   return _refUsageIndex(prog, seances, live);
 }
 
