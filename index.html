@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.68';
+const APP_VERSION = 'v11.5.69';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59270,6 +59270,7 @@ function _jnlFicheContenu(box, uid, cls, o){
   const cp=btn('📋 Copier','', ()=>{ const t=_jnlTexteFiche(nom, cls, vues());
     try{ navigator.clipboard.writeText(t).then(()=>{ cp.textContent='✔ Copié'; setTimeout(()=>{ cp.textContent='📋 Copier'; },1500); }); }catch(e){} }, 'Copier ce qui est affiché');
   hd.appendChild(cp);
+  { const bb=btn('🎯 Bilan','border-color:#0F766E;color:#0F766E', ()=>openBilanCompetences(cls, uid), 'Bilan compétences de l’élève (cours et évaluations)'); bb.className='jnl-bilan-comp'; hd.appendChild(bb); }   // V11.5.69
   if(!lecture){ hd.appendChild(btn('＋ Note','background:var(--acc);color:#fff;border-color:var(--acc)', ()=>_jnlComposer({uids:[uid], cls, apres:refaire})));
     hd.appendChild(btn('✕','', _jnlFermerFiche, 'Fermer')); }
   const FILTRES=[{v:'tout',l:'Tout'},{v:'note',l:'Mes notes'},{v:'obs',l:'Observations'},{v:'statut',l:'Statuts'},{v:'eval',l:'Évaluations'},{v:'fs',l:'Fiche de suivi'}];
@@ -61666,6 +61667,7 @@ function _evlRendre(){
   hd.appendChild(_evlEl('span','font-size:23px;font-weight:800;letter-spacing:-.01em','📊 Évaluations'));
   [['carnet','Carnet'],['evals','Évaluations'],['biblio','Bibliothèque']].forEach(([v,l])=>{ const on=_evl.vue===v; const b=_evlEl('button','font:inherit;font-size:15px;font-weight:'+(on?'800':'700')+';padding:6px 2px;border:none;border-bottom:4px solid '+(on?'#15803D':'transparent')+';background:none;color:'+(on?'var(--tx)':'var(--tx2)')+';cursor:pointer',l); b.type='button'; b.className='evl-onglet'+(on?' act':''); b.onclick=()=>{ _evl.vue=v; _evl.saisie=false; _evlRendre(); }; hd.appendChild(b); });
   hd.appendChild(_evlEl('span','flex:1'));
+  { const b=_evlBtn('🎯 Bilan compétences','border:2px solid #0F766E;color:#0F766E', ()=>{ const e=_evlListe().find(x=>x.id===_evl.evId); openBilanCompetences(_evl.cls || (e ? e.cls : '')); }, 'Analyse › Bilan compétences : cours et évaluations (grilles reliées)'); b.id='evl-bilan-comp'; hd.appendChild(b); }   // V11.5.69
   hd.appendChild(_evlBtn('✕','', closeEvaluations, 'Fermer'));
   if(!_evl.saisie) pg.appendChild(_evlBarreFiltres());   // V11.5.54 — Tout / niveaux / classes
   const corps=_evlEl('div','flex:1;overflow:auto;padding:14px 16px 40px'); corps.id='evl-corps'; pg.appendChild(corps);
@@ -76799,8 +76801,46 @@ function _ensureAnalyseCompState(){
 
 /* Helper : collecte toutes les évaluations (élève × compétence × slot/date)
    depuis S.evalComps, en respectant le filtre de période et de classe. */
+/* ═══ V11.5.69 — Bilan compétences : grilles reliées, raccourcis, contraste ═══ */
+/** Relevés des évaluations (grilles reliées) : [{slotKey, dateStr, clsCode, studentId, compId, level, titre, evId}]. */
+function _bcRelevesEvaluations(clsList){
+  const out=[];
+  (Array.isArray(S.evaluations) ? S.evaluations : []).forEach(ev=>{
+    if(!ev || !ev.date || (clsList && clsList.indexOf(ev.cls)<0)) return;
+    if(typeof analyseDateFrom!=='undefined' && analyseDateFrom && ev.date<analyseDateFrom) return;
+    if(typeof analyseDateTo!=='undefined' && analyseDateTo && ev.date>analyseDateTo) return;
+    const M=_evlCompsDe(ev);
+    Object.keys(M).forEach(u=>Object.keys(M[u]).forEach(cid=>{ const l=+M[u][cid]; if(l>0) out.push({slotKey:ev.slotKey || (ev.date+'_evl'), dateStr:ev.date, clsCode:ev.cls, studentId:u, compId:cid, level:l, titre:ev.titre||'Évaluation', evId:ev.id}); }));
+  });
+  return out;
+}
+/** Ouvre Analyse › Bilan compétences sur une classe (et un élève : vue « Par élève »). */
+function openBilanCompetences(cls, uid){
+  try{ if(document.getElementById('evl-page')) closeEvaluations(); }catch(e){}
+  try{ if(document.getElementById('jnl-fiche')) _jnlFermerFiche(); }catch(e){}
+  analyseMode='compbilan';
+  if(cls && S.cl[cls]){ analyseSelCls=cls; analyseLv=String(cls).replace(/[0-9]+$/,''); }
+  const st=_ensureAnalyseCompState(); st.subview=uid ? 'eleve' : 'classe'; if(uid) st.selStudentId=uid;
+  openAnalyse();
+}
+/** Contraste de la page Analyse (bilan compétences) : textes plus foncés et plus grands, bordures marquées. */
+function _bcStyle(){
+  if(document.getElementById('bc-style')) return;
+  const st=document.createElement('style'); st.id='bc-style';
+  const P='#compbilan-panel ';
+  st.textContent=[P+'[style*="color:var(--tx3)"],'+P+'[style*="color: var(--tx3)"]{color:var(--tx2)!important}',
+    P+'[style*="font-size:9px"],'+P+'[style*="font-size: 9px"]{font-size:11px!important}',
+    P+'[style*="font-size:10px"],'+P+'[style*="font-size: 10px"]{font-size:12px!important}',
+    P+'[style*="font-size:11px"],'+P+'[style*="font-size: 11px"]{font-size:12.5px!important}',
+    P+'table{font-size:13px}', P+'th{color:var(--tx)!important;font-weight:800!important}',
+    P+'[style*="border:1px solid var(--brd)"],'+P+'[style*="border: 1px solid var(--brd)"]{border-color:#8A9099!important}',
+    P+'[style*="border-bottom:1px solid var(--brd)"],'+P+'[style*="border-bottom: 1px solid var(--brd)"]{border-bottom-color:#C9CDD3!important}',
+    '#analyse-mode-tabs .fp-tab{font-weight:700;color:var(--tx)}', '#analyse-mode-tabs .fp-tab.act{background:#0F3D24!important;color:#fff!important;border-color:#0F3D24!important}'].join('\n');
+  document.head.appendChild(st);
+}
 function _collectEvaluations(clsList){
   const records=[]; // [{slotKey, dateStr, clsCode, studentId, compId, level}]
+  try{ records.push(..._bcRelevesEvaluations(clsList)); }catch(e){ console.warn('[bilan] évaluations', e); }   // V11.5.69 — grilles reliées
   if(!S.evalComps) return records;
   Object.entries(S.evalComps).forEach(([slotClsKey, studMap])=>{
     const parts=slotClsKey.split('|');
@@ -76833,7 +76873,7 @@ function _aggregateStudentComp(records, studentId, compId){
   filtered.sort((a,b)=>(a.dateStr+a.slotKey).localeCompare(b.dateStr+b.slotKey));
   let best=0, last=0;
   filtered.forEach(r=>{ if(r.level>best) best=r.level; last=r.level; });
-  return {best, last, count:filtered.length, history:filtered.map(r=>({date:r.dateStr, slotKey:r.slotKey, clsCode:r.clsCode, level:r.level}))};
+  return {best, last, count:filtered.length, history:filtered.map(r=>({date:r.dateStr, slotKey:r.slotKey, clsCode:r.clsCode, level:r.level, origine:r.titre||'', evId:r.evId||''}))};   // V11.5.69 — origine (📊 évaluation)
 }
 
 /* Helper : retourne les classes à analyser selon les filtres existants. */
@@ -76896,6 +76936,7 @@ function _setCompBilanPanelVisible(visible){
    Rendu principal — dispatcher selon sous-vue
    ════════════════════════════════════════════════════════════════════ */
 function renderAnalyseCompBilan(){
+  try{ _bcStyle(); }catch(e){}   // V11.5.69
   const st=_ensureAnalyseCompState();
   const pane=_ensureCompBilanPanel();
   pane.innerHTML='';
@@ -77058,7 +77099,7 @@ function _renderCompBilanClasse(pane, classes, records, st){
       } else {
         const inner=document.createElement('div');
         inner.style.cssText='display:flex;align-items:center;justify-content:center;gap:3px';
-        inner.appendChild(_mkLvlBadge(agg.best,{title:`${getAnalyseName(id)} — ${it.id}\n${agg.count} évaluation(s)\nMeilleur : niveau ${agg.best}\nDernier : niveau ${agg.last}\nDates : ${agg.history.map(h=>fmtDate(h.date)+' (n'+h.level+')').join(', ')}`}));
+        inner.appendChild(_mkLvlBadge(agg.best,{title:`${getAnalyseName(id)} — ${it.id}\n${agg.count} évaluation(s)\nMeilleur : niveau ${agg.best}\nDernier : niveau ${agg.last}\nDates : ${agg.history.map(h=>(h.evId?'📊 ':'')+fmtDate(h.date)+' (n'+h.level+')').join(', ')}`}));
         // Petits points indicateurs nb d'évals
         if(agg.count>1){
           const dots=document.createElement('span');
@@ -77350,7 +77391,7 @@ function _renderCompEvolutionChart(records){
     c.setAttribute('fill', _COMP_COLORS[r.level]||'#888');
     c.setAttribute('opacity', '0.8');
     const tt=document.createElementNS(svgNS,'title');
-    tt.textContent=fmtDate(r.dateStr)+' — niveau '+r.level;
+    tt.textContent=fmtDate(r.dateStr)+' — niveau '+r.level+(r.titre ? ' · 📊 '+r.titre : ' · cours');   // V11.5.69
     c.appendChild(tt);
     svg.appendChild(c);
   });
@@ -77548,11 +77589,12 @@ function _renderCompBilanEleve(pane, classes, records, st){
       agg.history.forEach(h=>{
         const evW=document.createElement('span');
         evW.style.cssText='display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--tx3);cursor:pointer';
-        evW.title='Cliquer pour ouvrir le PdC sur ce cours';
-        const dt=document.createElement('span'); dt.textContent=fmtDate(h.date); evW.appendChild(dt);
+        evW.title=h.evId ? '📊 '+h.origine+' : ouvrir l’évaluation' : 'Cours du '+fmtDate(h.date)+' : ouvrir le PdC sur ce cours';   // V11.5.69
+        const dt=document.createElement('span'); dt.textContent=(h.evId ? '📊 ' : '')+fmtDate(h.date); evW.appendChild(dt);
         evW.appendChild(_mkLvlBadge(h.level,{size:14}));
         evW.onclick=()=>{
           if(typeof closeAnalyse==='function') closeAnalyse();
+          if(h.evId){ openEvaluations({cls:h.clsCode, vue:'evals', evId:h.evId}); return; }
           if(typeof openApp==='function') openApp(h.clsCode, null, h.slotKey);
         };
         histWrap.appendChild(evW);
