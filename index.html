@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.63';
+const APP_VERSION = 'v11.5.64';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59217,6 +59217,35 @@ function _jnlRendreFiche(){
   ov.appendChild(box);
   _jnlFicheContenu(box, uid, cls, {refaire:_jnlRendreFiche});
 }
+/** V11.5.64 — Fiche EBEP détaillée : dispositifs, aménagements, description, notes datées (5 dernières). Null si vide. Pure. */
+function _ebepResumeFiche(f, adapts){
+  if(!f || typeof f!=='object') return null;
+  const cats=getFicheCategories(f);
+  const amenag=(Array.isArray(adapts) ? adapts : []).filter(a=>a && a.key && f[a.key]).map(a=>({icon:a.icon||'✳️', label:a.label||a.short||a.key}));
+  const desc=String(f.notes||'').trim();
+  const notes=(Array.isArray(f.journal) ? f.journal : []).filter(n=>n && String(n.t||'').trim()).slice(0,5).map(n=>({d:n.d||'', t:String(n.t).trim()}));
+  if(!cats.length && !amenag.length && !desc && !notes.length) return null;
+  return {cats, amenag, desc, notes};
+}
+/** V11.5.64 — Bloc « 🧩 Besoins particuliers » de la fiche du journal (Ctrl+K, journal, réunions). createElement. */
+function _jnlBlocEbep(uid, cls){
+  const B=S.besoinsEleves||{}; let c=cls;
+  if(!(B[c] && B[c][uid])) c=Object.keys(B).find(k=>B[k] && B[k][uid] && S.cl[k] && (S.cl[k].students||[]).indexOf(uid)>=0)||c;
+  const R=_ebepResumeFiche(B[c] && B[c][uid], getEbepAdaptations()); if(!R) return null;
+  let ap=[]; try{ ap=_ebepAPreparer(B[c][uid], uid, _ebepCoursAVenir(c, 7)); }catch(e){ ap=[]; }
+  const w=_jnlEl('div','padding:10px 16px;border-bottom:1px solid var(--brd);background:#F0FDF4;font-size:12.5px;line-height:1.45;color:#14532D;max-height:34vh;overflow:auto'); w.id='jnl-ebep';
+  w.appendChild(_jnlEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#166534;margin-bottom:4px','🧩 Besoins particuliers'));
+  const lig=(lib, val)=>{ const d=_jnlEl('div','margin:2px 0'); d.appendChild(_jnlEl('b','', lib+' : ')); d.appendChild(document.createTextNode(val)); w.appendChild(d); };
+  if(R.cats.length) lig('Dispositif'+(R.cats.length>1?'s':''), R.cats.join(', '));
+  if(R.amenag.length) lig('Aménagements', R.amenag.map(a=>a.icon+' '+a.label).join(' · '));
+  if(R.desc){ const d=_jnlEl('div','margin:4px 0;white-space:pre-wrap;color:#1F2937'); d.appendChild(_jnlEl('b','color:#14532D','Besoin : ')); d.appendChild(document.createTextNode(R.desc)); w.appendChild(d); }
+  const jj=(d)=>{ const p=String(d||'').split('-'); return p.length===3 ? p[2]+'/'+p[1] : String(d||''); };
+  if(R.notes.length){ w.appendChild(_jnlEl('div','font-weight:700;margin-top:4px','Notes EBEP'));
+    R.notes.forEach(n=>w.appendChild(_jnlEl('div','margin-left:8px;color:#1F2937', jj(n.d)+' · '+n.t))); }
+  if(ap.length){ w.appendChild(_jnlEl('div','font-weight:700;margin-top:4px','À préparer (7 jours)'));
+    ap.slice(0,6).forEach(x=>w.appendChild(_jnlEl('div','margin-left:8px;color:#1F2937', jj(x.dateStr)+' '+(x.debut||'')+' · '+x.texte))); }
+  return w;
+}
 /** V11.5.59 — contenu de la fiche (en-tête, filtres, liste) dans une boîte donnée.
  *  o.lecture : consultation seule (réunions parents) — ni ＋ Note, ni ✕, ni ✎ / 🗑. o.refaire : redessiner. */
 function _jnlFicheContenu(box, uid, cls, o){
@@ -59229,6 +59258,7 @@ function _jnlFicheContenu(box, uid, cls, o){
   const f=_fsActive(S.ficheSuivi, uid); if(f) badges.appendChild(_jnlPuce('Fiche de suivi depuis le '+_fsDate(f.depuis),'#E0E7FF','#3730A3'));
   let eb=[]; try{ eb=getEbepInfoParts(uid, cls)||[]; }catch(e){ eb=[]; }
   if(eb.length) badges.appendChild(_jnlPuce('EBEP · '+eb.join(', '),'#DCFCE7','#166534'));
+  try{ const bl=_jnlBlocEbep(uid, cls); if(bl) box.appendChild(bl); }catch(e){ console.warn('[journal] EBEP', e); }   // V11.5.64 — fiche EBEP détaillée
   const note=String(((S.observations||{})[cls+'|'+uid])||'').trim();
   const {dateFrom, dateTo}=computeVgDateBounds(obsSuivi.periode, obsSuivi.du, obsSuivi.au);
   const tout=_jnlFicheEntrees(_jnlSourcesFiche(cls), uid, cls, dateFrom, dateTo);
