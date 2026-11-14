@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.60';
+const APP_VERSION = 'v11.5.61';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -62477,12 +62477,17 @@ function _rchPaletteRecents(){
   if(_rchSansNoms()) return [];
   return _rchRecents().map(q=>({type:'recent', icon:'🕘', label:q, sub:'', garde:true, run:()=>{ _palOpen(); const i=document.getElementById('pal-input'); if(i){ i.value=q; _palRender(q); try{ i.setSelectionRange(q.length, q.length); }catch(e){} } }}));
 }
+/** V11.5.61 — Palette, élève : « 5E1 · 3 notes au journal · ouvrir la fiche ». Pure. */
+function _rchSousEleve(e, notes){
+  const n=(Array.isArray(notes) ? notes : []).filter(x=>x && x.texte).length;
+  return [e && e.cls ? String(e.cls).toUpperCase() : '', n ? n+' note'+(n>1?'s':'')+' au journal' : 'journal vide', 'Entrée : ouvrir la fiche'].filter(Boolean).join(' · ');
+}
 /** Palette : entrées « Dans vos données » (6 au plus) + « Tout voir ». */
 function _rchPalette(q){
   if(String(q||'').trim().length<3) return [];
   let res=[]; try{ res=_rchChercher(_rchIndex(), q, {sansNoms:_rchSansNoms()}); }catch(e){ console.warn('[recherche]', e); return []; }
   if(!res.length) return [];
-  const L=res.slice(0,6).map(e=>({type:'data', icon:RCH_GENRES[e.genre].ic, label:e.titre, sub:_rchExtrait(e.texte, q, 80), genre:e.genre, run:()=>{ _rchMemoriser(q); _rchOuvrir(e); }}));
+  const L=res.slice(0,6).map(e=>({type:'data', icon:RCH_GENRES[e.genre].ic, label:e.titre, sub:e.genre==='eleve' ? _rchSousEleve(e, (S.journalEleves||{})[e.uid]) : _rchExtrait(e.texte, q, 80), genre:e.genre, run:()=>{ _rchMemoriser(q); _rchOuvrir(e); }}));
   L.push({type:'data', icon:'→', label:'Tout voir ('+res.length+') dans la recherche', sub:'', genre:'tout', run:()=>{ _rchMemoriser(q); openRecherche(q); }});
   L._total=res.length;
   return L;
