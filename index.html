@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.69';
+const APP_VERSION = 'v11.5.70';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61486,7 +61486,7 @@ function _grtLignesCours(cls, slotKey){
 const EVL_TYPES=[{id:'eval', ic:'📝', l:'Évaluation'}, {id:'groupe', ic:'👥', l:'Travail de groupe'}, {id:'classe', ic:'✋', l:'Travail en classe'}, {id:'dm', ic:'🏠', l:'Devoir maison'}];
 const EVL_NIV_DEFAUT=['Non atteint','Partiel','Atteint','Dépassé'];
 const EVL_CODES=['Abs','Disp','NR'];
-const EVL_NIV_COUL=[['#FEE2E2','#991B1B'],['#FEF3C7','#92400E'],['#DCFCE7','#166534'],['#DBEAFE','#1E40AF'],['#EDE9FE','#5B21B6'],['#CCFBF1','#115E59']];
+const EVL_NIV_COUL=[['#DC2626','#FFFFFF'],['#EA580C','#FFFFFF'],['#15803D','#FFFFFF'],['#1D4ED8','#FFFFFF'],['#7C3AED','#FFFFFF'],['#0F766E','#FFFFFF']];   // V11.5.70 — couleurs franches (fond plein, chiffre blanc)
 function _evlGrilleExemple(){
   const c=(l, poids, comp, ind)=>({id:'c'+Math.random().toString(36).slice(2,8), l, poids, comp, ind});
   return {id:'gr'+Date.now().toString(36), titre:'Présentation orale', ic:'🎤', portee:{type:'tous', val:''}, tags:['oral','projet'], niveaux:EVL_NIV_DEFAUT.slice(),
@@ -61646,7 +61646,7 @@ let _evl={niv:'*', cls:'', vue:'carnet', evId:'', saisie:false, grId:'', q:'', p
 function _evlEl(tag, css, txt){ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
 function _evlBtn(t, css, fn, titre){ const b=_evlEl('button','padding:6px 12px;border-radius:9px;border:1.5px solid var(--brd);background:var(--sur);color:var(--tx);font-weight:800;font-size:12.5px;cursor:pointer;font-family:inherit;min-height:32px;'+(css||''), t); b.type='button'; if(titre) b.title=titre; b.onclick=fn; return b; }
 function _evlChip(t, on, fn, titre){ const b=_evlEl('button','font-size:12px;font-weight:'+(on?'800':'700')+';padding:4px 11px;border-radius:999px;border:2px solid '+(on?'#0F3D24':'#8A9099')+';background:'+(on?'#0F3D24':'var(--sur)')+';color:'+(on?'#fff':'var(--tx)')+';cursor:pointer;font-family:inherit;margin:2px;min-height:30px', t); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }   // V11.5.65 — contraste
-function _evlNiv(n, on, titre, fn, css){ const C=EVL_NIV_COUL[n]||EVL_NIV_COUL[0]; const b=_evlEl('button','min-width:28px;min-height:28px;font-weight:800;font-size:12px;padding:2px 6px;border-radius:7px;cursor:pointer;font-family:inherit;margin:1px;border:1.5px solid transparent;'+(on?'background:'+C[0]+';color:'+C[1]:'background:var(--sur2);color:var(--tx3)')+';'+(css||''), String(n)); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }
+function _evlNiv(n, on, titre, fn, css){ const C=EVL_NIV_COUL[n]||EVL_NIV_COUL[0]; const b=_evlEl('button','min-width:28px;min-height:28px;font-weight:800;font-size:12px;padding:2px 6px;border-radius:7px;cursor:pointer;font-family:inherit;margin:1px;border:1.5px solid transparent;'+(on?'background:'+C[0]+';color:'+C[1]+';border-color:'+C[0]+';font-size:13px':'background:var(--sur);color:var(--tx2);border-color:#C9CDD3')+';'+(css||''), String(n)); b.type='button'; if(titre) b.title=titre; if(fn) b.onclick=fn; return b; }
 function _evlLab(t){ return _evlEl('div','font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--tx);margin:12px 0 4px', t); }
 function openEvaluations(o){
   o=o||{}; const L=_reuClasses();
@@ -62054,7 +62054,7 @@ function _evlRendreSaisie(corps){
   if(vue==='colonnes') return _evlRendreSaisieNotes(corps, ev, g, C);
   if(vue==='eleve') return _evlRendreSaisieEleve(corps, ev, g, C);
   const aide=_evlEl('div','font-size:13px;font-weight:700;color:#fff;background:#111418;border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:6px 16px');   // V11.5.66 — bande noire
-  const kb=(t)=>_evlEl('b','font-size:11px;border:1.5px solid var(--brd);border-bottom-width:3px;border-radius:5px;padding:0 5px;background:var(--sur)', t);
+  const kb=(t)=>_evlEl('b','font-size:12px;border:2px solid #fff;border-radius:5px;padding:0 5px;color:#fff;background:transparent', t);   // V11.5.70 — lisible sur la bande noire
   [[['0','–',String(N.length-1)],'niveau'],[['A','D','N'],'Abs · Disp · NR'],[['*'],'comme au-dessus'],[['C'],'commentaire'],[['⌫'],'effacer'],[['Tab','→'],'critère suivant'],[['Entrée','↓'],'élève suivant']].forEach(([K,t])=>{ const s=_evlEl('span'); K.forEach(k=>k==='–'?s.appendChild(document.createTextNode('–')):s.appendChild(kb(k))); s.appendChild(document.createTextNode(' '+t)); aide.appendChild(s); });
   corps.appendChild(aide);
   const wrap=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:14px;overflow:auto;outline:none'); wrap.id='evl-saisie-box'; wrap.tabIndex=0; corps.appendChild(wrap);
