@@ -4867,7 +4867,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.58';
+const APP_VERSION = 'v11.5.59';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59185,6 +59185,12 @@ function _jnlRendreFiche(){
   ov.textContent='';
   const box=_jnlEl('div','background:var(--sur);color:var(--tx);border-radius:14px;box-shadow:var(--sh2);width:min(860px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden');
   ov.appendChild(box);
+  _jnlFicheContenu(box, uid, cls, {refaire:_jnlRendreFiche});
+}
+/** V11.5.59 — contenu de la fiche (en-tête, filtres, liste) dans une boîte donnée.
+ *  o.lecture : consultation seule (réunions parents) — ni ＋ Note, ni ✕, ni ✎ / 🗑. o.refaire : redessiner. */
+function _jnlFicheContenu(box, uid, cls, o){
+  o=o||{}; const lecture=!!o.lecture, refaire=(typeof o.refaire==='function') ? o.refaire : ()=>{};
   const nom=getFullName(uid);
   const hd=_jnlEl('div','display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border-bottom:1px solid var(--brd)'); box.appendChild(hd);
   const gauche=_jnlEl('div','flex:1;min-width:0'); hd.appendChild(gauche);
@@ -59200,14 +59206,14 @@ function _jnlRendreFiche(){
   const cp=btn('📋 Copier','', ()=>{ const t=_jnlTexteFiche(nom, cls, vues());
     try{ navigator.clipboard.writeText(t).then(()=>{ cp.textContent='✔ Copié'; setTimeout(()=>{ cp.textContent='📋 Copier'; },1500); }); }catch(e){} }, 'Copier ce qui est affiché');
   hd.appendChild(cp);
-  hd.appendChild(btn('＋ Note','background:var(--acc);color:#fff;border-color:var(--acc)', ()=>_jnlComposer({uids:[uid], cls, apres:_jnlRendreFiche})));
-  hd.appendChild(btn('✕','', _jnlFermerFiche, 'Fermer'));
+  if(!lecture){ hd.appendChild(btn('＋ Note','background:var(--acc);color:#fff;border-color:var(--acc)', ()=>_jnlComposer({uids:[uid], cls, apres:refaire})));
+    hd.appendChild(btn('✕','', _jnlFermerFiche, 'Fermer')); }
   const FILTRES=[{v:'tout',l:'Tout'},{v:'note',l:'Mes notes'},{v:'obs',l:'Observations'},{v:'statut',l:'Statuts'},{v:'eval',l:'Évaluations'},{v:'fs',l:'Fiche de suivi'}];
   const garde=(e)=>_jnlFiltre==='tout' || (_jnlFiltre==='note' && e.genre==='note') || (_jnlFiltre==='eval' && (e.genre==='eval' || e.genre==='evl')) || (_jnlFiltre==='fs' && e.genre==='fs')
     || (_jnlFiltre==='obs' && e.genre==='cours' && !!e.texte) || (_jnlFiltre==='statut' && e.genre==='cours' && (e.statuts.length || e.partic || e.tnf));
   const vues=()=>tout.filter(garde);
   const fb=_jnlEl('div','display:flex;flex-wrap:wrap;gap:5px;padding:9px 16px;border-bottom:1px solid var(--brd);align-items:center'); box.appendChild(fb);
-  FILTRES.forEach(x=>{ const b=_jnlEl('button',null,x.l); b.type='button'; b.className='fp-tab'+(_jnlFiltre===x.v?' act':''); b.onclick=()=>{ _jnlFiltre=x.v; _jnlRendreFiche(); }; fb.appendChild(b); });
+  FILTRES.forEach(x=>{ const b=_jnlEl('button',null,x.l); b.type='button'; b.className='fp-tab'+(_jnlFiltre===x.v?' act':''); b.onclick=()=>{ _jnlFiltre=x.v; refaire(); }; fb.appendChild(b); });
   fb.appendChild(_jnlEl('span','margin-left:auto;font-size:11px;color:var(--tx3)', 'Période du Suivi : '+({all:'année',s1:'semestre 1',s2:'semestre 2',t1:'trimestre 1',t2:'trimestre 2',t3:'trimestre 3',custom:'dates choisies'}[obsSuivi.periode]||'année')));
   const corps=_jnlEl('div','overflow:auto;flex:1;padding:4px 0 10px'); box.appendChild(corps);
   if(note){ const nb=_jnlEl('div','margin:8px 16px 4px;padding:5px 9px;border-radius:7px;background:#FEF3C7;color:#92400E;font-size:12px;white-space:pre-wrap','Note permanente : '+note); corps.appendChild(nb); }
@@ -59222,13 +59228,14 @@ function _jnlRendreFiche(){
     if(e.genre==='note'){
       const t=_jnlType(e.note.type); z.appendChild(_jnlPuce(t.ic+' '+t.l, t.bg, t.fg));
       z.appendChild(_jnlEl('span','white-space:pre-wrap;color:var(--tx)', e.note.texte));
-      if(e.note.bnCle){ a.appendChild(_jnlEl('span','font-size:11px;color:var(--tx3)','depuis le bloc-notes')); corps.appendChild(r); return; }   // V11.5.23 — se modifie dans le bloc-notes
+      if(e.note.bnCle){ a.appendChild(_jnlEl('span','font-size:11px;color:var(--tx3)','depuis le bloc-notes')); corps.appendChild(r); return; }
+      if(lecture){ corps.appendChild(r); return; }   // V11.5.59 — consultation   // V11.5.23 — se modifie dans le bloc-notes
       const bm=_jnlEl('button','background:none;border:none;cursor:pointer;font-size:13px;color:var(--tx3)','✎'); bm.type='button'; bm.title='Modifier';
-      bm.onclick=()=>_jnlComposer({uid, note:e.note, cls, apres:_jnlRendreFiche});
+      bm.onclick=()=>_jnlComposer({uid, note:e.note, cls, apres:refaire});
       const conf=_jnlSupprimerId===e.note.id;
       const bs=_btnSuppr(_jnlEl('button','cursor:pointer;padding:1px 7px;font-size:'+(conf?'11.5px;font-weight:700':'12px'), conf?'Supprimer ?':'🗑'), conf); bs.type='button'; bs.title='Supprimer (deux clics)';
-      bs.onclick=()=>{ if(!conf){ _jnlSupprimerId=e.note.id; _jnlRendreFiche(); setTimeout(()=>{ if(_jnlSupprimerId===e.note.id){ _jnlSupprimerId=''; _jnlRendreFiche(); } }, 4000); return; }
-        _jnlSupprimerId=''; if(_jnlSupprimer(_jnlStore(), uid, e.note.id)){ saveS(); } _jnlRendreFiche(); };
+      bs.onclick=()=>{ if(!conf){ _jnlSupprimerId=e.note.id; refaire(); setTimeout(()=>{ if(_jnlSupprimerId===e.note.id){ _jnlSupprimerId=''; refaire(); } }, 4000); return; }
+        _jnlSupprimerId=''; if(_jnlSupprimer(_jnlStore(), uid, e.note.id)){ saveS(); } refaire(); };
       a.appendChild(bm); a.appendChild(bs);
     } else if(e.genre==='cours'){
       if(e.texte) z.appendChild(_jnlPuce('📝 Observation','#F3F4F6','#4B5563'));
@@ -59487,9 +59494,26 @@ function _reuRendreDetail(box, r){
     if(!conf){ _reu.supprimer=r.id; _reuRendre(); setTimeout(()=>{ if(_reu.supprimer===r.id){ _reu.supprimer=''; _reuRendre(); } }, 4000); return; }
     const R=_reuStore(); const i=R.indexOf(r); if(i>=0) R.splice(i,1); _reu.supprimer=''; _reu.sel=''; saveS(); _reuRendre();
   }, 'Supprimer la réunion (les notes déjà parties dans le journal des élèves restent)'), conf));
-  if(ty.forme==='classes') _reuRendreClasses(box, r);
-  if(ty.forme==='eleve') _reuRendreUnEleve(box, r);
+  // V11.5.59 — réunions parents (soirée ou rendez-vous) : prise de notes à gauche, historique de l'élève à droite
+  if(ty.forme==='classes' || ty.forme==='eleve'){
+    const sp=_reuEl('div','display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));align-items:start'); sp.id='reu-split'; box.appendChild(sp);
+    const g=_reuEl('div','min-width:0;border-right:1px solid var(--brd)'); g.id='reu-notes'; sp.appendChild(g);
+    if(ty.forme==='classes') _reuRendreClasses(g, r); else _reuRendreUnEleve(g, r);
+    _reuRendreNotes(g, r, ty);
+    const d=_reuEl('div','min-width:0;position:sticky;top:0;max-height:calc(100vh - 150px);overflow:auto;display:flex;flex-direction:column'); d.id='reu-histo'; sp.appendChild(d);
+    _reuRendreHisto(d, r, ty);
+    return;
+  }
   _reuRendreNotes(box, r, ty);
+}
+/** V11.5.59 — historique de l'élève reçu (fiche du journal en consultation). */
+function _reuEleveHisto(r, ty){ return _reu.encours || (ty.forme==='eleve' ? (r.eleves||[])[0] : '') || ''; }
+function _reuRendreHisto(d, r, ty){
+  const u=_reuEleveHisto(r, ty);
+  if(!u){ d.appendChild(_reuEl('div','padding:40px 20px;color:var(--tx3);font-size:13px;text-align:center','📖 L’historique de l’élève s’affiche ici quand vous cliquez sur « Recevoir ».')); return; }
+  const cls=ty.forme==='classes' ? (_reu.cls||'') : ((r.classes||[])[0]||((S.studentData||{})[u]||{}).cls||'');
+  const refaire=()=>{ const x=document.getElementById('reu-histo'); if(!x) return; x.textContent=''; _reuRendreHisto(x, r, ty); };
+  _jnlFicheContenu(d, u, cls, {lecture:true, refaire});
 }
 function _reuRendreClasses(box, r){
   if(!Array.isArray(r.classes)) r.classes=[];
@@ -74562,6 +74586,8 @@ function _tmrUpdateUI(){
       _tmrModalControls = null;
     }
   }
+  // V11.5.59 — fenêtre projetée (2e écran)
+  try{ _tmrProjMaj(txt); }catch(e){}
   // Display plein écran — pareil
   if(_tmrFs){
     if(document.body.contains(_tmrFs)){
@@ -75428,6 +75454,67 @@ function _tmrReset(sec){
 }
 
 
+/* ═══ V11.5.59 — COMPTE À REBOURS PROJETÉ SUR UN 2e ÉCRAN (demande du 14/11) ═══
+   Une fenêtre à part (même origine, about:blank) ne contient que le décompte ; l'appli la met à jour à
+   chaque tick (_tmrUpdateUI → _tmrProjMaj). Chrome / Edge : API de gestion des fenêtres
+   (getScreenDetails, autorisation « gérer les fenêtres sur tous vos écrans » une fois) → ouverte en
+   plein écran sur l'écran qui n'est pas celui de l'appli. Sinon : petite fenêtre à glisser, F11 / clic. */
+let _tmrProj=null, _tmrEcrans=null;
+/** Couleur du décompte projeté (fond noir). Pure. */
+function _tmrProjCouleur(s){ return s<=10 ? '#F87171' : s<=30 ? '#FBBF24' : '#FFFFFF'; }
+/** L'écran où projeter : un autre que celui de l'appli (le plus grand), sinon null. Pure. */
+function _tmrAutreEcran(ecrans, courant){
+  const L=(ecrans||[]).filter(e=>e && e!==courant && !(courant && e.left===courant.left && e.top===courant.top && e.width===courant.width && e.height===courant.height));
+  return L.sort((a,b)=>(b.width*b.height)-(a.width*a.height))[0]||null;
+}
+/** Écrans déjà connus sans redemander (autorisation accordée) : préchargé à l'ouverture du minuteur. */
+async function _tmrPrechargerEcrans(){
+  try{ if(!('getScreenDetails' in window) || !navigator.permissions) return;
+    const p=await navigator.permissions.query({name:'window-management'}); if(p.state!=='granted') return;
+    _tmrEcrans=await window.getScreenDetails(); }catch(e){}
+}
+function _tmrProjOuverte(){ return !!(_tmrProj && !_tmrProj.closed); }
+function _tmrProjMaj(txt){
+  if(!_tmrProjOuverte()){ _tmrProj=null; return; }
+  const d=_tmrProj.document, el=d.getElementById('tmr-proj'); if(!el) return;
+  el.textContent=txt; el.style.color=_tmrProjCouleur(_tmrSec);
+  const et=d.getElementById('tmr-proj-etat'); if(et) et.textContent=_tmrSec<=0 ? 'Terminé' : (_tmrIv ? '' : (_tmrSec<_tmrTotalSec ? 'en pause' : ''));
+}
+/** Construit la page de la fenêtre projetée (createElement dans SON document). */
+function _tmrProjPage(w){
+  const d=w.document; d.title='⏱ Compte à rebours';
+  const st=d.createElement('style'); st.textContent='html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}'
+    +'#tmr-wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:"DM Mono",Consolas,monospace}'
+    +'#tmr-proj{font-size:min(30vw,62vh);font-weight:900;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}'
+    +'#tmr-proj-etat{font:700 4vh system-ui,sans-serif;color:#9CA3AF;height:6vh;margin-top:2vh;text-transform:uppercase;letter-spacing:.2em}'
+    +'#tmr-proj-aide{position:fixed;bottom:2vh;left:0;right:0;text-align:center;font:500 14px system-ui,sans-serif;color:#6B7280;cursor:pointer}';
+  d.head.appendChild(st);
+  const wr=d.createElement('div'); wr.id='tmr-wrap';
+  const t=d.createElement('div'); t.id='tmr-proj'; const e=d.createElement('div'); e.id='tmr-proj-etat';
+  wr.appendChild(t); wr.appendChild(e); d.body.appendChild(wr);
+  const aide=d.createElement('div'); aide.id='tmr-proj-aide'; aide.textContent='Cliquer ici pour le plein écran (ou F11) · se pilote depuis PlanClasse'; d.body.appendChild(aide);
+  const pe=()=>{ try{ d.documentElement.requestFullscreen(); }catch(x){} };
+  d.addEventListener('click', pe); d.addEventListener('fullscreenchange', ()=>{ aide.style.display=d.fullscreenElement ? 'none' : ''; });
+}
+/** « 🖥 Projeter » : ouvre (ou referme) la fenêtre projetée ; plein écran sur l'autre écran si possible. */
+async function _tmrProjeter(){
+  if(_tmrProjOuverte()){ try{ _tmrProj.close(); }catch(e){} _tmrProj=null; _tmrUpdateUI(); return 'fermee'; }
+  // 1er usage dans Chrome / Edge : demander les écrans (autorisation), puis ouvrir au clic suivant si le geste est perdu.
+  if(!_tmrEcrans && ('getScreenDetails' in window)){ try{ _tmrEcrans=await window.getScreenDetails(); }catch(e){ _tmrEcrans=null; } }
+  const ecran=_tmrEcrans ? _tmrAutreEcran(_tmrEcrans.screens, _tmrEcrans.currentScreen) : null;
+  const f=ecran ? 'popup,left='+ecran.availLeft+',top='+ecran.availTop+',width='+ecran.availWidth+',height='+ecran.availHeight+',fullscreen'
+                : 'popup,width=900,height=520';
+  let w=null; try{ w=window.open('', 'planclasse-tmr-proj', f); }catch(e){ w=null; }
+  if(!w){ try{ showDropToast('Le navigateur a bloqué la fenêtre : autorisez les fenêtres surgissantes pour PlanClasse, puis recliquez sur « 🖥 Projeter ».'); }catch(e){} return 'bloquee'; }
+  _tmrProj=w;
+  try{ if(!w.document.getElementById('tmr-proj')) _tmrProjPage(w); }catch(e){ console.warn('[tmr proj]', e); }
+  if(ecran){ try{ w.moveTo(ecran.availLeft, ecran.availTop); w.resizeTo(ecran.availWidth, ecran.availHeight); }catch(e){} }
+  try{ window.addEventListener('beforeunload', ()=>{ try{ if(_tmrProjOuverte()) _tmrProj.close(); }catch(e){} }, {once:true}); }catch(e){}
+  _tmrUpdateUI();
+  try{ showDropToast(ecran ? '🖥 Compte à rebours projeté sur l’autre écran' : '🖥 Fenêtre ouverte : glissez-la sur l’écran projeté, puis cliquez dedans pour le plein écran'); }catch(e){}
+  return ecran ? 'ecran' : 'fenetre';
+}
+
 /** Le panneau ⚙ du compte à rebours. createElement, donc invariants de balises
  *  inchangés. LEÇON N°1 : #mbg est unique — on ferme, on rouvre au tick
  *  suivant, et « ← Retour » ramène au minuteur de la même façon. */
@@ -75692,6 +75779,11 @@ function openTimerModal(){
   const bPause=mkB('bs','⏸ Pause',!_tmrIv); bPause.style.cssText+='background:var(--sur2);color:var(--tx);border:1px solid var(--brd)';
   const bReset=mkB('bs','↺ Reset',false); bReset.style.cssText+='background:var(--sur2);color:var(--tx);border:1px solid var(--brd)';
   const bFs=mkB('bs','⛶ Grand',false); bFs.style.cssText+='background:var(--sur2);color:var(--tx);border:1px solid var(--brd)';
+  // V11.5.59 — projection sur le 2e écran
+  const bProj=mkB('bs', _tmrProjOuverte() ? '✕ Projection' : '🖥 Projeter', false); bProj.id='tmr-btn-proj'; bProj.style.cssText+='background:var(--sur2);color:var(--tx);border:1px solid var(--brd)';
+  bProj.title='Afficher le décompte en plein écran sur l’autre écran (vidéoprojecteur) et continuer à travailler ici';
+  bProj.onclick=async()=>{ await _tmrProjeter(); bProj.textContent=_tmrProjOuverte() ? '✕ Projection' : '🖥 Projeter'; };
+  try{ _tmrPrechargerEcrans(); }catch(e){}
   extra.appendChild(row2);
   if(_tmrIv){ mIn.disabled=sIn.disabled=true; }
   // V020-v181.4.12 — Enregistrement des références DOM pour _tmrUpdateUI
