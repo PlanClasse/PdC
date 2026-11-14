@@ -56,6 +56,8 @@ button,input{font-family:'DM Sans',sans-serif}
 .rb-pill.pill-rrupn .rb-count{background:#DCFCE7;color:#166534}
 .rb-pill.pill-plan .rb-count{background:#FEE2E2;color:#991B1B}
 .rb-pill.pill-fiches .rb-count{background:#FFEDD5;color:#9A3412}
+.rb-pill.pill-bn .rb-count{background:#FFF1B8;color:#7A5B14}
+.rb-pill.pill-reu .rb-count{background:#EDE9FE;color:#5B21B6}
 /* S28 patch 2 — Bloc "Aujourd'hui" : urgence rouge/orange/gris */
 .rb-pill.pill-retard  .rb-count{background:#FEE2E2;color:#991B1B}
 .rb-pill.pill-jour    .rb-count{background:#FED7AA;color:#9A3412}
@@ -4867,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.59';
+const APP_VERSION = 'v11.5.60';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -7884,7 +7886,7 @@ function _hmRenderCard(ev, todayStr, isToday, now){
   // Réunion @REU : carte info sans interaction
   if(ev._reu){
     const r = ev._reuData || {};
-    return '<div class="hm-card reu">'
+    return '<div class="hm-card reu" style="cursor:pointer" title="Ouvrir la réunion" data-reu-id="'+escapeHtml(r.reuId||'')+'" data-reu-cle="'+escapeHtml(r.agendaCle||'')+'" onclick="_reuOuvrirAttr(this)">'   // V11.5.60
       + '<div class="hm-card-time">'
         + '<div class="hm-card-time-start">'+escapeHtml(_hmFmtTime(ev.start))+'</div>'
         + '<div class="hm-card-time-end">'+escapeHtml(_hmFmtTime(ev.end))+'</div>'
@@ -7989,7 +7991,7 @@ function renderHomeMobile(){
       // Injecter les réunions REU si présentes (idem renderEdtList)
       const evs = events.slice();
       try{
-        const reus = (typeof _reuGetForDate==='function') ? _reuGetForDate(targetStr) : [];
+        const reus = (typeof _reuDuJour==='function') ? _reuDuJour(targetStr) : [];   // V11.5.60
         reus.forEach(r=>{
           const [h1,m1] = r.debutStr.split(':').map(Number);
           const [h2,m2] = r.finStr.split(':').map(Number);
@@ -15599,10 +15601,11 @@ function renderProfCal7(){
 
     // Réunions REU
     let reus = [];
-    try{ reus = _reuGetForDate(dateStr) || []; }catch(e){}
+    try{ reus = _reuDuJour(dateStr) || []; }catch(e){}   // V11.5.60
     reus.forEach(reu=>{
       hasReu = true;
       const p = document.createElement('span'); p.className='cal7-pill cal7-pill-reu'; p.textContent='🤝 '+reu.debutLabel;
+      p.style.cursor='pointer'; p.title=reu.titre+' — ouvrir'; p.onclick=(e)=>{ e.stopPropagation(); _reuOuvrirDepuis(reu); };   // V11.5.60
       pills.appendChild(p);
     });
 
@@ -16421,6 +16424,17 @@ function renderRappelsBandeau(){
       count:planAdj.length,
       onclick:()=>showPlanningAdjustmentsModal(planAdj)
     });
+  }
+
+  // ── V11.5.60 — Pastille : échéances du bloc-notes (du jour et en retard) ──
+  let bnEch=[]; try{ bnEch=_bnEcheancesAccueil(_bnEcheances(_bnTousTextes(), _bnCtx()), _appToday()); }catch(e){}
+  if(bnEch.length){
+    pillsLeft.push({ cls:'pill-bn', icon:'🗒', label:'Bloc-notes : à faire', count:bnEch.length, onclick:()=>_bnEchModal() });
+  }
+  // ── V11.5.60 — Pastille : « À faire » des réunions ──
+  let reuAF=[]; try{ reuAF=_reuAFaireTous(_reuStore(), _bnCtx()); }catch(e){}
+  if(reuAF.length){
+    pillsLeft.push({ cls:'pill-reu', icon:'🗣', label:'Réunions : à faire', count:reuAF.length, onclick:()=>_reuAFaireModal() });
   }
 
   // ════════════════════════════════════════════════════════════
@@ -18863,6 +18877,7 @@ function showPendingSeanceModal(items){
           saved.seqId=seqId||undefined;
           saved.seanId=seanId||undefined;
           saved.commentaire=body._commTa?body._commTa.value.trim():'';
+          try{ _scSyncJournal(item.clsCode, item.slotKey, saved.date, saved.commentaire); }catch(e){}   // V11.5.60
           const cbs=body._checkWrap&&body._checkWrap._checkboxes;
           if(cbs&&cbs.length) saved.modeOpDone=cbs.map(cb=>cb.checked);
           if(seqId) setSlotProgMapping(item.slotKey, item.clsCode, seqId, seanId||null, null);
@@ -20342,6 +20357,7 @@ function _palRender(query){
   list.innerHTML='';
   const q=(query||'').trim();
   _palEntries=q?_palFilter(q):_palSuggest();
+  if(!q && typeof _rchPaletteRecents==='function'){ try{ _palEntries=_rchPaletteRecents().concat(_palEntries); }catch(e){} }   // V11.5.60 — recherches récentes
   // V11.5.20 — « Dans vos données » (élèves, journal, cahier de texte, bibliothèque…) dès 3 caractères.
   let _palDataTotal=0;
   if(q && typeof _rchPalette==='function'){ try{ const D=_rchPalette(q); if(D.length){ _palDataTotal=D._total; _palEntries=_palEntries.concat(D); } }catch(e){ console.warn('[palette] données', e); } }
@@ -20356,7 +20372,7 @@ function _palRender(query){
   }
   let lastGrp=null;
   _palEntries.forEach((en,i)=>{
-    const grp=q?(en.type==='data'?'Dans vos données · '+_palDataTotal:_PAL_GRP_LABEL[en.type]):(en.type==='action'?'Actions':'Destinations fréquentes');
+    const grp=q?(en.type==='data'?'Dans vos données · '+_palDataTotal:_PAL_GRP_LABEL[en.type]):(en.type==='recent'?'Recherches récentes':(en.type==='action'?'Actions':'Destinations fréquentes'));
     if(grp!==lastGrp){
       lastGrp=grp;
       const g=document.createElement('div');
@@ -20384,7 +20400,7 @@ function _palRender(query){
     }
     row.appendChild(mid);
     const bd=document.createElement('span');
-    bd.textContent=en.type==='action'?'⚡ action':(en.type==='screen'?'écran':(en.type==='data'?((typeof RCH_GENRES!=='undefined' && RCH_GENRES[en.genre]) ? RCH_GENRES[en.genre].l.toLowerCase() : 'tout voir'):'section'));
+    bd.textContent=en.type==='recent'?'récente':en.type==='action'?'⚡ action':(en.type==='screen'?'écran':(en.type==='data'?((typeof RCH_GENRES!=='undefined' && RCH_GENRES[en.genre]) ? RCH_GENRES[en.genre].l.toLowerCase() : 'tout voir'):'section'));
     bd.style.cssText='margin-left:auto;font-size:9px;color:var(--tx3);border:1px solid var(--brd);border-radius:99px;padding:1px 7px;white-space:nowrap;background:var(--sur2);flex-shrink:0';
     row.appendChild(bd);
     if(!en.off){
@@ -36172,7 +36188,7 @@ function renderEdtList(){
 
   // S28 patch 12 — Injecter les réunions @REU[...] du jour comme events virtuels.
   try{
-    const reus = _reuGetForDate(targetStr);
+    const reus = _reuDuJour(targetStr);   // V11.5.60 — aussi les réunions créées dans Réunions
     reus.forEach(r=>{
       const [h1,m1] = r.debutStr.split(':').map(Number);
       const [h2,m2] = r.finStr.split(':').map(Number);
@@ -36196,6 +36212,7 @@ function renderEdtList(){
       const ttl=document.createElement('span'); ttl.className='edt-reu-titre'; ttl.textContent=r.titre;
       itR.appendChild(tEl); itR.appendChild(icR); itR.appendChild(ttl);
       if(r.lieu){ const l=document.createElement('span'); l.className='edt-reu-lieu'; l.textContent=r.lieu; itR.appendChild(l); }
+      itR.style.cursor='pointer'; itR.title='Ouvrir la réunion'; itR.onclick=(e)=>{ e.stopPropagation(); _reuOuvrirDepuis(r); };   // V11.5.60
       containerR.appendChild(itR);
       return;
     }
@@ -52268,6 +52285,17 @@ function openSaveSeance(){
   // V020-v181.4.15 — Persistance brouillon sur le commentaire (auparavant aucun oninput,
   // les saisies non validées étaient perdues).
   commTa.addEventListener('input', ()=>_persistSeanceContentDraft(curCls, slotKey, 'commentaire', commTa.value));
+  // V11.5.60 — « 👤 Élève » : insère @[Nom Prénom] ; la ligne part aussi dans le journal de l'élève à l'enregistrement
+  commWrap.style.position='relative';
+  { const bEl=document.createElement('button'); bEl.type='button'; bEl.id='sc-comm-eleve'; bEl.textContent='👤 Élève';
+    bEl.title='Insérer @[élève] : la ligne du commentaire part aussi dans son journal';
+    bEl.style.cssText='margin-left:8px;font-size:10px;font-weight:700;padding:1px 7px;border-radius:6px;border:1px solid var(--brd);background:var(--sur);color:var(--tx2);cursor:pointer;text-transform:none;letter-spacing:0';
+    bEl.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); try{ _bnPopEleves(commWrap, bEl, (U)=>{
+      const noms=U.map(u=>'@['+getFullName(u)+']').join(' ');
+      const a=commTa.selectionStart==null ? commTa.value.length : commTa.selectionStart, b=commTa.selectionEnd==null ? a : commTa.selectionEnd;
+      const av=(a>0 && !/\s/.test(commTa.value[a-1])) ? ' ' : ''; commTa.setRangeText(av+noms+' ', a, b, 'end'); commTa.focus();
+      _persistSeanceContentDraft(curCls, slotKey, 'commentaire', commTa.value); }, curCls); }catch(err){ console.warn(err); } };
+    commLbl.appendChild(bEl); }
   commWrap.appendChild(commLbl); commWrap.appendChild(commTa);
   extra.appendChild(commWrap);
   extra._commTa=commTa;
@@ -53957,6 +53985,7 @@ function openSaveSeance(){
       });
     }
     const seance={date:effectiveDateStr,debut,fin,slotKey,statuts,competences,observations,contenu,commentaire,seqId,seanId};
+    try{ _scSyncJournal(curCls, slotKey, effectiveDateStr, commentaire); }catch(e){}   // V11.5.60 — @[élève] → journal
     { const _proch=extra._prochTa?extra._prochTa.value.trim():''; if(_proch) seance.prochainCours=_proch; }   // V11.4.33
     if(_avtFige) seance.avtNiveaux=_avtFige;   // V11.3.74 — niveaux d'avertissement figés avec les statuts
     // V035-V11.3.35 (Q1) — Réalignement des identités AVANT d'écrire la séance et
@@ -58998,6 +59027,7 @@ const JNL_TYPES=[
 function _jnlType(id){
   // V11.5.19 — note prise en réunion : type 'reu:<type de réunion>'.
   if(id==='bn') return {id:'bn', ic:'🗒', l:'Bloc-notes', bg:'#FEF9C3', fg:'#854D0E'};   // V11.5.23
+  if(id==='sc') return {id:'sc', ic:'💬', l:'Commentaire de séance', bg:'#F5F3FF', fg:'#5B21B6'};   // V11.5.60
   if(typeof id==='string' && id.indexOf('reu:')===0 && typeof _reuTypeDe==='function'){ const t=_reuTypeDe(id.slice(4)); return {id, ic:t.ic, l:t.l, bg:'#DBEAFE', fg:'#1D4ED8'}; }
   return JNL_TYPES.find(t=>t.id===id) || JNL_TYPES[JNL_TYPES.length-1];
 }
@@ -59386,6 +59416,88 @@ function _reuTexteCR(r, nomDe, jnl){
   return L.join('\n');
 }
 function _reuNbAFaire(r){ return (r.notes||[]).filter(n=>n && n.afaire && !n.fait).length+(typeof _reuNbAFaireTexte==='function' ? _reuNbAFaireTexte(r) : 0); }
+/** V11.5.60 — « À faire » non cochés de toutes les réunions (texte, puis anciennes notes). Pure. */
+function _reuAFaireTous(reus, ctx){
+  const out=[];
+  (reus||[]).forEach(r=>{ if(!r) return;
+    _reuLignesTexte(r.texte, ctx||{}).forEach(l=>{ if(l.type==='afaire' && !l.fait) out.push({r, l}); });
+    (r.notes||[]).forEach(n=>{ if(n && n.afaire && !n.fait) out.push({r, n}); }); });
+  return out.sort((a,b)=>String(b.r.date||'').localeCompare(String(a.r.date||'')));
+}
+/** V11.5.60 — Réunions d'un jour : @REU (agenda, bloc-notes) + réunions créées dans Réunions. */
+function _reuDuJour(dateStr){
+  const out=[]; let A=[]; try{ A=_reuGetForDate(dateStr)||[]; }catch(e){ A=[]; }
+  const cles=new Set(); A.forEach(x=>{ const c=_reuCle(x); cles.add(c); out.push(Object.assign({}, x, {agendaCle:c})); });
+  const plus1h=(h)=>{ const m=/^(\d{1,2}):(\d{2})$/.exec(h||''); if(!m) return ''; const t=Math.min(23*60+59, +m[1]*60+(+m[2])+60); return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); };
+  (Array.isArray(S.reunions) ? S.reunions : []).forEach(r=>{
+    if(!r || r.date!==dateStr || (r.agendaCle && cles.has(r.agendaCle))) return;
+    const d=r.debut||'12:30', fi=r.fin||plus1h(d)||d;
+    out.push({dateStr, debutStr:d, finStr:fi, debutLabel:d.replace(':','h'), finLabel:fi.replace(':','h'), titre:r.titre||'Réunion', lieu:r.lieu||'', reuId:r.id});
+  });
+  return out.sort((a,b)=>String(a.debutStr).localeCompare(String(b.debutStr)));
+}
+/** V11.5.60 — Ouvre la réunion (créée) ou la ligne @REU (« Ouvrir le compte rendu »). */
+function _reuOuvrirDepuis(x){
+  if(!x) return;
+  if(x.reuId){ openReunions(x.reuId); return; }
+  const c=x.agendaCle || _reuCle(x), r=_reuStore().find(y=>y && y.agendaCle===c);
+  openReunions(r ? r.id : 'agenda:'+c);
+}
+function _reuOuvrirAttr(el){ try{ const d=el.dataset||{}; _reuOuvrirDepuis(d.reuId ? {reuId:d.reuId} : {agendaCle:d.reuCle}); }catch(e){ console.warn(e); } }
+/** V11.5.60 — Accueil, pastille « 🗣 Réunions » : les à faire non cochés, cochables. */
+function _reuAFaireModal(){
+  const L=_reuAFaireTous(_reuStore(), _bnCtx());
+  document.getElementById('mt').textContent='🗣 Réunions : à faire';
+  document.getElementById('mb').textContent='';
+  document.getElementById('mok').style.display='none';
+  const ex=document.getElementById('modal-extra'); ex.textContent='';
+  let der='';
+  L.forEach(x=>{ const r=x.r;
+    if(r.id!==der){ der=r.id; const h=_reuEl('div','display:flex;align-items:center;gap:6px;margin:10px 0 2px'); ex.appendChild(h);
+      h.appendChild(_reuEl('span','font-size:11px;font-weight:800;color:#5B21B6;flex:1', _reuTypeDe(r.type).ic+' '+r.titre+' · '+_reuDateLong(r.date)));
+      const o=_reuBtn('Ouvrir ↗','padding:2px 8px;font-size:11px', ()=>{ closeModal(); openReunions(r.id); }); o.className='reu-af-ouvrir'; h.appendChild(o); }
+    const row=_reuEl('label','display:flex;gap:7px;align-items:baseline;padding:5px 0;border-top:1px solid var(--brd);font-size:13px;cursor:pointer'); row.className='reu-af';
+    const cb=_reuEl('input','accent-color:#166534'); cb.type='checkbox';
+    const t=x.l ? (x.l.heure?x.l.heure+' · ':'')+x.l.texte+(x.l.noms.length?' ('+x.l.noms.join(', ')+')':'')+(x.l.point?' — '+x.l.point:'') : x.n.texte;
+    const sp=_reuEl('span','', t);
+    cb.onchange=()=>{ if(x.l) r.texte=_reuBasculer(r.texte||'', x.l.i); else x.n.fait=cb.checked; saveS();
+      sp.style.textDecoration=cb.checked?'line-through':''; sp.style.opacity=cb.checked?'.5':''; try{ renderRappelsBandeau(); }catch(e){} };
+    row.appendChild(cb); row.appendChild(sp); ex.appendChild(row); });
+  if(!L.length) ex.appendChild(_reuEl('div','color:var(--tx3);font-size:12.5px','Rien à faire.'));
+  document.getElementById('mbg').classList.add('open');
+  _modalFermer();
+}
+/** V11.5.60 — Impression du compte rendu (A4, même contenu que le .docx). createElement. */
+function _reuPageImpEl(M){
+  const d=document.createElement('div'); d.className='reu-pg';
+  const el=(t, c, x)=>{ const e=document.createElement(t); if(c) e.className=c; if(x!=null) e.textContent=x; return e; };
+  d.appendChild(el('h1','', M.titre)); d.appendChild(el('div','st', M.sousTitre));
+  const mt=el('div','mt'); M.meta.forEach(([k,v])=>{ const s=el('span'); s.appendChild(el('b','', k+' : ')); s.appendChild(document.createTextNode(v)); mt.appendChild(s); }); d.appendChild(mt);
+  if(M.points.length){ d.appendChild(el('h2','', 'Ordre du jour')); const ol=el('ol'); M.points.forEach(p=>ol.appendChild(el('li','', p))); d.appendChild(ol); }
+  if(M.notes.length){ d.appendChild(el('h2','', 'Notes')); let ul=null;
+    M.notes.forEach(n=>{ if(n.kind==='point'){ d.appendChild(el('h3','', n.texte)); ul=null; return; }
+      if(!ul){ ul=el('ul'); d.appendChild(ul); }
+      const li=el('li'); if(n.heure) li.appendChild(el('b','', n.heure+' ')); li.appendChild(document.createTextNode((n.case?n.case+' ':'')+(n.marque?n.marque+' ':'')+n.texte));
+      if(n.noms.length) li.appendChild(el('i','', ' ('+n.noms.join(', ')+')')); if(n.date) li.appendChild(document.createTextNode(' · pour le '+n.date)); ul.appendChild(li); }); }
+  if(M.afaire.length){ d.appendChild(el('h2','', 'À faire')); const ul=el('ul'); M.afaire.forEach(a=>ul.appendChild(el('li','', (a.fait?'☑ ':'☐ ')+a.texte+(a.qui?' ('+a.qui+')':'')+(a.date?' · pour le '+a.date:'')))); d.appendChild(ul); }
+  if(M.eleves.length){ d.appendChild(el('h2','', 'Élèves reçus')); const ul=el('ul');
+    M.eleves.forEach(e=>{ const li=el('li'); li.appendChild(el('b','', e.nom)); li.appendChild(document.createTextNode((e.heure?' · vu à '+e.heure:'')+(e.presents?' ('+e.presents.toLowerCase()+')':'')+(e.notes?' : '+e.notes:''))); ul.appendChild(li); }); d.appendChild(ul); }
+  return d;
+}
+function _reuImprimer(r){
+  if(!document.getElementById('reu-imp-style')){ const st=document.createElement('style'); st.id='reu-imp-style';
+    st.textContent='#reu-print-root{display:none}.reu-pg{background:#fff;color:#111;font-family:Aptos,"Segoe UI",Calibri,sans-serif;font-size:11pt;line-height:1.4}'
+      +'.reu-pg h1{font-size:16pt;margin:0}.reu-pg .st{color:#555;margin:2px 0 8px}.reu-pg .mt{display:flex;flex-wrap:wrap;gap:4px 16px;border-bottom:1.5px solid #111;padding-bottom:6px;margin-bottom:6px}'
+      +'.reu-pg h2{font-size:12.5pt;margin:12px 0 4px;border-bottom:1px solid #999}.reu-pg h3{font-size:11pt;margin:8px 0 2px}.reu-pg ul,.reu-pg ol{margin:2px 0 4px 18px;padding:0}.reu-pg li{margin:1px 0}'
+      +'@media print{@page{size:A4 portrait;margin:1cm} body.reu-imprime>*:not(#reu-print-root){display:none!important} body.reu-imprime #reu-print-root{display:block!important}}';
+    document.head.appendChild(st); }
+  let root=document.getElementById('reu-print-root'); if(!root){ root=document.createElement('div'); root.id='reu-print-root'; document.body.appendChild(root); }
+  root.textContent=''; root.appendChild(_reuPageImpEl(_reuDocxModele(r, (u)=>getFullName(u), S.journalEleves||{}, _bnCtx())));
+  document.body.classList.add('reu-imprime');
+  const fin=()=>{ document.body.classList.remove('reu-imprime'); root.textContent=''; window.removeEventListener('afterprint', fin); };
+  window.addEventListener('afterprint', fin);
+  try{ window.print(); }catch(e){}
+}
 
 /* ── Interface ─────────────────────────────────────────────────────────── */
 let _reu={sel:'', filtre:'tout', cls:'', vuSeul:false, encours:'', supprimer:''};
@@ -59488,6 +59600,7 @@ function _reuRendreDetail(box, r){
   const cp=_reuBtn('📋 Copier','', ()=>{ const t=_reuMarkdown(r, (u)=>getFullName(u), S.journalEleves||{}, _bnCtx());   // V11.5.24 — Markdown
     try{ navigator.clipboard.writeText(t).then(()=>{ cp.textContent='✔ Copié'; setTimeout(()=>{ cp.textContent='📋 Copier'; },1500); }); }catch(e){} }, 'Copier le compte rendu');
   hd.appendChild(cp);
+  { const bp=_reuBtn('🖨','', ()=>_reuImprimer(r), 'Imprimer le compte rendu'); bp.id='reu-imprimer'; hd.appendChild(bp); }   // V11.5.60
   hd.appendChild(_reuBtn('✎','', ()=>_reuEditer(r, null), 'Modifier (type, date, classes…)'));
   const conf=_reu.supprimer===r.id;
   hd.appendChild(_btnSuppr(_reuBtn(conf?'Supprimer ?':'🗑', '', ()=>{
@@ -60253,6 +60366,89 @@ function _bnRendreArchives(box){
 /** Vue d'une classe (depuis le plan de classe) : ses lignes, cochables, et une saisie qui ajoute à « Général » avec #classe. */
 /** V11.5.38 — Lignes du bloc-notes d'une classe datées d'un jour (à faire / à rendre / rappel, non faites). Pure. */
 function _bnLignesDuJour(lignes, cls, dateStr){ const c=String(cls||'').toLowerCase(); return (lignes||[]).filter(l=>l && l.date===dateStr && !l.fait && l.type!=='note' && l.type!=='vide' && l.type!=='reu' && (l.classes||[]).indexOf(c)>=0); }
+/** V11.5.60 — Commentaire de séance : chaque ligne avec @[élève] → cible du journal (clé : classe, cours, ligne). Pure. */
+function _scCiblesJournal(commentaire, cls, slotKey, ctx){
+  const out=[], base='sc:'+String(cls||'').toLowerCase()+'|'+String(slotKey||'')+'|';
+  String(commentaire||'').split('\n').forEach(L=>{
+    if(!/@\[[^\]]+\]/.test(L)) return;
+    const U=[]; const texte=L.replace(/@\[([^\]]+)\]/g, (m, n)=>{ const u=ctx && ctx.eleves ? ctx.eleves.get(_bnNorm(n)) : null; if(u && U.indexOf(u)<0) U.push(u); return n.trim(); }).replace(/\s{2,}/g,' ').trim();
+    if(!texte) return;
+    const cle=base+_bnNorm(texte);
+    U.forEach(u=>out.push({uid:u, cle, texte}));
+  });
+  return out;
+}
+/** V11.5.60 — Journal : ajoute les lignes @[élève] du commentaire de ce cours, retire celles qui en ont disparu. */
+function _scSyncJournal(cls, slotKey, date, commentaire){
+  try{
+    if(!cls || !slotKey) return false;
+    const base='sc:'+String(cls).toLowerCase()+'|'+String(slotKey)+'|';
+    const C=_scCiblesJournal(commentaire, cls, slotKey, _bnCtx()), J=_jnlStore(), garder=new Set(C.map(c=>c.uid+'|'+c.cle));
+    let modif=false;
+    Object.keys(J).forEach(u=>{ const L=J[u]; if(!Array.isArray(L)) return; const n=L.filter(x=>!(x && x.scCle && x.scCle.indexOf(base)===0 && !garder.has(u+'|'+x.scCle))); if(n.length!==L.length){ J[u]=n; modif=true; if(!n.length) delete J[u]; } });
+    C.forEach(c=>{ const L=J[c.uid]||[]; if(L.some(x=>x && x.scCle===c.cle)) return;
+      if(_jnlAjouter(J, [c.uid], {texte:c.texte, date:date||String(slotKey).slice(0,10)||_appToday(), heure:'', type:'sc', cls:String(cls).toLowerCase()}, Date.now())){ const M=J[c.uid]; M[M.length-1].scCle=c.cle; modif=true; } });
+    if(modif) saveS();
+    return modif;
+  }catch(e){ console.warn('[séance] journal', e); return false; }
+}
+/** V11.5.60 — Échéances du bloc-notes : lignes ☐ 📥 🔔 datées et non faites, tous onglets, triées. Pure. */
+function _bnEcheances(textes, ctx){
+  const out=[];
+  Object.keys(textes||{}).forEach(id=>_bnLignes(textes[id], ctx).forEach(l=>{
+    if(l.fait || !l.date || ['afaire','arendre','rappel'].indexOf(l.type)<0) return;
+    out.push(Object.assign(l, {onglet:id}));
+  }));
+  return out.sort((a,b)=>(a.date+(a.heure||'')).localeCompare(b.date+(b.heure||'')));
+}
+/** V11.5.60 — Accueil : échéances du jour et en retard. Pure. */
+function _bnEcheancesAccueil(E, today){ return (E||[]).filter(l=>l && l.date && l.date<=today); }
+/** V11.5.60 — Vue hebdo : une ligne #classe va sur le cours de la classe ce jour-là, sinon sur la ligne du jour. coursJour = {date: [classes en minuscules]}. Pure. */
+function _bnRepartirSemaine(E, jours, coursJour){
+  const out={jours:{}, cours:{}}; (jours||[]).forEach(d=>{ out.jours[d]=[]; });
+  (E||[]).forEach(l=>{ if(!out.jours[l.date]) return;
+    const C=(coursJour||{})[l.date]||[], c=(l.classes||[]).find(x=>C.indexOf(x)>=0);
+    if(c){ const k=l.date+'|'+c; (out.cours[k]=out.cours[k]||[]).push(l); } else out.jours[l.date].push(l); });
+  return out;
+}
+/** V11.5.60 — Libellé court d'une échéance. Pure. */
+function _bnEchLibelle(l, o){
+  o=o||{};
+  return (o.date && l.date ? _bnDateTexte(l.date).slice(3)+' · ' : '')+((l.type==='arendre'||l.type==='rappel') ? BN_TYPES[l.type].ic+' ' : '')
+    +(l.heure ? String(l.heure).replace(/^0?(\d+):(\d\d)$/, (m,h,mi)=>h+'h'+(mi==='00'?'':mi))+' ' : '')+(l.texte||'')
+    +((l.noms||[]).length ? ' · '+l.noms.join(', ') : '')+(o.classe && (l.classes||[]).length ? ' · '+l.classes.map(c=>c.toUpperCase()).join(' ') : '');
+}
+function _bnEchCocher(l){ try{ const B=_bnStore(); B.textes[l.onglet]=_bnBasculer(B.textes[l.onglet]||'', l.i); saveS(); }catch(e){ console.warn('[bloc-notes] cocher', e); } }
+/** V11.5.60 — Échéance cochable (coche la ligne du bloc-notes). createElement. */
+function _bnEchElement(l, o){
+  o=o||{};
+  const r=document.createElement('label'); r.className='bn-ech';
+  r.style.cssText='display:flex;align-items:flex-start;gap:5px;cursor:pointer;font-size:'+(o.taille||12)+'px;line-height:1.35;'+(o.css||'');
+  const cb=document.createElement('input'); cb.type='checkbox'; cb.style.cssText='margin:2px 0 0;flex-shrink:0;cursor:pointer'; cb.title='Fait (coche la ligne du bloc-notes)';
+  const t=document.createElement('span'); t.textContent=_bnEchLibelle(l, o); if(o.retard) t.style.color='#991B1B';
+  r.addEventListener('click', e=>e.stopPropagation());
+  cb.onchange=()=>{ _bnEchCocher(l); t.style.textDecoration=cb.checked?'line-through':''; t.style.opacity=cb.checked?'.5':''; if(o.apres) o.apres(); };
+  r.appendChild(cb); r.appendChild(t); return r;
+}
+/** V11.5.60 — Accueil, pastille « 🗒 Bloc-notes » : échéances en retard et du jour, cochables. */
+function _bnEchModal(){
+  const today=_appToday(); let E=[];
+  try{ E=_bnEcheancesAccueil(_bnEcheances(_bnTousTextes(), _bnCtx()), today); }catch(e){}
+  document.getElementById('mt').textContent='🗒 Bloc-notes : à faire';
+  document.getElementById('mb').textContent='';
+  document.getElementById('mok').style.display='none';
+  const ex=document.getElementById('modal-extra'); ex.textContent='';
+  const maj=()=>{ try{ renderRappelsBandeau(); }catch(e){} };
+  const bloc=(titre, col, arr, retard)=>{ if(!arr.length) return;
+    ex.appendChild(_bnEl('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin:8px 0 2px;color:'+col, titre+' · '+arr.length));
+    arr.forEach(l=>ex.appendChild(_bnEchElement(l, {classe:true, date:retard, retard, taille:13, css:'padding:5px 0;border-top:1px solid var(--brd)', apres:maj}))); };
+  bloc('En retard','#991B1B', E.filter(l=>l.date<today), true);
+  bloc("Aujourd'hui",'#92400E', E.filter(l=>l.date===today), false);
+  if(!E.length) ex.appendChild(_bnEl('div','color:var(--tx3);font-size:12.5px','Rien pour aujourd’hui.'));
+  const b=_bnBtn('Ouvrir le bloc-notes ↗','margin-top:12px', ()=>{ closeModal(); openBlocNotes(); }); b.id='bn-ech-ouvrir'; ex.appendChild(b);
+  document.getElementById('mbg').classList.add('open');
+  _modalFermer();
+}
 /** V11.5.38 — « ➡️ Prochain cours » noté au cours précédent de la classe (séance validée, sinon brouillon). */
 function _pcNotePrecedent(cls, slotKey, grp){
   let prev=null; try{ prev=(typeof getPrevSlotKey==='function') ? getPrevSlotKey(cls, slotKey, grp||'') : null; }catch(e){}
@@ -60321,7 +60517,7 @@ function _bnRendreClasse(box){
       [['prochain', s ? '⏭ Prochain cours ('+_bnDateTexte(s.dateStr).slice(3)+')' : '⏭ Prochain cours'],['auj',"Aujourd'hui"],['','Sans date']].forEach(([v,l])=>tp.appendChild(_bnBtn(l, v===quand?'background:#0369A1;color:#fff;border-color:#0369A1':'', ()=>{ quand=v; dess(); }))); }
     tp.appendChild(_bnEl('span','width:6px'));
     const be=_bnBtn('👤 Élève(s)…','', ()=>_bnPopEleves(z, be, (U)=>{   // V11.5.38 — élèves de la classe, insérés dans la ligne
-        const noms=U.map(u=>versSeance() ? getFullName(u) : '@['+getFullName(u)+']').join(versSeance() ? ', ' : ' ');
+        const noms=U.map(u=>(versSeance() && type!=='commentaire') ? getFullName(u) : '@['+getFullName(u)+']').join((versSeance() && type!=='commentaire') ? ', ' : ' ');   // V11.5.60 — commentaire : @[ ] (journal)
         const a=ta.selectionStart==null ? ta.value.length : ta.selectionStart, b=ta.selectionEnd==null ? a : ta.selectionEnd;
         const av=(a>0 && !/\s/.test(ta.value[a-1])) ? ' ' : ''; ta.setRangeText(av+noms+' ', a, b, 'end'); ta.focus(); }, cls), 'Insérer des élèves de la classe'+(versSeance() ? '' : ' (la ligne part aussi dans leur journal)'));
     tp.appendChild(be);
@@ -62142,9 +62338,10 @@ const RCH_GENRES={
   eleve:  {ic:'👤', l:'Élèves'},          journal:{ic:'🗒', l:'Journal'},
   obs:    {ic:'📝', l:'Observations'},    reunion:{ic:'🗣', l:'Réunions'},
   cahier: {ic:'📅', l:'Cahier de texte'}, cours:  {ic:'🗓️', l:'Cours préparés'},
-  biblio: {ic:'📚', l:'Bibliothèque'},    notes:  {ic:'🗒', l:'Bloc-notes'}
+  biblio: {ic:'📚', l:'Bibliothèque'},    notes:  {ic:'🗒', l:'Bloc-notes'},
+  taf:    {ic:'📌', l:'Travail à faire'}, comp:   {ic:'🎯', l:'Compétences'}   // V11.5.60
 };
-const RCH_ORDRE=['eleve','journal','obs','reunion','cahier','cours','biblio','notes'];
+const RCH_ORDRE=['eleve','journal','obs','reunion','cahier','taf','cours','biblio','comp','notes'];
 const RCH_NOMINATIFS={eleve:1, journal:1, obs:1};
 function _rchNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
 function _rchTokens(q){ return _rchNorm(q).trim().split(/\s+/).filter(t=>t.length>=2); }
@@ -62170,6 +62367,9 @@ function _rchIndexer(src){
     const se=x && x.se; if(!se || !se.slotKey) return;
     Object.keys(se.observations||{}).forEach(u=>obs(se.slotKey, x.cls, u, se.observations[u]));
     let t=''; try{ t=src.cdt ? src.cdt(se, x.cls) : (se.contenu||''); }catch(e){ t=se.contenu||''; }
+    // V11.5.60 — travail à faire donné dans la séance enregistrée
+    (Array.isArray(se.tafs) ? se.tafs : (se.taf ? [se.taf] : [])).map(x=>String(x||'').trim()).filter(Boolean).forEach(tf=>out.push({genre:'taf',
+      titre:String(x.cls).toUpperCase()+' · '+_rchJour(String(se.slotKey).slice(0,10))+' '+(String(se.slotKey).split('_')[1]||''), texte:tf, date:String(se.slotKey).slice(0,10), cls:x.cls, slotKey:se.slotKey}));
     if(String(t||'').trim()) out.push({genre:'cahier', titre:String(x.cls).toUpperCase()+' · '+_rchJour(String(se.slotKey).slice(0,10))+' '+(String(se.slotKey).split('_')[1]||''),
       texte:t, date:String(se.slotKey).slice(0,10), cls:x.cls, slotKey:se.slotKey});
   });
@@ -62193,6 +62393,9 @@ function _rchIndexer(src){
     String(src.agenda[k]||'').split('\n').map(l=>l.trim()).filter(Boolean).forEach(l=>out.push({genre:'notes', titre:'Semaine du '+_rchJour(k), texte:l, date:k}));
   });
   (src.bloc||[]).forEach(o=>String(o.texte||'').split('\n').map(l=>l.trim()).filter(Boolean).forEach(l=>out.push({genre:'notes', titre:'Bloc-notes · '+o.l, texte:l, date:'', bn:o.id})));   // V11.5.23
+  // V11.5.60 — compétences du référentiel (une entrée par compétence, niveaux réunis)
+  (src.comps||[]).forEach(c=>{ if(!c || !c.id) return;
+    out.push({genre:'comp', titre:String(c.id)+' · '+(c.label||''), texte:[c.label, c.domaine].filter(Boolean).join(' · '), date:'', lv:(c.lvs||[]).join(' '), compId:c.id, compLv:(c.lvs||[])[0]||''}); });
   (src.reunions||[]).forEach(r=>{
     if(!r) return; const ty=src.typeReu ? src.typeReu(r.type) : {ic:'🗣', l:''};
     const t=[r.lieu, r.odj].concat((r.notes||[]).map(n=>n && n.texte)).filter(Boolean).join(' · ');
@@ -62209,8 +62412,9 @@ function _rchChercher(index, q, f){
     if(f.genre && f.genre!=='tout' && e.genre!==f.genre) return;
     if(f.sansNoms && RCH_NOMINATIFS[e.genre]) return;
     if(f.cls && e.cls && String(e.cls).toLowerCase()!==String(f.cls).toLowerCase()) return;
-    if(f.cls && !e.cls && e.genre!=='biblio') return;
+    if(f.cls && !e.cls && e.genre!=='biblio' && e.genre!=='comp') return;
     if(f.cls && e.genre==='biblio' && e.lv && String(f.cls).toLowerCase().indexOf(String(e.lv).toLowerCase())!==0) return;
+    if(f.cls && e.genre==='comp' && e.lv && String(e.lv).toLowerCase().split(' ').every(l=>String(f.cls).toLowerCase().indexOf(l)!==0)) return;   // V11.5.60
     if(e.date && ((f.du && e.date<f.du) || (f.au && e.date>f.au))) return;
     const hT=_rchNorm(e.titre), hay=hT+' '+_rchNorm(e.texte)+' '+_rchNorm(e.cls);
     if(!T.every(t=>hay.indexOf(t)>=0)) return;
@@ -62238,9 +62442,11 @@ function _rchIndex(){
   const classes=_reuClasses().map(cls=>({cls, students:((S.cl[cls]||{}).students||[]).slice()}));
   const seances=[]; classes.forEach(c=>{ try{ _getSavedSeanceEntriesForClsCode(c.cls).forEach(x=>{ if(x && x.se) seances.push({cls:c.cls, se:x.se}); }); }catch(e){} });
   const progs={}; try{ LEVELS.forEach(lv=>{ if(S.en && S.en[lv]){ const p=getProgression(lv); if(Array.isArray(p) && p.length) progs[lv]=p; } }); }catch(e){}
+  const comps=[]; try{ const M={}; (typeof _refNiveauxPage==='function' ? _refNiveauxPage() : ['5e','4e','3e']).forEach(lv=>((typeof _refItemsUniverse==='function' ? _refItemsUniverse(lv,'comps') : getRefItems(lv))||[]).forEach(it=>{
+    if(!it || !it.id) return; if(!M[it.id]){ M[it.id]={id:it.id, label:it.label||'', domaine:it.domaine||'', lvs:[]}; comps.push(M[it.id]); } if(M[it.id].lvs.indexOf(lv)<0) M[it.id].lvs.push(lv); })); }catch(e){}   // V11.5.60
   _rchCache={t:Date.now(), idx:_rchIndexer({classes, nom:(u)=>getFullName(u), J:S.journalEleves||{}, typeJnl:(t)=>_jnlType(t).l,
     obsCours:S.obsCours||{}, seances, cdt:(se, cls)=>buildCahierTexteSeance(se, cls), drafts:S.seanceContentDraft||{}, progs,
-    agenda:((S.agendaNotes||{})._global)||{}, reunions:S.reunions||[],
+    agenda:((S.agendaNotes||{})._global)||{}, reunions:S.reunions||[], comps,
     bloc:((S.blocNotes||{}).onglets||[]).map(t=>({id:t.id, l:t.l, texte:((S.blocNotes.textes||{})[t.id])||''})), typeReu:(id)=>_reuTypeDe(id)})};
   return _rchCache.idx;
 }
@@ -62250,20 +62456,34 @@ function _rchOuvrir(e){
   if(!e) return;
   if(RCH_NOMINATIFS[e.genre]){ _jnlOuvrirFiche(e.uid, e.cls); return; }
   if(e.genre==='reunion'){ closeRecherche(); openReunions(e.reuId); return; }
-  if(e.genre==='cahier'){ try{ openCourseSummaryModal(e.slotKey, e.cls); }catch(x){} return; }
+  if(e.genre==='cahier' || e.genre==='taf'){ try{ openCourseSummaryModal(e.slotKey, e.cls); }catch(x){} return; }
+  if(e.genre==='comp'){ closeRecherche(); try{ openComps(); _refFicheParId(e.compId, e.compLv); }catch(x){} return; }   // V11.5.60
   closeRecherche();
   if(e.genre==='cours'){ openSaisieCours({cls:e.cls, slotKey:e.slotKey}); return; }
   if(e.genre==='biblio'){ openProgression(); return; }
   if(e.genre==='notes' && e.bn){ _bn.onglet=e.bn; openBlocNotes(); return; }   // V11.5.23
   if(e.genre==='notes'){ openProgression(); try{ showProgTab('agenda'); }catch(x){} return; }
 }
+/** V11.5.60 — Recherches récentes : la plus récente d'abord, sans doublon (accents et casse ignorés), 6 au plus. Pure. */
+function _rchAjouterRecent(L, q, max){
+  const t=String(q||'').trim().replace(/\s+/g,' '); if(t.length<3) return (L||[]).slice();
+  const n=_rchNorm(t); return [t].concat((L||[]).filter(x=>_rchNorm(x)!==n)).slice(0, max||6);
+}
+const RCH_RECENTS_CLE='planclasse-rch-recents';
+function _rchRecents(){ try{ const L=JSON.parse(localStorage.getItem(RCH_RECENTS_CLE)||'[]'); return Array.isArray(L) ? L.filter(x=>typeof x==='string') : []; }catch(e){ return []; } }
+function _rchMemoriser(q){ try{ localStorage.setItem(RCH_RECENTS_CLE, JSON.stringify(_rchAjouterRecent(_rchRecents(), q))); }catch(e){} }
+/** Palette vide : recherches récentes (pas avec l'écran classe ouvert). */
+function _rchPaletteRecents(){
+  if(_rchSansNoms()) return [];
+  return _rchRecents().map(q=>({type:'recent', icon:'🕘', label:q, sub:'', garde:true, run:()=>{ _palOpen(); const i=document.getElementById('pal-input'); if(i){ i.value=q; _palRender(q); try{ i.setSelectionRange(q.length, q.length); }catch(e){} } }}));
+}
 /** Palette : entrées « Dans vos données » (6 au plus) + « Tout voir ». */
 function _rchPalette(q){
   if(String(q||'').trim().length<3) return [];
   let res=[]; try{ res=_rchChercher(_rchIndex(), q, {sansNoms:_rchSansNoms()}); }catch(e){ console.warn('[recherche]', e); return []; }
   if(!res.length) return [];
-  const L=res.slice(0,6).map(e=>({type:'data', icon:RCH_GENRES[e.genre].ic, label:e.titre, sub:_rchExtrait(e.texte, q, 80), genre:e.genre, run:()=>_rchOuvrir(e)}));
-  L.push({type:'data', icon:'→', label:'Tout voir ('+res.length+') dans la recherche', sub:'', genre:'tout', run:()=>openRecherche(q)});
+  const L=res.slice(0,6).map(e=>({type:'data', icon:RCH_GENRES[e.genre].ic, label:e.titre, sub:_rchExtrait(e.texte, q, 80), genre:e.genre, run:()=>{ _rchMemoriser(q); _rchOuvrir(e); }}));
+  L.push({type:'data', icon:'→', label:'Tout voir ('+res.length+') dans la recherche', sub:'', genre:'tout', run:()=>{ _rchMemoriser(q); openRecherche(q); }});
   L._total=res.length;
   return L;
 }
@@ -62316,7 +62536,7 @@ function _rchRendre(focus){
       carte.appendChild(el('div','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);padding:9px 14px', RCH_GENRES[g].ic+' '+RCH_GENRES[g].l+' · '+L.length));
       L.slice(0,60).forEach(e=>{
         const r=el('div','display:grid;grid-template-columns:110px 1fr auto;gap:10px;padding:8px 14px;border-top:1px solid var(--brd);align-items:start;font-size:13px;cursor:pointer');
-        r.onclick=()=>_rchOuvrir(e);
+        r.onclick=()=>{ _rchMemoriser(_rch.q); _rchOuvrir(e); };   // V11.5.60
         r.appendChild(el('span','font-size:11.5px;font-weight:700;color:var(--tx3)', [e.date?_rchJour(e.date):'', e.cls?String(e.cls).toUpperCase():(e.lv||'')].filter(Boolean).join(' · ')));
         const z=el('span','min-width:0'); r.appendChild(z);
         const t=el('div','font-weight:700'); t.innerHTML=_paramsHighlight(e.titre, _rch.q); z.appendChild(t);
@@ -64675,6 +64895,23 @@ function renderAgenda(){
 
   const tbody=document.createElement('tbody');
 
+  // V11.5.60 — Échéances du bloc-notes de la semaine : sur le cours (#classe) ou sur la ligne du jour
+  let _bnSem={jours:{}, cours:{}}; const _bnPoses=new Set();
+  try{ const coursJour={}; jourDates.forEach(d=>{ coursJour[d]=visClasses.filter(cc=>Object.keys(((slotIdx[cc]||{})[d])||{}).length).map(cc=>String(cc).toLowerCase()); });
+    _bnSem=_bnRepartirSemaine(_bnEcheances(_bnTousTextes(), _bnCtx()), jourDates, coursJour); }catch(e){ console.warn('[bloc-notes] hebdo', e); }
+  const _reuSem={}; try{ jourDates.forEach(d=>{ _reuSem[d]=_reuDuJour(d); }); }catch(e){}   // V11.5.60 — réunions du jour, cliquables
+  if(jourDates.some(d=>(_bnSem.jours[d]||[]).length || (_reuSem[d]||[]).length)){
+    const trB=document.createElement('tr'); trB.id='ag-bn-row';
+    const t0=document.createElement('td'); t0.className='col-cls'; t0.style.cssText='text-align:center;vertical-align:middle;padding:3px;background:#FFF8D6;font-size:13px'; t0.textContent='🗒'; t0.title='Réunions et lignes du bloc-notes datées de ce jour'; trB.appendChild(t0);
+    JOURS.forEach((_,i)=>{ const td=document.createElement('td'); td.style.cssText='background:#FFFBEA;padding:3px 5px;vertical-align:top';
+      (_reuSem[jourDates[i]]||[]).forEach(x=>{ const b=document.createElement('button'); b.type='button'; b.className='ag-reu';
+        b.style.cssText='display:block;width:100%;text-align:left;margin:0 0 3px;padding:2px 6px;border:1px solid #C4B5FD;border-radius:5px;background:#F5F3FF;color:#5B21B6;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit';
+        b.textContent='🗣 '+x.debutLabel+' '+x.titre; b.title='Ouvrir la réunion'; b.onclick=(e)=>{ e.stopPropagation(); _reuOuvrirDepuis(x); }; td.appendChild(b); });
+      (_bnSem.jours[jourDates[i]]||[]).forEach(l=>td.appendChild(_bnEchElement(l, {classe:true, taille:10.5}))); trB.appendChild(td); });
+    const tz=document.createElement('td'); tz.className='col-todo'; tz.style.background='#FFFBEA'; trB.appendChild(tz);
+    tbody.appendChild(trB);
+  }
+
   // Helper : construire une ligne de créneau
   const mkCreneauRow=(label, debut, fin, rowIdx, isFirst)=>{
     const tr=document.createElement('tr');
@@ -64720,6 +64957,11 @@ function renderAgenda(){
           card.appendChild(numMiniBadge);
           card.style.marginBottom='3px';
           td.appendChild(card);
+          // V11.5.60 — lignes du bloc-notes de la classe pour ce jour (sur son premier cours)
+          const _bk=dateStr+'|'+String(cc).toLowerCase();
+          if(_bnSem.cours[_bk] && !_bnPoses.has(_bk)){ _bnPoses.add(_bk);
+            const z=document.createElement('div'); z.className='ag-bn-cours'; z.style.cssText='margin:-1px 0 4px;padding:3px 5px;background:#FFF8D6;border:1px solid #E2C878;border-radius:4px';
+            _bnSem.cours[_bk].forEach(l=>z.appendChild(_bnEchElement(l, {taille:10.5}))); td.appendChild(z); }
         });
       });
       // V035-v181.15.45 (v5f-1b) — cartes des GROUPES INTER-CLASSES sur ce créneau.
