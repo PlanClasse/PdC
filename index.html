@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.62';
+const APP_VERSION = 'v11.5.63';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61825,6 +61825,19 @@ function _evlTouche(key, col, nCrit, nNiv, shift){
   return null;
 }
 /* Saisie (tableau) — V11.5.35 : curseur et saisie au clavier (0–3, A/D/N, *, ⌫, Tab, flèches, Entrée) */
+/** V11.5.63 — Aménagements EBEP en court : « ULIS, PAP · éval. adaptée · ⅓ temps ». Pure. */
+function _evlEbepCourt(parts){
+  const M={'Évaluation adaptée':'éval. adaptée', 'Tiers temps':'⅓ temps', 'Fournir les photocopies':'photocopies'};
+  return (Array.isArray(parts) ? parts : []).map(p=>M[p]||p).filter(Boolean).join(' · ');
+}
+/** V11.5.63 — Aménagements d'un élève (fiche de sa classe ; évaluation multi-classes : la classe qui le contient). */
+function _evlEbepEleve(u, cls){
+  try{
+    let c=cls; const dans=(k)=>!!(S.cl[k] && (S.cl[k].students||[]).indexOf(u)>=0);
+    if(!c || !dans(c)) c=Object.keys(S.cl||{}).find(dans)||cls;
+    return _evlEbepCourt(getEbepInfoParts(u, c));
+  }catch(e){ return ''; }
+}
 function _evlRendreSaisie(corps){
   const ev=_evlListe().find(e=>e.id===_evl.evId); if(!ev){ _evl.saisie=false; return _evlRendreEvals(corps); }
   const g=_evlGrille(ev.grilleId), C=_evlCible(ev), crit=(ev.mode!=='note' && g) ? (g.criteres||[]) : [], N=(g && g.niveaux)||EVL_NIV_DEFAUT;
@@ -61868,7 +61881,9 @@ function _evlRendreSaisie(corps){
     const u=L.u, gid=L.gid, tr=_evlEl('tr'); tr.dataset.u=u; T.appendChild(tr); const r=ev.res[u]=ev.res[u]||{}; const R=_evlResultat(ev, g, u, gid);
     const etat=_evlEtatLigne(ev, crit, R); tr.dataset.etat=etat;   // V11.5.51
     if(etat==='abs') tr.style.background='rgba(239,68,68,.5)';
-    const n=td('font-weight:700;'+(gid?'padding-left:20px':'')+(ri===cur.r?';color:#2563EB':'')+(etat==='note'?';opacity:.5':'')); n.textContent=getFullName(u)||u; if(R.ajuste){ n.appendChild(_evlEl('span','font-size:10.5px;color:#B45309;font-weight:600',' · ajusté')); } tr.appendChild(n);
+    const n=td('font-weight:700;'+(gid?'padding-left:20px':'')+(ri===cur.r?';color:#2563EB':'')+(etat==='note'?';opacity:.5':'')); n.textContent=getFullName(u)||u; if(R.ajuste){ n.appendChild(_evlEl('span','font-size:10.5px;color:#B45309;font-weight:600',' · ajusté')); }
+    { const eb=_evlEbepEleve(u, ev.cls); if(eb){ const x=_evlEl('span','margin-left:7px;font-size:10px;font-weight:600;color:#166534;background:#DCFCE7;border-radius:4px;padding:1px 5px;vertical-align:1px', eb); x.className='evl-ebep'; x.title='Besoins particuliers (fiche EBEP)'; n.appendChild(x); } }   // V11.5.63
+    tr.appendChild(n);
     const Gn=gid ? (((ev.resG[gid])||{}).niv||{}) : {};
     crit.forEach((c, ci)=>{ const z=td(); tr.appendChild(z); marquer(z, ri, ci);
       if(R.code){ z.textContent='—'; z.style.color='var(--tx3)'; return; }
@@ -62008,6 +62023,7 @@ function _evlPopEleve(evId, uid, apres){
   ev.res=ev.res||{}; const r=ev.res[uid]=ev.res[uid]||{}; const R=_evlResultat(ev, g, uid, gid); const Gn=gid ? ((((ev.resG||{})[gid])||{}).niv||{}) : {};
   box.appendChild(_evlEl('div','font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3)', '📊 '+ev.titre));
   box.appendChild(_evlEl('div','font-weight:800;font-size:17px;margin:2px 0 6px', (getFullName(uid)||uid)+(gid?'  ·  👥 '+((C.groupes.find(x=>x.id===gid)||{}).nom||''):'')));
+  { const eb=_evlEbepEleve(uid, ev.cls); if(eb){ const x=_evlEl('div','margin:-3px 0 7px;font-size:11px;font-weight:600;color:#166534', '🧩 '+eb); x.className='evl-ebep'; box.appendChild(x); } }   // V11.5.63
   const cd=_evlEl('div'); box.appendChild(cd); EVL_CODES.forEach(k=>cd.appendChild(_evlChip(k, r.code===k, ()=>{ r.code=r.code===k?'':k; if(!r.code) delete r.code; _evlPopEleve(evId, uid, apres); })));
   if(!r.code) crit.forEach(c=>{ const L=_evlEl('div','display:flex;align-items:center;gap:4px;margin:6px 0'); box.appendChild(L);
     const lb=_evlEl('span','flex:1;font-weight:700;font-size:13px', c.l+(c.poids>1?' ×'+c.poids:'')); L.appendChild(lb);
