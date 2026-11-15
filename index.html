@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.75';
+const APP_VERSION = 'v11.5.76';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -17764,11 +17764,19 @@ function _impPuce(bilan){
   if(s) e.appendChild(_impEl('div', 'imp-puce-s', s));
   return e;
 }
+/** V11.5.76 — Premier jour avec cours à partir de t (t lui-même s'il a cours) ; t si aucun. Pure. */
+function _impPremierJourAvecCours(t, dates){ let m=null; (dates||[]).forEach(d=>{ if(d && d>=t && (m===null || d<m)) m=d; }); return m || t; }
+/** V11.5.76 — Dates des cours (non annulés) de toutes les classes actives, à partir de t. */
+function _impDatesDeCours(t){
+  const D=[]; try{ _homeListActiveClasses().forEach(cls=>{ let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ slots=[]; }
+    slots.forEach(s=>{ if(!s || !s.dateStr || s.dateStr<t) return; if(typeof isSlotCancelled==='function' && isSlotCancelled(s.dateStr, s.debut, cls)) return; D.push(s.dateStr); }); }); }catch(e){}
+  return D;
+}
 function openImpressions(opts){
   opts=opts||{};
   const t=_appToday();
   _imp={vue:opts.vue||'gestion', horizon:(_imp && _imp.horizon) || 21, niveau:(_imp && _imp.niveau) || '',
-        jour:opts.jour || t, form:null, mode:'add'};
+        jour:opts.jour || _impPremierJourAvecCours(t, _impDatesDeCours(t)), form:null, mode:'add'};   // V11.5.76 — aujourd'hui, ou le prochain jour avec cours
   _impRendre();
 }
 function closeImpressions(){
@@ -17960,7 +17968,7 @@ function _impRendreJour(zone, corps){
   let lib=_imp.jour; try{ lib=new Date(_imp.jour+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}); }catch(e){}
   nav.appendChild(_impEl('span', 'imp-nav-j', lib));
   nav.appendChild(_impBtn('▶', 'bs imp-nav-b', ()=>{ _imp.jour=_impDateDecalee(_imp.jour, 1); _impRendre(); }, 'Jour suivant'));
-  nav.appendChild(_impBtn('Aujourd’hui', 'bs', ()=>{ _imp.jour=_appToday(); _impRendre(); }));
+  nav.appendChild(_impBtn('Aujourd’hui', 'bs', ()=>{ const t=_appToday(); _imp.jour=_impPremierJourAvecCours(t, _impDatesDeCours(t)); _impRendre(); }, 'Aujourd’hui, ou le prochain jour avec cours'));   // V11.5.76
   zone.appendChild(nav);
   const t=_appToday(), J=_imp.jour, passe=J<t;
   const au=_impDateDecalee(J>t?J:t, 21);
