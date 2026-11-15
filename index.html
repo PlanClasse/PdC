@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.77';
+const APP_VERSION = 'v11.5.78';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61589,6 +61589,24 @@ function _evlMarqueAdapte(ev, g, u, R){
   const x=_evlEl('span','margin-left:6px;font-size:10.5px;font-weight:800;color:#fff;background:'+(a?'#7C3AED':'#111418')+';border-radius:4px;padding:1px 5px;vertical-align:1px;white-space:nowrap', txt); x.className='evl-adapte';
   x.title=(nn ? 'Non noté : hors moyennes, « NN » dans Pronote' : '')+(a ? (nn ? '\n' : '')+'Évaluation adaptée : '+a+conv : ''); return x;
 }
+/** V11.5.78 — Bande « En direct » compacte (moyenne, mini, maxi, répartition, absents à rattraper),
+ *  collée en bas de l'écran : pour les saisies note + grille (tableau, un élève), où l'encart de droite n'a pas sa place. createElement. */
+function _evlBandeDirect(ev, U){
+  const A=_evlAvancement(ev), St=_evlStatsNotes(A.notes), b=Number(ev.bareme)||20, R=_evlRepartition(A.notes, b);
+  const z=_evlEl('div','position:sticky;bottom:0;z-index:3;margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;padding:8px 14px;background:var(--sur);border:2px solid #111418;border-radius:12px;box-shadow:0 -6px 14px rgba(0,0,0,.12)'); z.id='evl-direct-bande';
+  z.appendChild(_evlEl('div','font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase','En direct'));
+  const k=_evlEl('div','display:flex;gap:18px;align-items:baseline'); z.appendChild(k);
+  [[St.moy,'moyenne'],[St.min,'mini'],[St.max,'maxi']].forEach(([v,l])=>{ const d=_evlEl('div','display:flex;align-items:baseline;gap:5px'); d.appendChild(_evlEl('b','font-size:21px;font-weight:800', _evlFmt(v))); d.appendChild(_evlEl('span','font-size:12.5px;font-weight:700;color:var(--tx2)', l)); k.appendChild(d); });
+  const mx=Math.max(1, ...R.n), co=['#DC2626','#EA580C','#15803D','#1D4ED8'], hi=_evlEl('div','display:flex;align-items:flex-end;gap:8px'); hi.id='evl-repartition-bande'; z.appendChild(hi);
+  R.n.forEach((v,i)=>{ const c=_evlEl('div','display:flex;flex-direction:column;align-items:center;gap:2px;min-width:54px');
+    const l=_evlEl('div','display:flex;align-items:flex-end;gap:4px;height:30px'); l.appendChild(_evlEl('div','width:26px;border-radius:3px;background:'+co[i]+';height:'+Math.max(3, Math.round(30*v/mx))+'px')); l.appendChild(_evlEl('b','font-size:13px', String(v))); c.appendChild(l);
+    c.appendChild(_evlEl('span','font-size:11px;font-weight:700;white-space:nowrap', R.lib[i])); hi.appendChild(c); });
+  const ab=(U||[]).filter(u=>((ev.res[u]||{}).code)==='Abs');
+  if(ab.length){ const noms=ab.map(u=>getFullName(u)||u).join(', '), x=_evlEl('div','flex:1 1 220px;min-width:0;border:2px solid #B91C1C;border-radius:10px;padding:5px 10px');
+    x.appendChild(_evlEl('b','font-size:13.5px;color:#B91C1C', ab.length+' absent'+(ab.length>1?'s':'')+' à rattraper : '));
+    x.appendChild(_evlEl('span','font-size:12.5px;color:var(--tx2)', noms)); x.title=noms; z.appendChild(x); }
+  return z;
+}
 /** Résultat effectif d'un élève : niveaux (groupe puis ajustements), note, code, ajusté ? Pure. */
 function _evlResultat(ev, grille, uid, gid){
   const r=((ev.res||{})[uid])||{}, G=gid ? (((ev.resG||{})[gid])||{}).niv||{} : {};
@@ -62243,6 +62261,7 @@ function _evlRendreSaisie(corps){
   });
   wrap.addEventListener('pointerdown', (e)=>{ if(!(e.target && e.target.tagName==='INPUT')) _evl.clavier=true; });
   corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px', (ev.parGroupe && C.groupes.length ? 'Ligne du groupe → appliquée à tous ses membres (pâle = hérité). Niveau d’un élève → ajusté pour lui seul (cadre orange). ' : '')+'Survol d’un niveau → son indicateur. Abs / Disp / NR : l’élève n’est pas noté.'));
+  if(ev.mode!=='crit') corps.appendChild(_evlBandeDirect(ev, C.eleves));   // V11.5.78
   if(_evl.clavier) _evlFocusSaisie();   // synchrone : aucune frappe perdue entre deux rendus
 }
 /* ═══ V11.5.68 — Grilles reliées au référentiel : critère → compétence du programme (c.compId) ═══ */
@@ -62470,6 +62489,7 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
     if(/^[0-9]$/.test(k) && Number(k)<N.length){ e.preventDefault(); r.niv=r.niv||{}; r.niv[crit[cur.c].id]=Number(k); delete r.code; if(cur.c<crit.length-1){ cur.c++; refaire(); } else suivant(1); return; }
     if(k==='ArrowDown'){ e.preventDefault(); cur.c=Math.min(crit.length-1, cur.c+1); refaire(); } else if(k==='ArrowUp'){ e.preventDefault(); cur.c=Math.max(0, cur.c-1); refaire(); }
     else if(k==='ArrowRight'){ e.preventDefault(); suivant(1); } else if(k==='ArrowLeft'){ e.preventDefault(); suivant(-1); } });
+  if(ev.mode!=='crit') corps.appendChild(_evlBandeDirect(ev, U));   // V11.5.78
   setTimeout(()=>{ const fq=_evl.focusQ; _evl.focusQ=null;
     const i=PQ && !R.code ? document.querySelector('#evl-pts input[data-q="'+(fq!=null ? fq : cur.c)+'"]') : null;
     if(i){ try{ i.focus(); i.select(); }catch(e){} } else { try{ main.focus({preventScroll:true}); }catch(e){} } }, 0);
