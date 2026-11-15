@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.73';
+const APP_VERSION = 'v11.5.74';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61523,17 +61523,68 @@ function _evlFiltrerGrilles(L, q, portee, tag){
     if(tag && (g.tags||[]).indexOf(tag)<0) return false;
     return true; });
 }
+/** V11.5.74 — Évaluation adaptée (EBEP) : barème propre à l'élève (la note saisie est lue sur ce barème,
+ *  puis ramenée au barème de l'évaluation) et questions non posées (le total ne compte que les questions posées). */
+function _evlBarEleve(ev, u){ const r=(((ev && ev.res)||{})[u])||{}, b=Number(r.bar); return b>0 ? b : (Number(ev && ev.bareme)||20); }
+/** Note saisie sur « bar » ramenée au barème commun, au dixième. Pure. */
+function _evlConvertir(note, bar, bareme){ const n=Number(note), a=Number(bar)||0, b=Number(bareme)||20; if(note==null || note==='' || isNaN(n)) return null; if(!(a>0) || a===b) return n; return Math.round(n*b/a*10)/10; }
+/** Grille réduite aux questions posées. Pure. */
+function _evlQuestionsPosees(g, qOff){ const O=qOff||[]; if(!g || !O.length) return g; return Object.assign({}, g, {questions:(g.questions||[]).filter(q=>O.indexOf(q.id)<0)}); }
+/** Libellé de l'adaptation (vide si aucune) : « /13 », « 2 questions non posées ». Pure. */
+function _evlAdaptation(ev, g, u){
+  const r=(((ev && ev.res)||{})[u])||{}, L=[], b=Number(r.bar);
+  if(b>0 && b!==(Number(ev.bareme)||20) && ev.mode!=='crit') L.push('/'+String(b).replace('.',','));
+  if(_evlParQuestion(ev, g)){ const off=(r.qOff||[]).filter(id=>(g.questions||[]).some(q=>q.id===id)).length; if(off) L.push(off+' question'+(off>1?'s':'')+' non posée'+(off>1?'s':'')); }
+  return L.join(' · ');
+}
+/** Écrit l'adaptation (barème égal au commun ou vide = supprimé ; aucune question retirée = supprimé). Pure (modifie ev). */
+function _evlAdaptEcrire(ev, u, bar, qOff){
+  if(!ev || !u) return false; ev.res=ev.res||{}; const r=ev.res[u]=ev.res[u]||{};
+  if(bar!==undefined){ const b=Number(String(bar==null?'':bar).replace(',','.')); if(b>0 && b!==(Number(ev.bareme)||20)) r.bar=b; else delete r.bar; }
+  if(qOff!==undefined){ const O=(qOff||[]).filter(Boolean); if(O.length) r.qOff=O; else delete r.qOff; }
+  if(!Object.keys(r).length) delete ev.res[u]; return true;
+}
+/** Bloc « ◆ Évaluation adaptée » : barème propre, questions posées. Chaque changement est enregistré. createElement. */
+function _evlBlocAdapte(ev, g, u, apres){
+  const z=_evlEl('div','margin-top:10px;padding:8px 10px;border:2px solid #7C3AED;border-radius:10px'); z.className='evl-bloc-adapte';
+  z.appendChild(_evlEl('div','font-size:12.5px;font-weight:800;color:#6D28D9;margin-bottom:6px','◆ Évaluation adaptée (EBEP, ULIS…)'));
+  const r=(ev.res||{})[u]||{}, PQ=_evlParQuestion(ev, g);
+  const maj=()=>{ _evlSauver(ev); if(typeof apres==='function') apres(); };
+  if(ev.mode!=='crit'){ const lb=_evlEl('label','display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;flex-wrap:wrap'); z.appendChild(lb);
+    lb.appendChild(document.createTextNode('Note saisie sur'));
+    const i=_evlEl('input','width:64px;font:inherit;font-weight:800;padding:3px 6px;border:2px solid #7C3AED;border-radius:7px;background:var(--sur);color:var(--tx)'); i.inputMode='decimal'; i.className='evl-bar';
+    i.value=r.bar ? String(r.bar).replace('.',',') : ''; i.placeholder=String(ev.bareme||20); lb.appendChild(i);
+    lb.appendChild(_evlEl('span','font-weight:600;color:var(--tx2)','au lieu de '+(ev.bareme||20)+' ; ramenée sur '+(ev.bareme||20)+' dans le carnet'));
+    i.addEventListener('keydown', e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); i.blur(); } });
+    i.onchange=()=>{ _evlAdaptEcrire(ev, u, i.value); maj(); }; }
+  if(PQ){ const qz=_evlEl('div','display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:6px'); qz.className='evl-q-posees'; z.appendChild(qz);
+    qz.appendChild(_evlEl('span','font-size:13px;font-weight:700','Questions posées :'));
+    const off=r.qOff||[];
+    (g.questions||[]).forEach((q, qi)=>{ const on=off.indexOf(q.id)<0;
+      const b=_evlEl('button','font:inherit;font-size:12.5px;font-weight:800;padding:3px 8px;border-radius:7px;cursor:pointer;border:2px solid #7C3AED;background:'+(on?'#7C3AED':'transparent')+';color:'+(on?'#fff':'#6D28D9')+';'+(on?'':'text-decoration:line-through'), 'Q'+(qi+1)+' /'+_evlFmt(q.max));
+      b.type='button'; b.setAttribute('aria-pressed', on?'true':'false'); b.title=on ? 'Posée : clic pour la retirer' : 'Non posée : clic pour la remettre';
+      b.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); const O=((ev.res[u]||{}).qOff||[]).slice(), k=O.indexOf(q.id); if(k>=0) O.splice(k,1); else O.push(q.id); _evlAdaptEcrire(ev, u, undefined, O); maj(); };
+      qz.appendChild(b); }); }
+  return z;
+}
+/** Petite marque ◆ d'une évaluation adaptée (saisie, carnet), ou null. createElement. */
+function _evlMarqueAdapte(ev, g, u, R){
+  const a=_evlAdaptation(ev, g, u); if(!a) return null;
+  const rr=(ev.res||{})[u]||{}, conv=R && R.noteForcee && Number(rr.bar)>0 && R.note!=null ? ' → '+_evlFmt(R.note)+'/'+(ev.bareme||20) : '';
+  const x=_evlEl('span','margin-left:6px;font-size:10.5px;font-weight:800;color:#fff;background:#7C3AED;border-radius:4px;padding:1px 5px;vertical-align:1px;white-space:nowrap', '◆ '+a+conv); x.className='evl-adapte'; x.title='Évaluation adaptée : '+a+conv; return x;
+}
 /** Résultat effectif d'un élève : niveaux (groupe puis ajustements), note, code, ajusté ? Pure. */
 function _evlResultat(ev, grille, uid, gid){
   const r=((ev.res||{})[uid])||{}, G=gid ? (((ev.resG||{})[gid])||{}).niv||{} : {};
-  const PQ=_evlParQuestion(ev, grille), CQ=PQ ? _evlCalcQuestions(grille, r.pts) : null;   // V11.5.66 — saisie par question
+  const PQ=_evlParQuestion(ev, grille), CQ=PQ ? _evlCalcQuestions(_evlQuestionsPosees(grille, r.qOff), r.pts) : null;   // V11.5.66 (par question), V11.5.74 (questions posées)
   const niv=Object.assign({}, G, CQ ? CQ.niv : {}, r.niv||{});
   const ajuste=(!!gid && Object.keys(r.niv||{}).some(k=>r.niv[k]!==G[k])) || (!!CQ && Object.keys(r.niv||{}).some(k=>CQ.niv[k]!=null && r.niv[k]!==CQ.niv[k]));
   let note=null;
   if(r.code) note=null;
-  else if(ev.mode==='note') note=(r.note!=null && r.note!=='') ? Number(r.note) : null;
-  else if(ev.mode==='both') note=(r.note!=null && r.note!=='') ? Number(r.note) : (CQ ? _evlNoteQuestions(CQ, ev.bareme) : (ev.noteCalc!==false ? _evlNoteCalc(grille, niv, ev.bareme) : null));
-  return {niv, note, code:r.code||'', ajuste, noteForcee:r.note!=null && r.note!=='', ...(CQ ? {pq:CQ} : {})};
+  else if(ev.mode==='note') note=_evlConvertir(r.note, r.bar, ev.bareme);
+  else if(ev.mode==='both') note=(r.note!=null && r.note!=='') ? _evlConvertir(r.note, r.bar, ev.bareme) : (CQ ? _evlNoteQuestions(CQ, ev.bareme) : (ev.noteCalc!==false ? _evlNoteCalc(grille, niv, ev.bareme) : null));
+  const adapte=_evlAdaptation(ev, grille, uid);
+  return {niv, note, code:r.code||'', ajuste, noteForcee:r.note!=null && r.note!=='', ...(CQ ? {pq:CQ} : {}), ...(adapte ? {adapte} : {})};
 }
 /** V11.5.51 — État d'une ligne de saisie : 'abs' (absent), 'code' (Disp / NR), 'note' (a reçu sa note :
  *  note écrite, ou tous les critères évalués), '' (rien encore). Pure. */
@@ -61554,6 +61605,7 @@ function _evlTexte(ev, grille, res){
   if(res.code) return res.code;
   const parts=[]; if(res.note!=null) parts.push(String(res.note).replace('.',',')+'/'+(ev.bareme||20));
   if(ev.mode!=='note' && grille){ const N=grille.niveaux||EVL_NIV_DEFAUT; const L=(grille.criteres||[]).filter(c=>res.niv[c.id]!=null).map(c=>c.l+' '+res.niv[c.id]+'/'+(N.length-1)); if(L.length) parts.push(L.join(' · ')); }
+  if(res.adapte) parts.push('◆ adaptée ('+res.adapte+')');
   return parts.join(' · ');
 }
 /** V11.5.42 — Une évaluation a-t-elle des résultats (niveaux, note ou code) ? Pure. */
@@ -61792,7 +61844,7 @@ function _evlRendreCarnet(corps){
       if(C.eleves.indexOf(u)<0){ td.textContent='·'; td.style.color='var(--tx3)'; td.style.cursor='default'; td.onclick=null; return; }
       const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C, u) : '');
       if(r.code){ td.appendChild(_evlEl('b','font-size:13px;color:'+(r.code==='Abs'?'#B91C1C':'#4B5563'), r.code)); }
-      else if(r.note!=null){ td.appendChild(_evlPastille(_evlFmt(r.note), _evlCouleurNote(r.note, ev.bareme))); }
+      else if(r.note!=null){ td.appendChild(_evlPastille(_evlFmt(r.note), _evlCouleurNote(r.note, ev.bareme))); if(r.adapte){ td.appendChild(_evlEl('span','font-size:11px;font-weight:800;color:#7C3AED;margin-left:3px','◆')); td.title='◆ Évaluation adaptée : '+r.adapte; } }
       else if(g && ev.mode!=='note'){ (g.criteres||[]).forEach(c=>{ const n=r.niv[c.id]; if(n!=null){ const C2=EVL_NIV_COUL[n]||EVL_NIV_COUL[0]; td.appendChild(_evlEl('span','display:inline-block;min-width:20px;text-align:center;font-weight:800;font-size:12px;padding:1px 4px;border-radius:5px;margin:0 1px;background:'+C2[0]+';color:'+C2[1], String(n))); } }); }
       if(!td.childNodes.length){ td.textContent='—'; td.style.color='var(--tx3)'; }
       { const com=_evlCom(ev, u); if(com){ td.appendChild(_evlEl('span','font-size:11px;margin-left:3px','💬')); td.title='💬 '+com; } }   // V11.5.67
@@ -62144,12 +62196,13 @@ function _evlRendreSaisie(corps){
         z.appendChild(_evlNiv(i, propre||herite, nl+((c.ind||[])[i]?' — '+c.ind[i]:''), ()=>{ cur.r=ri; cur.c=ci; setNiv(L, ci, (r.niv && r.niv[c.id]===i) ? null : i); refaire(); }, herite?'opacity:.55':(propre && gid && Gn[c.id]!=null && Gn[c.id]!==i ? 'outline:2px dashed #F59E0B;outline-offset:1px':''))); }); });
     if(ev.mode!=='crit'){ const z=td(); tr.appendChild(z); marquer(z, ri, crit.length);
       if(!R.code){ const i=_evlEl('input','width:62px;font:inherit;font-weight:800;padding:4px 6px;border:1.5px solid var(--brd);border-radius:7px;background:'+(R.noteForcee||ev.mode==='note'||ev.noteCalc===false?'var(--sur2)':'transparent')+';color:var(--tx)');
-        i.inputMode='decimal'; i.value=R.note==null?'':String(R.note).replace('.',','); i.placeholder='—'; i.dataset.r=ri;
+        i.inputMode='decimal'; i.value=R.noteForcee ? String(r.note).replace('.',',') : (R.note==null?'':String(R.note).replace('.',',')); i.placeholder='—'; i.dataset.r=ri;
         i.title=ev.mode==='both' && ev.noteCalc!==false ? 'Calculée ; écrire une note pour la remplacer, vider pour revenir au calcul' : 'Note';
-        i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v===''){ delete r.note; } else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(Number(ev.bareme)||20, Number(v))); refaire(); };
+        i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v===''){ delete r.note; } else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(_evlBarEleve(ev, u), Number(v))); refaire(); };
         i.onkeydown=(e)=>{ if(e.key==='Enter' || e.key==='Tab' || e.key==='ArrowDown' || e.key==='ArrowUp'){ e.preventDefault(); e.stopPropagation(); cur.r=Math.max(0, Math.min(lignes.length-1, cur.r+(e.key==='ArrowUp'?-1:1))); _evl.clavier=true; i.onchange(); } else if(e.key==='Escape'){ e.stopPropagation(); i.blur(); _evlFocusSaisie(); } };
         i.addEventListener('focus', ()=>{ cur.r=ri; cur.c=crit.length; });
-        z.appendChild(i); if(R.noteForcee && ev.mode==='both' && ev.noteCalc!==false) z.appendChild(_evlEl('span','font-size:10.5px;color:#B45309',' forcée')); } }
+        z.appendChild(i); if(R.noteForcee && ev.mode==='both' && ev.noteCalc!==false) z.appendChild(_evlEl('span','font-size:10.5px;color:#B45309',' forcée'));
+        { const mq=_evlMarqueAdapte(ev, g, u, R); if(mq){ z.appendChild(document.createElement('br')); z.appendChild(mq); } } } }
     const zc=td(); tr.appendChild(zc);
     if(etat!=='note') EVL_CODES.forEach(k=>zc.appendChild(_evlChip(k, r.code===k, ()=>{ cur.r=ri; r.code=r.code===k?'':k; if(!r.code) delete r.code; refaire(); }, {Abs:'Absent',Disp:'Dispensé',NR:'Non rendu'}[k])));
   });
@@ -62242,8 +62295,8 @@ function _evlComEcrire(ev, u, txt){
 }
 /** Bouton 💬 : plein s'il y a un commentaire. createElement. */
 function _evlBtnCom(ev, u, apres){
-  const com=_evlCom(ev, u), b=_evlEl('button','font:inherit;font-size:13px;line-height:1;padding:3px 6px;border-radius:7px;cursor:pointer;margin-left:6px;vertical-align:1px;border:2px solid '+(com?'#111418':'#8A9099')+';background:'+(com?'#111418':'transparent')+';color:'+(com?'#fff':'inherit'), com ? '💬' : '＋💬');
-  b.type='button'; b.className='evl-btn-com'+(com?' plein':''); b.title=com ? '💬 '+com+'\n(clic ou C : modifier)' : 'Ajouter un commentaire (C)'; b.tabIndex=-1;
+  const com=_evlCom(ev, u), ad=_evlAdaptation(ev, _evlGrille(ev.grilleId), u), b=_evlEl('button','font:inherit;font-size:13px;line-height:1;padding:3px 6px;border-radius:7px;cursor:pointer;margin-left:6px;vertical-align:1px;border:2px solid '+(com?'#111418':(ad?'#7C3AED':'#8A9099'))+';background:'+(com?'#111418':'transparent')+';color:'+(com?'#fff':'inherit'), (com ? '💬' : '＋💬')+(ad ? ' ◆' : ''));
+  b.type='button'; b.className='evl-btn-com'+(com?' plein':''); b.title=(com ? '💬 '+com+'\n(clic ou C : modifier)' : 'Ajouter un commentaire (C)')+(ad ? '\n◆ Évaluation adaptée : '+ad : '\nBarème adapté : dans la même fenêtre'); b.tabIndex=-1;
   b.addEventListener('pointerdown', e=>e.stopPropagation());
   b.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); _evlCommentaire(ev, u, b, apres); }; return b;
 }
@@ -62253,6 +62306,7 @@ function _evlCommentaire(ev, u, ancre, apres){
   const p=_evlEl('div','position:fixed;z-index:490;width:min(420px,92vw);background:var(--sur);color:var(--tx);border:3px solid #111418;border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.3);padding:12px'); p.id='evl-com';
   p.appendChild(_evlEl('div','font-weight:800;font-size:14px;margin-bottom:6px', '💬 '+(getFullName(u)||u)+' · '+(ev.titre||'')));
   const ta=_evlEl('textarea','width:100%;box-sizing:border-box;min-height:80px;font:inherit;font-size:14px;padding:8px;border:2px solid #111418;border-radius:8px;background:var(--sur);color:var(--tx);resize:vertical'); ta.value=_evlCom(ev, u); ta.placeholder='Commentaire pour cet élève (journal et carnet)'; p.appendChild(ta);
+  { const ga=_evlGrille(ev.grilleId); if(ev.mode!=='crit' || _evlParQuestion(ev, ga)){ const zb=_evlEl('div'); p.appendChild(zb); const refaireB=()=>{ zb.textContent=''; zb.appendChild(_evlBlocAdapte(ev, ga, u, refaireB)); }; refaireB(); } }   // V11.5.74
   const bt=_evlEl('div','display:flex;gap:8px;justify-content:flex-end;margin-top:8px;align-items:center'); p.appendChild(bt);
   bt.appendChild(_evlEl('span','flex:1;font-size:12px;color:var(--tx2)','Entrée : enregistrer · Maj+Entrée : à la ligne · Échap : annuler'));
   const fermer=(ok)=>{ if(ok){ _evlComEcrire(ev, u, ta.value); _evlSauver(ev); } p.remove(); if(typeof apres==='function') apres(ok); };
@@ -62280,11 +62334,12 @@ function _evlRendreSaisieNotes(corps, ev, g, C){
   const valeur=(u)=>{ const r=ev.res[u]||{}; return r.code || ((r.note!=null && r.note!=='') ? String(r.note).replace('.',',') : ''); };
   const style=(i)=>{ const u=U[i], tr=rows[i], e=etatDe(u), on=i===cur.r; if(!tr) return; tr.dataset.etat=e; tr.classList.toggle('evl-ligne-active', on);
     tr.style.background=on ? EVL_JAUNE : (e==='abs' ? '#B91C1C' : 'transparent'); tr.style.color=on ? '#111418' : (e==='abs' ? '#fff' : ((e==='note' || e==='code') ? '#4B5563' : 'var(--tx)'));
-    tr.style.boxShadow=on ? 'inset 0 3px 0 #111418, inset 0 -3px 0 #111418' : 'none'; tr.querySelector('.evl-nom').textContent=(on?'▶ ':'')+(e==='note'?'✓ ':'')+(getFullName(u)||u); };
+    tr.style.boxShadow=on ? 'inset 0 3px 0 #111418, inset 0 -3px 0 #111418' : 'none'; tr.querySelector('.evl-nom').textContent=(on?'▶ ':'')+(e==='note'?'✓ ':'')+(getFullName(u)||u);
+    const za=tr.querySelector('.evl-za'); if(za){ za.textContent=''; const mq=_evlMarqueAdapte(ev, g, u, _evlResultat(ev, g, u, '')); if(mq) za.appendChild(mq); } };
   const ecrire=(i, txt)=>{ const u=U[i], r=ev.res[u]=ev.res[u]||{}, t=String(txt||'').trim(), k=t.toLowerCase();
     if(k==='a' || k==='abs'){ r.code='Abs'; delete r.note; } else if(k==='d' || k==='disp'){ r.code='Disp'; delete r.note; } else if(k==='n' || k==='nr'){ r.code='NR'; delete r.note; }
     else if(t===''){ delete r.code; delete r.note; }
-    else { const v=Number(t.replace(',','.')); if(!isNaN(v)){ delete r.code; r.note=Math.max(0, Math.min(b, v)); } }
+    else { const v=Number(t.replace(',','.')); if(!isNaN(v)){ delete r.code; r.note=Math.max(0, Math.min(_evlBarEleve(ev, u), v)); } }
     if(!Object.keys(r).length) delete ev.res[u]; _evlSauver(ev); };
   const stats=()=>{ pan.textContent=''; const A=_evlAvancement(ev), St=_evlStatsNotes(A.notes), R=_evlRepartition(A.notes, b);
     const k1=_evlEl('div','background:#111418;color:#fff;border-radius:12px;padding:12px 16px'); pan.appendChild(k1);
@@ -62307,15 +62362,16 @@ function _evlRendreSaisieNotes(corps, ev, g, C){
   U.forEach((u, i)=>{ const tr=_evlEl('div','display:grid;grid-template-columns:minmax(0,1fr) auto 92px;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #C9CDD3;cursor:pointer'); tr.className='evl-col-l'; tr.dataset.u=u; rows.push(tr);
     const nm=_evlEl('div','font-weight:800;min-width:0'); const sp=_evlEl('span'); sp.className='evl-nom'; nm.appendChild(sp);
     const eb=_evlEbepEleve(u, ev.cls); if(eb){ const x=_evlEl('span','margin-left:7px;font-size:10px;font-weight:700;color:#fff;background:#15803D;border-radius:4px;padding:1px 5px;vertical-align:1px', eb); x.className='evl-ebep'; nm.appendChild(x); }
+    { const za=_evlEl('span'); za.className='evl-za'; nm.appendChild(za); }
     tr.appendChild(nm);
-    const zc=_evlEl('div'); zc.className='evl-zc'; const majCom=()=>{ zc.textContent=''; zc.appendChild(_evlBtnCom(ev, u, ()=>{ majCom(); const x=inputs[i]; if(x){ try{ x.focus(); }catch(e){} } })); }; majCom(); tr.appendChild(zc);   // V11.5.67
+    const zc=_evlEl('div'); zc.className='evl-zc'; const majCom=()=>{ zc.textContent=''; zc.appendChild(_evlBtnCom(ev, u, ()=>{ majCom(); style(i); stats(); const x=inputs[i]; if(x){ try{ x.focus(); }catch(e){} } })); }; majCom(); tr.appendChild(zc);   // V11.5.67
     const inp=_evlEl('input','width:84px;justify-self:end;font:inherit;font-size:18px;font-weight:800;text-align:right;padding:3px 8px;border:2px solid #111418;border-radius:8px;background:#fff;color:#111418'); inp.value=valeur(u); inp.inputMode='decimal'; inp.dataset.i=i; inp.setAttribute('aria-label','Note de '+(getFullName(u)||u));
     const valider=()=>{ if(inp.value!==valeur(u)){ ecrire(i, inp.value); } inp.value=valeur(u); style(i); stats(); };
     inp.addEventListener('focus', ()=>{ if(cur.r!==i){ const p=cur.r; cur.r=i; style(p); style(i); } try{ inp.select(); }catch(e){} });
     inp.addEventListener('change', valider);
     inp.addEventListener('keydown', (e)=>{ const k=e.key;
       if(k==='*' && i>0){ e.preventDefault(); inp.value=valeur(U[i-1]); valider(); aller(i+1<n?i+1:null); return; }
-      if((k==='c' || k==='C')){ e.preventDefault(); valider(); _evlCommentaire(ev, u, zc, ()=>{ majCom(); try{ inp.focus(); }catch(x){} }); return; }   // V11.5.67
+      if((k==='c' || k==='C')){ e.preventDefault(); valider(); _evlCommentaire(ev, u, zc, ()=>{ majCom(); style(i); stats(); try{ inp.focus(); }catch(x){} }); return; }   // V11.5.67
       if(/^[adnADN]$/.test(k) && !inp.value){ e.preventDefault(); ecrire(i, k); inp.value=valeur(u); style(i); stats(); aller(i+1<n?i+1:null); return; }
       const j=_evlColCible(i, k, n, h); if(j==null && !(k==='Enter' || /^Arrow/.test(k))) return;
       e.preventDefault(); e.stopPropagation(); valider(); aller(j); });
@@ -62327,9 +62383,10 @@ function _evlRendreSaisieNotes(corps, ev, g, C){
 /** V11.5.66 — S2 : un élève à la fois (grilles). Par question : points → total, note, niveaux (ajustables) ;
  *  sinon : niveaux au clavier (0–3), critère suivant, Entrée : élève suivant. */
 function _evlRendreSaisieEleve(corps, ev, g, C){
-  const U=C.eleves, n=U.length, crit=(g && g.criteres)||[], N=(g && g.niveaux)||EVL_NIV_DEFAUT, PQ=_evlParQuestion(ev, g), Q=PQ ? g.questions : [];
+  const U=C.eleves, n=U.length, crit=(g && g.criteres)||[], N=(g && g.niveaux)||EVL_NIV_DEFAUT, PQ=_evlParQuestion(ev, g);
   const cur=_evl.cur=(_evl.cur && _evl.cur.ev===ev.id) ? _evl.cur : {ev:ev.id, r:0, c:0}; cur.r=Math.max(0, Math.min(n-1, cur.r));
   const u=U[cur.r], gid=ev.parGroupe ? _evlGroupeDe(C, u) : '', r=ev.res[u]=ev.res[u]||{}, R=_evlResultat(ev, g, u, gid);
+  const Q=PQ ? (_evlQuestionsPosees(g, r.qOff).questions||[]) : [];   // V11.5.74 — questions posées à cet élève
   const refaire=(focusQ)=>{ _evlSauver(ev); _evl.clavier=true; _evl.focusQ=focusQ; _evlRendre(); };
   const suivant=(d)=>{ cur.r=Math.max(0, Math.min(n-1, cur.r+d)); cur.c=0; refaire(PQ ? 0 : null); };
   corps.appendChild(_evlBandeTouches(PQ ? [[['Entrée'],'question suivante (puis élève suivant)'],[['A','D','N'],'Abs · Disp · NR (case vide)']] : [[['0','–',String(N.length-1)],'niveau du critère encadré'],[['↑','↓'],'critère'],[['Entrée'],'élève suivant'],[['A','D','N'],'Abs · Disp · NR']]));
@@ -62345,6 +62402,7 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
   hd.appendChild(_evlEl('div','font-size:27px;font-weight:800', getFullName(u)||u));
   { const eb=_evlEbepEleve(u, ev.cls); if(eb){ const x=_evlEl('span','font-size:12.5px;font-weight:800;color:#fff;background:#15803D;padding:3px 8px;border-radius:5px', eb); x.className='evl-ebep'; hd.appendChild(x); } }
   if(gid){ const G=C.groupes.find(x=>x.id===gid); hd.appendChild(_evlEl('span','font-size:13px;font-weight:800', '👥 '+((G&&G.nom)||''))); }
+  { const mq=_evlMarqueAdapte(ev, g, u, R); if(mq){ mq.style.fontSize='12.5px'; mq.style.padding='3px 8px'; hd.appendChild(mq); } }
   hd.appendChild(_evlEl('span','flex:1')); hd.appendChild(_evlEl('b','font-size:14px', (cur.r+1)+' sur '+n));
   const corpsE=_evlEl('div','padding:6px 20px 4px'); main.appendChild(corpsE);
   if(R.code){ corpsE.appendChild(_evlEl('div','margin:14px 0;padding:14px;border-radius:10px;background:'+(R.code==='Abs'?'#B91C1C':'#4B5563')+';color:#fff;font-size:17px;font-weight:800', ({Abs:'Absent : à rattraper', Disp:'Dispensé', NR:'Non rendu'})[R.code]||R.code)); }
@@ -62352,7 +62410,7 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
     if(PQ){ const zq=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;margin:10px 0'); zq.id='evl-pts'; corpsE.appendChild(zq);
       r.pts=r.pts||{};
       Q.forEach((q, qi)=>{ const c=_evlEl('label','display:flex;align-items:center;gap:8px;padding:8px 10px;border:2px solid '+(qi===cur.c?'#111418':'#C9CDD3')+';border-radius:10px;font-weight:700;background:'+(qi===cur.c?'#FFFFFF':'var(--sur)')); zq.appendChild(c);
-        const t=_evlEl('div','flex:1;min-width:0'); t.appendChild(_evlEl('div','font-weight:800', 'Q'+(qi+1)+(q.l?' · '+q.l:''))); t.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis', (q.crit||[]).map(id=>(crit.find(x=>x.id===id)||{}).l||'').filter(Boolean).join(', '))); c.appendChild(t);
+        const t=_evlEl('div','flex:1;min-width:0'); t.appendChild(_evlEl('div','font-weight:800', 'Q'+(g.questions.indexOf(q)+1)+(q.l?' · '+q.l:''))); t.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis', (q.crit||[]).map(id=>(crit.find(x=>x.id===id)||{}).l||'').filter(Boolean).join(', '))); c.appendChild(t);
         const i=_evlEl('input','width:62px;font:inherit;font-size:18px;font-weight:800;text-align:right;padding:4px 6px;border:2px solid #111418;border-radius:8px;background:#fff;color:#111418'); i.inputMode='decimal'; i.dataset.q=qi;
         i.value=r.pts[q.id]==null ? '' : String(r.pts[q.id]).replace('.',',');
         const ecrire=()=>{ const v=String(i.value).trim().replace(',','.'); if(v==='') delete r.pts[q.id]; else if(!isNaN(Number(v))) r.pts[q.id]=Math.max(0, Math.min(Number(q.max)||0, Number(v))); };
@@ -62376,11 +62434,12 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
       if(aj){ const re=_evlBtn('↺ calculé : '+calc,'', ()=>{ delete r.niv[c.id]; refaire(); }, 'Revenir au niveau calculé depuis les points'); bt.appendChild(re); } }); }
   { const zc=_evlEl('label','display:block;margin:10px 0 12px;font-weight:800;font-size:13px'); zc.id='evl-com-eleve'; zc.appendChild(document.createTextNode('💬 Commentaire'));   // V11.5.67
     const ta=_evlEl('textarea','display:block;width:100%;box-sizing:border-box;min-height:54px;margin-top:4px;font:inherit;font-size:14px;font-weight:400;padding:8px;border:2px solid #8A9099;border-radius:8px;background:var(--sur);color:var(--tx);resize:vertical'); ta.value=_evlCom(ev, u); ta.placeholder='Pour cet élève (journal et carnet)';
-    ta.onchange=()=>{ _evlComEcrire(ev, u, ta.value); _evlSauver(ev); }; ta.addEventListener('keydown', e=>{ e.stopPropagation(); if(e.key==='Escape'){ ta.blur(); } }); zc.appendChild(ta); corpsE.appendChild(zc); }
+    ta.onchange=()=>{ _evlComEcrire(ev, u, ta.value); _evlSauver(ev); }; ta.addEventListener('keydown', e=>{ e.stopPropagation(); if(e.key==='Escape'){ ta.blur(); } }); zc.appendChild(ta); corpsE.appendChild(zc);
+    if(ev.mode!=='crit' || PQ){ const ba=_evlBlocAdapte(ev, g, u, ()=>refaire(PQ ? 0 : null)); ba.id='evl-adapte-eleve'; corpsE.appendChild(ba); } }   // V11.5.74
   const pied=_evlEl('div','display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 20px 16px;border-top:2px solid #111418'); main.appendChild(pied);
-  if(ev.mode!=='crit' && !R.code){ const lb=_evlEl('label','display:flex;align-items:center;gap:8px;font-weight:800', 'Note /'+ev.bareme); const i=_evlEl('input','width:96px;font:inherit;font-size:20px;font-weight:800;padding:6px 8px;border:3px solid #111418;border-radius:9px;background:#fff;color:#111418'); i.inputMode='decimal';
+  if(ev.mode!=='crit' && !R.code){ const lb=_evlEl('label','display:flex;align-items:center;gap:8px;font-weight:800', 'Note /'+_evlFmt(_evlBarEleve(ev, u))+(r.bar ? ' (→ /'+ev.bareme+')' : '')); const i=_evlEl('input','width:96px;font:inherit;font-size:20px;font-weight:800;padding:6px 8px;border:3px solid #111418;border-radius:9px;background:#fff;color:#111418'); i.inputMode='decimal';
     i.value=R.noteForcee ? String(r.note).replace('.',',') : ''; i.placeholder=R.note!=null ? _evlFmt(R.note) : (ev.mode==='both' ? 'calculée' : '—'); i.title=ev.mode==='both' ? 'Calculée ; écrire une note pour la remplacer, vider pour revenir au calcul' : 'Note';
-    i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v==='') delete r.note; else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(Number(ev.bareme)||20, Number(v))); refaire(); };
+    i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v==='') delete r.note; else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(_evlBarEleve(ev, u), Number(v))); refaire(); };
     lb.appendChild(i); pied.appendChild(lb); }
   EVL_CODES.forEach(k=>pied.appendChild(_evlChip(k, r.code===k, ()=>{ r.code=r.code===k ? '' : k; if(!r.code) delete r.code; refaire(); }, {Abs:'Absent', Disp:'Dispensé', NR:'Non rendu'}[k])));
   pied.appendChild(_evlEl('span','flex:1'));
@@ -62506,9 +62565,9 @@ function _evlPopEleve(evId, uid, apres){
     const lb=_evlEl('span','flex:1;font-weight:700;font-size:13px', c.l+(c.poids>1?' ×'+c.poids:'')); L.appendChild(lb);
     N.forEach((nl,i)=>{ const propre=r.niv && r.niv[c.id]===i, herite=!(r.niv && r.niv[c.id]!=null) && Gn[c.id]===i;
       L.appendChild(_evlNiv(i, propre||herite, nl+((c.ind||[])[i]?' — '+c.ind[i]:''), ()=>{ r.niv=r.niv||{}; if(r.niv[c.id]===i) delete r.niv[c.id]; else r.niv[c.id]=i; if(gid && r.niv[c.id]===Gn[c.id]) delete r.niv[c.id]; _evlPopEleve(evId, uid, apres); }, 'min-width:38px;min-height:36px;'+(herite?'opacity:.55':''))); }); });
-  if(!r.code && ev.mode!=='crit'){ const L=_evlEl('div','display:flex;align-items:center;gap:8px;margin:8px 0'); box.appendChild(L); L.appendChild(_evlEl('span','font-weight:700;flex:1','Note /'+ev.bareme));
-    const i=_evlEl('input','width:80px;font:inherit;font-weight:800;font-size:15px;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx)'); i.inputMode='decimal'; i.value=R.note==null?'':String(R.note).replace('.',','); i.placeholder='—';
-    i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v==='') delete r.note; else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(Number(ev.bareme)||20, Number(v))); _evlPopEleve(evId, uid, apres); }; L.appendChild(i); }
+  if(!r.code && ev.mode!=='crit'){ const L=_evlEl('div','display:flex;align-items:center;gap:8px;margin:8px 0'); box.appendChild(L); L.appendChild(_evlEl('span','font-weight:700;flex:1','Note /'+_evlFmt(_evlBarEleve(ev, uid))+(r.bar ? ' (→ '+_evlFmt(R.note)+'/'+ev.bareme+')' : '')));
+    const i=_evlEl('input','width:80px;font:inherit;font-weight:800;font-size:15px;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx)'); i.inputMode='decimal'; i.value=R.noteForcee ? String(r.note).replace('.',',') : (R.note==null?'':String(R.note).replace('.',',')); i.placeholder='—';
+    i.onchange=()=>{ const v=String(i.value).trim().replace(',','.'); if(v==='') delete r.note; else if(!isNaN(Number(v))) r.note=Math.max(0, Math.min(_evlBarEleve(ev, uid), Number(v))); _evlPopEleve(evId, uid, apres); }; L.appendChild(i); }
   const idx=C.eleves.indexOf(uid), suiv=C.eleves[idx+1];
   const bas=_evlEl('div','display:flex;gap:6px;margin-top:10px'); box.appendChild(bas);
   if(suiv) bas.appendChild(_evlBtn('✓ Suivant ▸','background:#166534;border-color:#166534;color:#fff', ()=>{ _evlSauver(ev); _evlPopEleve(evId, suiv, apres); }, getFullName(suiv)||''));
