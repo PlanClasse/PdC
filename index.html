@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.76';
+const APP_VERSION = 'v11.5.77';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -17775,7 +17775,7 @@ function _impDatesDeCours(t){
 function openImpressions(opts){
   opts=opts||{};
   const t=_appToday();
-  _imp={vue:opts.vue||'gestion', horizon:(_imp && _imp.horizon) || 21, niveau:(_imp && _imp.niveau) || '',
+  _imp={vue:opts.vue||'jour', horizon:(_imp && _imp.horizon) || 21, niveau:(_imp && _imp.niveau) || '',
         jour:opts.jour || _impPremierJourAvecCours(t, _impDatesDeCours(t)), form:null, mode:'add'};   // V11.5.76 — aujourd'hui, ou le prochain jour avec cours
   _impRendre();
 }
@@ -18136,7 +18136,7 @@ function _impEnsureTuile(){
   const sdc=document.getElementById('sdc-tile'); if(!sdc || !sdc.parentNode) return;
   const b=document.createElement('button'); b.id='imp-tile'; b.type='button';
   b.className='htile htile-imp'; b.style.gridColumn='2';
-  b.onclick=()=>openImpressions({vue:'gestion'});
+  b.onclick=()=>openImpressions({vue:'jour'});   // V11.5.77 — la tuile ouvre « Par jour »
   const ic=_impEl('span', 'htile-ic', '🖨️');
   const tx=_impEl('span', 'htile-tx');
   tx.appendChild(_impEl('span', 'htile-t', 'Gestion des impressions'));
