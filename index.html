@@ -4869,7 +4869,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.70';
+const APP_VERSION = 'v11.5.72';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61712,56 +61712,103 @@ function _evlBarreFiltres(){
       b.className='evl-f-cls'; b.style.borderRadius='8px'; if(on){ b.style.background=_evlCoulNiv(c); b.style.borderColor=_evlCoulNiv(c); } bar.appendChild(b); }); }
   return bar;
 }
-/** Carnet sans classe choisie : une carte par classe du filtre (évaluations, dernière, à saisir). createElement. */
+/* ═══ V11.5.71 — Carnet retravaillé (contraste, couleurs des notes, compteurs, moyennes de colonne) ═══ */
+/** Couleur d'une note selon la part du barème : < 25 % rouge, < 50 % orange, < 75 % vert, sinon bleu. Pure. */
+function _evlCouleurNote(note, bareme){ const p=Number(note)/(Number(bareme)||20); if(isNaN(p)) return '#6B7280'; return p<0.25 ? '#DC2626' : p<0.5 ? '#EA580C' : p<0.75 ? '#15803D' : '#1D4ED8'; }
+/** Moyenne simple de valeurs (une décimale), null si aucune. Pure. */
+function _evlMoyenneSimple(L){ const N=(L||[]).filter(x=>x!=null && !isNaN(Number(x))).map(Number); return N.length ? Math.round(N.reduce((a,x)=>a+x,0)/N.length*10)/10 : null; }
+/** Bilan d'une classe : moyennes /20 par élève, moyenne de classe, notes à saisir (hors à venir), absents. */
+function _evlBilanClasse(cls, E){
+  E=E||_evlDe(cls); const eleves=((S.cl[cls]||{}).students)||[], par={}; let aSaisir=0, abs=0;
+  const cache=E.map(ev=>{ const g=_evlGrille(ev.grilleId), C=_evlCible(ev), A=_evlAvancement(ev); if(A.etat!=='avenir') aSaisir+=Math.max(0, A.total-A.fait); abs+=A.abs; return {ev, g, C, A}; });
+  eleves.forEach(u=>{ const items=[]; cache.forEach(({ev, g, C})=>{ if(C.eleves.indexOf(u)<0) return; const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C, u) : ''); if(!r.code && r.note!=null) items.push({note:r.note, bareme:ev.bareme, coef:ev.coef}); }); par[u]=_evlMoyenne(items); });
+  return {cache, par, classe:_evlMoyenneSimple(Object.values(par)), aSaisir, abs};
+}
+function _evlPastille(txt, fond, css){ return _evlEl('b','display:inline-block;min-width:30px;text-align:center;padding:2px 8px;border-radius:7px;font-size:14px;font-weight:800;color:#fff;background:'+fond+';'+(css||''), txt); }
+/** Carnet sans classe choisie : une carte par classe du filtre (évaluations, moyenne, à saisir, dernière). createElement. */
 function _evlRendreClasses(corps){
   const C=_evlClassesFiltre(_reuClasses(), _evl.niv, '');
-  corps.appendChild(_evlEl('div','font-size:12.5px;color:var(--tx3);margin-bottom:8px','Choisis une classe pour ouvrir son carnet.'));
-  const grille=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px'); corps.appendChild(grille);
-  C.forEach(c=>{ const E=_evlDe(c), d=E[0];
-    const k=_evlEl('button','text-align:left;background:var(--sur);border:1px solid var(--brd);border-radius:14px;padding:10px 12px;cursor:pointer;font-family:inherit;color:var(--tx)'); k.type='button'; k.className='evl-carte-cls';
-    k.appendChild(_evlEl('div','font-weight:800;font-size:16px', String(c).toUpperCase()));
-    k.appendChild(_evlEl('div','font-size:12px;color:var(--tx2)', E.length ? E.length+' évaluation'+(E.length>1?'s':'') : 'Aucune évaluation'));
-    if(d){ const p=String(d.date).split('-'); k.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis', 'Dernière : '+_evlType(d.type).ic+' '+d.titre+' · '+(p[2]||'')+'/'+(p[1]||''))); }
+  corps.appendChild(_evlEl('div','font-size:14px;font-weight:700;color:var(--tx2);margin-bottom:10px','Choisis une classe pour ouvrir son carnet.'));
+  let grille=null, nivPrec=null;   // V11.5.72 — une ligne par niveau, colonnes de même largeur pour tous les niveaux
+  const nMax=Math.max(1, ...Object.values(C.reduce((o,c)=>{ const n=_evlNivCls(c); o[n]=(o[n]||0)+1; return o; }, {})));
+  C.forEach(c=>{ const nv=_evlNivCls(c);
+    if(nv!==nivPrec){ nivPrec=nv; corps.appendChild(_evlEl('div','font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:'+_evlCoulNiv(c)+';margin:'+(grille?'16px':'0')+' 0 6px', nv ? nv+'e' : 'Autres'));
+      grille=_evlEl('div','display:grid;grid-template-columns:repeat('+nMax+',minmax(150px,1fr));gap:12px;overflow-x:auto;padding-bottom:2px'); grille.className='evl-niv-ligne'; grille.dataset.niv=nv; corps.appendChild(grille); }
+    const E=_evlDe(c), d=E[0], B=_evlBilanClasse(c, E), col=_evlCoulNiv(c);
+    const k=_evlEl('button','text-align:left;background:var(--sur);border:2px solid #111418;border-radius:14px;padding:0;cursor:pointer;font-family:inherit;color:var(--tx);overflow:hidden;display:flex;flex-direction:column'); k.type='button'; k.className='evl-carte-cls';
+    k.appendChild(_evlEl('div','font-weight:800;font-size:18px;color:#fff;background:'+col+';padding:8px 14px', String(c).toUpperCase()));
+    const z=_evlEl('div','padding:10px 14px 12px;display:flex;flex-direction:column;gap:6px'); k.appendChild(z);
+    const l1=_evlEl('div','display:flex;align-items:center;gap:8px;flex-wrap:wrap'); z.appendChild(l1);
+    l1.appendChild(_evlEl('span','font-size:14px;font-weight:800', E.length ? E.length+' évaluation'+(E.length>1?'s':'') : 'Aucune évaluation'));
+    if(B.classe!=null){ l1.appendChild(_evlEl('span','flex:1')); l1.appendChild(_evlPastille(_evlFmt(B.classe), _evlCouleurNote(B.classe, 20))); l1.appendChild(_evlEl('span','font-size:12px;font-weight:700;color:var(--tx2)','/20')); }
+    if(E.length) z.appendChild(_evlEl('div','font-size:13px;font-weight:800;color:'+(B.aSaisir ? '#C2410C' : '#15803D'), B.aSaisir ? B.aSaisir+' note'+(B.aSaisir>1?'s':'')+' à saisir' : '✓ tout est saisi'));
+    if(B.abs) z.appendChild(_evlEl('div','font-size:13px;font-weight:800;color:#B91C1C', B.abs+' absent'+(B.abs>1?'s':'')+' à rattraper'));
+    if(d){ z.appendChild(_evlEl('div','font-size:12.5px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis', 'Dernière : '+_evlType(d.type).ic+' '+d.titre+' · '+_evlJJMM(d.date))); }
     k.onclick=()=>{ _evl.cls=c; _evl.niv=_evlNivCls(c)||'*'; _evlRendre(); }; grille.appendChild(k); });
-  if(!C.length) corps.appendChild(_evlEl('div','padding:12px;color:var(--tx3)','Aucune classe.'));
+  if(!C.length) corps.appendChild(_evlEl('div','padding:12px;color:var(--tx2)','Aucune classe.'));
 }
 /* Carnet */
 function _evlRendreCarnet(corps){
-  const cls=_evl.cls, E=_evlDe(cls).slice().reverse().filter(e=>_evl.filtre==='*' || e.type===_evl.filtre);
-  const bar=_evlEl('div','display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:10px'); corps.appendChild(bar);
-  bar.appendChild(_evlChip('Tout', _evl.filtre==='*', ()=>{ _evl.filtre='*'; _evlRendre(); }));
-  EVL_TYPES.forEach(t=>bar.appendChild(_evlChip(t.ic+' '+t.l, _evl.filtre===t.id, ()=>{ _evl.filtre=t.id; _evlRendre(); })));
-  bar.appendChild(_evlEl('span','flex:1'));
-  bar.appendChild(_evlBtn('⬇ CSV','', ()=>_evlExporterCsv(cls, E), 'Exporter le carnet (tableur)'));
-  bar.appendChild(_evlBtn('⬇ Pronote','', ()=>openExportPronote(cls), 'Fichier d’import des notes pour Pronote (une évaluation)'));   // V11.5.33
-  if(!E.length){ corps.appendChild(_evlEl('div','padding:20px;color:var(--tx3)','Aucune évaluation pour '+String(cls).toUpperCase()+'. Onglet « Évaluations » → ＋ Nouvelle évaluation.')); return; }
-  const wrap=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:14px;overflow:auto'); corps.appendChild(wrap);
-  const T=_evlEl('table','border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px'); wrap.appendChild(T);
-  const th=(t, css)=>_evlEl('th','padding:7px 9px;text-align:left;font-size:10.5px;color:var(--tx3);background:var(--sur2);border-bottom:1px solid var(--brd);position:sticky;top:0;vertical-align:bottom;'+(css||''), t);
-  const h=_evlEl('tr'); T.appendChild(h); h.appendChild(th('Élève','left:0;z-index:2'));
-  const cache=E.map(ev=>({ev, g:_evlGrille(ev.grilleId), C:_evlCible(ev)}));
-  cache.forEach(({ev})=>{ const c=th(null,'cursor:pointer;min-width:90px'); c.title='Ouvrir la saisie';
-    c.appendChild(_evlEl('div','font-weight:800;color:var(--tx);font-size:12px;text-transform:none', _evlType(ev.type).ic+' '+ev.titre));
-    const p=String(ev.date).split('-'); c.appendChild(_evlEl('div','text-transform:none', (p[2]||'')+'/'+(p[1]||'')+(ev.mode!=='crit'?' · /'+ev.bareme+(ev.coef!=1?' ×'+ev.coef:''):' · niveaux')));
-    c.onclick=()=>{ _evl.vue='evals'; _evl.evId=ev.id; _evl.saisie=true; _evlRendre(); }; h.appendChild(c); });
-  h.appendChild(th('Moy. /20'));
+  const cls=_evl.cls, Etout=_evlDe(cls).slice().reverse(), E=Etout.filter(e=>_evl.filtre==='*' || e.type===_evl.filtre), col=_evlCoulNiv(cls);
   const eleves=((S.cl[cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
-  eleves.forEach(u=>{ const tr=_evlEl('tr'); T.appendChild(tr);
-    tr.appendChild(_evlEl('td','padding:6px 9px;border-bottom:1px solid var(--brd);font-weight:700;white-space:nowrap;position:sticky;left:0;background:var(--sur)', getFullName(u)||u));
-    const items=[];
-    cache.forEach(({ev,g,C})=>{ const td=_evlEl('td','padding:5px 9px;border-bottom:1px solid var(--brd);cursor:pointer;white-space:nowrap'); tr.appendChild(td);
+  // En-tête
+  const hd=_evlEl('div','display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px'); corps.appendChild(hd);
+  hd.appendChild(_evlEl('span','font-weight:800;font-size:15px;color:#fff;background:'+col+';padding:5px 12px;border-radius:7px', String(cls).toUpperCase()));
+  hd.appendChild(_evlEl('span','font-size:24px;font-weight:800', 'Carnet'));
+  hd.appendChild(_evlEl('span','font-size:14px;font-weight:700;color:var(--tx2)', Etout.length+' évaluation'+(Etout.length>1?'s':'')+' · '+eleves.length+' élèves'));
+  hd.appendChild(_evlEl('span','flex:1'));
+  hd.appendChild(_evlBtn('⬇ CSV','border:2px solid #111418', ()=>_evlExporterCsv(cls, E), 'Exporter le carnet (tableur)'));
+  hd.appendChild(_evlBtn('⬇ Pronote','border:2px solid #111418', ()=>openExportPronote(cls), 'Fichier d’import des notes pour Pronote (une évaluation)'));   // V11.5.33
+  // Filtres de type (types présents)
+  const bar=_evlEl('div','display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:12px'); bar.id='evl-carnet-types'; corps.appendChild(bar);
+  bar.appendChild(_evlChip('Tout · '+Etout.length, _evl.filtre==='*', ()=>{ _evl.filtre='*'; _evlRendre(); }));
+  EVL_TYPES.forEach(t=>{ const n=Etout.filter(e=>e.type===t.id).length; if(n || _evl.filtre===t.id) bar.appendChild(_evlChip(t.ic+' '+t.l+' · '+n, _evl.filtre===t.id, ()=>{ _evl.filtre=t.id; _evlRendre(); })); });
+  if(!E.length){ corps.appendChild(_evlEl('div','padding:20px;color:var(--tx2);font-size:14px','Aucune évaluation pour '+String(cls).toUpperCase()+'. Onglet « Évaluations » → ＋ Nouvelle évaluation.')); return; }
+  const B=_evlBilanClasse(cls, E), cache=B.cache;
+  // Compteurs
+  { const K=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px'); K.id='evl-carnet-compteurs'; corps.appendChild(K);
+    const k=(v, l, fond)=>{ const d=_evlEl('div','border-radius:12px;padding:10px 14px;color:#fff;background:'+fond); d.appendChild(_evlEl('div','font-size:26px;font-weight:800;line-height:1.1', v)); d.appendChild(_evlEl('div','font-size:13px;font-weight:700', l)); K.appendChild(d); };
+    k(_evlFmt(B.classe), 'moyenne de classe /20', '#111418');
+    k(String(E.length), 'évaluation'+(E.length>1?'s':'')+(_evl.filtre!=='*'?' (filtre)':''), '#0F3D24');
+    k(String(B.aSaisir), 'note'+(B.aSaisir>1?'s':'')+' à saisir', B.aSaisir ? '#EA580C' : '#4B5563');
+    k(String(B.abs), 'absent'+(B.abs>1?'s':'')+' à rattraper', B.abs ? '#B91C1C' : '#4B5563'); }
+  // Tableau
+  const wrap=_evlEl('div','background:var(--sur);border:2px solid #111418;border-radius:12px;overflow:auto;max-height:calc(100vh - 330px);min-height:240px'); corps.appendChild(wrap);
+  const T=_evlEl('table','border-collapse:separate;border-spacing:0;width:100%;font-size:14px'); T.id='evl-carnet'; wrap.appendChild(T);
+  const th=(css)=>_evlEl('th','padding:8px 10px;text-align:left;background:#111418;color:#fff;position:sticky;top:0;z-index:1;vertical-align:bottom;'+(css||''));
+  const h=_evlEl('tr'); T.appendChild(h); const t0=th('left:0;z-index:3;font-size:13px'); t0.textContent='Élève'; h.appendChild(t0);
+  cache.forEach(({ev, A})=>{ const c=th('cursor:pointer;min-width:96px;border-top:5px solid '+EVL_ETAT_COUL[A.etat]); c.title='Ouvrir la saisie ('+A.fait+' / '+A.total+')'; c.className='evl-col-ev';
+    c.appendChild(_evlEl('div','font-weight:800;font-size:13px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis', _evlType(ev.type).ic+' '+ev.titre));
+    c.appendChild(_evlEl('div','font-weight:600;font-size:12px;color:#D1D5DB;white-space:nowrap', _evlJJMM(ev.date)+(ev.mode!=='crit'?' · /'+ev.bareme+(ev.coef!=1?' ×'+_evlFmt(ev.coef):''):' · niveaux')));
+    c.appendChild(_evlEl('div','font-weight:800;font-size:11.5px;white-space:nowrap;color:'+(A.etat==='complet'?'#86EFAC':(A.etat==='avenir'?'#D1D5DB':'#FDBA74')), A.etat==='avenir' ? 'à venir' : A.fait+' / '+A.total));
+    c.onclick=()=>{ _evl.vue='evals'; _evl.evId=ev.id; _evl.saisie=true; _evl.clavier=true; _evlRendre(); }; h.appendChild(c); });
+  const tm=th('font-size:13px;text-align:center;border-left:2px solid #fff'); tm.textContent='Moy. /20'; h.appendChild(tm);
+  const ligne=(ri)=>'padding:6px 10px;border-bottom:1px solid #C9CDD3;white-space:nowrap;text-align:center;'+(ri%2 ? 'background:var(--sur2);' : 'background:var(--sur);');
+  eleves.forEach((u, ri)=>{ const tr=_evlEl('tr'); tr.className='evl-cr'; T.appendChild(tr);
+    const tn=_evlEl('td', ligne(ri).replace('text-align:center;','')+'font-weight:800;position:sticky;left:0;z-index:1;text-align:left;border-right:2px solid #111418', getFullName(u)||u); tr.appendChild(tn);
+    { const eb=_evlEbepEleve(u, cls); if(eb){ const x=_evlEl('span','margin-left:7px;font-size:10px;font-weight:700;color:#fff;background:#15803D;border-radius:4px;padding:1px 5px;vertical-align:1px', eb); x.className='evl-ebep'; tn.appendChild(x); } }
+    cache.forEach(({ev, g, C})=>{ const td=_evlEl('td', ligne(ri)+'cursor:pointer'); tr.appendChild(td);
       td.onclick=()=>_evlPopEleve(ev.id, u, ()=>_evlRendre());
       if(C.eleves.indexOf(u)<0){ td.textContent='·'; td.style.color='var(--tx3)'; td.style.cursor='default'; td.onclick=null; return; }
       const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C, u) : '');
-      if(r.code){ td.textContent=r.code; td.style.color='var(--tx3)'; td.style.fontWeight='700'; return; }
-      if(r.note!=null){ td.appendChild(_evlEl('b',null,String(r.note).replace('.',','))); items.push({note:r.note, bareme:ev.bareme, coef:ev.coef}); }
-      else if(g && ev.mode!=='note'){ (g.criteres||[]).forEach(c=>{ const n=r.niv[c.id]; if(n!=null){ const C2=EVL_NIV_COUL[n]||EVL_NIV_COUL[0]; td.appendChild(_evlEl('span','display:inline-block;min-width:18px;text-align:center;font-weight:800;font-size:11px;padding:1px 4px;border-radius:5px;margin:0 1px;background:'+C2[0]+';color:'+C2[1], String(n))).title=c.l; } }); }
+      if(r.code){ td.appendChild(_evlEl('b','font-size:13px;color:'+(r.code==='Abs'?'#B91C1C':'#4B5563'), r.code)); }
+      else if(r.note!=null){ td.appendChild(_evlPastille(_evlFmt(r.note), _evlCouleurNote(r.note, ev.bareme))); }
+      else if(g && ev.mode!=='note'){ (g.criteres||[]).forEach(c=>{ const n=r.niv[c.id]; if(n!=null){ const C2=EVL_NIV_COUL[n]||EVL_NIV_COUL[0]; td.appendChild(_evlEl('span','display:inline-block;min-width:20px;text-align:center;font-weight:800;font-size:12px;padding:1px 4px;border-radius:5px;margin:0 1px;background:'+C2[0]+';color:'+C2[1], String(n))); } }); }
       if(!td.childNodes.length){ td.textContent='—'; td.style.color='var(--tx3)'; }
       { const com=_evlCom(ev, u); if(com){ td.appendChild(_evlEl('span','font-size:11px;margin-left:3px','💬')); td.title='💬 '+com; } }   // V11.5.67
-      if(r.ajuste) td.title='Ajusté pour cet élève (différent du groupe)'; });
-    const m=_evlMoyenne(items); tr.appendChild(_evlEl('td','padding:6px 9px;border-bottom:1px solid var(--brd);font-weight:800', m==null?'—':String(m).replace('.',',')));
+      if(r.ajuste) td.title=(td.title?td.title+'\n':'')+'Ajusté pour cet élève (différent du groupe)'; });
+    const m=B.par[u], tdm=_evlEl('td', ligne(ri)+'border-left:2px solid #111418'); tr.appendChild(tdm);
+    if(m==null){ tdm.textContent='—'; tdm.style.color='var(--tx3)'; } else tdm.appendChild(_evlPastille(_evlFmt(m), _evlCouleurNote(m, 20), 'font-size:15px'));
   });
-  corps.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px','Clic sur une colonne → la saisie de l’évaluation ; clic sur une case → la grille de l’élève. Abs / Disp / NR ne comptent pas dans la moyenne.'));
+  // Pied : moyenne de chaque évaluation
+  const tf=_evlEl('tr'); T.appendChild(tf);
+  const pied=(css)=>_evlEl('td','padding:8px 10px;background:#111418;color:#fff;font-weight:800;text-align:center;position:sticky;bottom:0;white-space:nowrap;'+(css||''));
+  const p0=pied('left:0;z-index:2;text-align:left;font-size:13px'); p0.textContent='Moyenne'; tf.appendChild(p0);
+  cache.forEach(({ev, A})=>{ const z=pied(); const mo=_evlMoyenneSimple(A.notes); z.textContent=ev.mode==='crit' ? '—' : (mo==null ? '—' : _evlFmt(mo)+' /'+ev.bareme); tf.appendChild(z); });
+  const pm=pied('border-left:2px solid #fff'); pm.textContent=_evlFmt(B.classe); tf.appendChild(pm);
+  const lg=_evlEl('div','display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13px;font-weight:700;color:var(--tx2);margin-top:10px'); corps.appendChild(lg);
+  [['#DC2626','< 25 %'],['#EA580C','< 50 %'],['#15803D','< 75 %'],['#1D4ED8','≥ 75 % du barème']].forEach(([c,t])=>{ const s=_evlEl('span','display:inline-flex;align-items:center;gap:5px'); s.appendChild(_evlEl('span','width:14px;height:14px;border-radius:4px;background:'+c)); s.appendChild(document.createTextNode(t)); lg.appendChild(s); });
+  lg.appendChild(_evlEl('span','', 'Clic sur une colonne → la saisie ; sur une case → la grille de l’élève. Abs / Disp / NR ne comptent pas dans la moyenne.'));
 }
 function _evlExporterCsv(cls, E){
   const eleves=((S.cl[cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr'));
