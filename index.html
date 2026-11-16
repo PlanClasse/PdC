@@ -4870,7 +4870,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.80';
+const APP_VERSION = 'v11.5.81';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -15927,9 +15927,9 @@ function renderProfAujd(){
     {urg:'jour',    key:'docsAujourdhui',  icon:'📦', label:'Document à distribuer', pluralS:'s', getter:_homeGetDocsAujourdhui,
      mutable:false,
      map:(it)=>({l: it.debut+'–'+it.fin+' · '+(it.docs||[]).join(', '), r: it.clsCode.toUpperCase()})},
-    {urg:'jour',    key:'evalsPrevues',    icon:'🎯', label:'Évaluation prévue', pluralS:'s', getter:_homeGetEvalsPrevuesAujourdhui,
+    {urg:'jour',    key:'evalsPrevues',    icon:'🎯', label:'Évaluations du jour', pluralS:'', getter:_homeGetEvalsDuJour,   // V11.5.81 — évaluations prévues OU rattrapages
      mutable:false,
-     map:(it)=>({l: it.debut+' · '+it.type+' : '+it.titre, r: it.clsCode.toUpperCase()})},
+     map:(it)=>({l: it.debut+' · '+it.resume, r: it.clsCode.toUpperCase()})},
     {urg:'anticip', key:'coursDemain',     icon:'📋', label:'Cours demain à préparer', pluralS:'',  getter:_homeGetCoursDemainAPreparer,
      mutable:false,
      map:(it)=>({l: it.debut+'–'+it.fin+' · '+(it.seanceTitre||'(non rattaché)'), r: it.clsCode.toUpperCase()})},
@@ -16511,11 +16511,12 @@ function renderRappelsBandeau(){
     },
     {
       key:'evalsPrevues', urg:'jour', icon:'🎯',
-      title:"Évaluations prévues aujourd'hui",
-      intro:"Évaluations de séquence (diagnostique / formative / sommative) planifiées sur des cours du jour. Mention 📝 si des élèves de la classe ont une évaluation adaptée.",
+      title:"Évaluations du jour (prévues et rattrapages)",
+      intro:"Cours du jour avec une évaluation de séquence prévue ou des élèves à rattraper (volet droit du plan de classe).",
       mutable:false,
-      getter:_homeGetEvalsPrevuesAujourdhui,
-      mapItem:(it)=>{
+      getter:_homeGetEvalsDuJour,   // V11.5.81
+      mapItem:(it)=>({ left: it.debut+' · '+it.resume, right: it.clsCode.toUpperCase() }),
+      _mapItemAvant:(it)=>{
         // V019-v159 — Mention eval adaptée
         let suffix = '';
         if(it.adapteUids && it.adapteUids.length){
@@ -18467,6 +18468,14 @@ function openEvalsJour(dateStr){
   majT();
   document.body.appendChild(bg); document.addEventListener('keydown', _evjEchap, true);
   return {cours:C.length, items:A.length};
+}
+
+/** V11.5.81 — Un élément par cours du jour ayant une évaluation prévue OU des rattrapages (bouton de l'accueil). */
+function _homeGetEvalsDuJour(){
+  let C=[]; try{ C=_evjCollecte(_appToday()); }catch(e){ C=[]; }
+  return C.map(c=>{ const nr=(c.ratt||[]).reduce((a,r)=>a+(r.noms||[]).length,0);
+    const p=[]; (c.evs||[]).forEach(v=>p.push(v.type+' : '+v.titre)); if(nr) p.push('↺ '+nr+' à rattraper');
+    return {clsCode:c.cls, slotKey:c.slotKey, debut:c.debut, fin:c.fin, resume:p.join(' · '), nEv:(c.evs||[]).length, nRatt:nr}; });
 }
 
 /* 5 — Cours de demain à préparer. */
