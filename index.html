@@ -4301,6 +4301,7 @@ window._simHandleDisable = _simHandleDisable;
         <div id="outils-menu" style="display:none;position:fixed;background:var(--sur);border:1.5px solid var(--brd);border-radius:var(--r2);box-shadow:var(--sh2);min-width:180px;z-index:200;padding:4px 0">
           <button class="pmitem" onclick="openTirageModal();closeOutilsMenu()">🎲 Tirage au sort</button>
           <button class="pmitem" onclick="openTimerModal();closeOutilsMenu()">⏱ Compte à rebours</button>
+          <button class="pmitem" onclick="openHorloge();closeOutilsMenu()">🕐 Horloge en grand</button>
         </div>
         <!-- ⋯ Plus -->
         <div class="plus-menu-wrap" style="display:flex">
@@ -4869,7 +4870,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.78';
+const APP_VERSION = 'v11.5.80';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -16010,6 +16011,7 @@ function renderProfAujd(){
 /* Réutilise le helper _showHomeListModal existant pour ouvrir la liste complète. */
 function _aujdOpenModal(cat, items){
   if(cat && cat.key==='docsAujourdhui' && typeof openImpressions==='function'){ openImpressions({vue:'jour'}); return; }   // V11.4.38
+  if(cat && cat.key==='evalsPrevues' && typeof openEvalsJour==='function'){ openEvalsJour(); return; }   // V11.5.80
   if(typeof _showHomeListModal !== 'function') return;
   const mappedItems = items.map(it=>{
     const m = cat.map(it);
@@ -16868,6 +16870,7 @@ function _rbgHidePopover(){
 /* Ouvre le popup détaillé d'une catégorie, avec bouton 🔕 si mutable. */
 function _rbgOpenCategoryModal(cat, items){
   if(cat && cat.key==='docsAujourdhui' && typeof openImpressions==='function'){ openImpressions({vue:'jour'}); return; }   // V11.4.38
+  if(cat && cat.key==='evalsPrevues' && typeof openEvalsJour==='function'){ openEvalsJour(); return; }   // V11.5.80
   const mappedItems = items.map(cat.mapItem);
   const headerStats = cat.headerStatsBuilder ? cat.headerStatsBuilder(items) : null;
   const cap = cat.footerCap || 0;
@@ -18316,6 +18319,154 @@ function _homeGetEvalsPrevuesAujourdhui(){
   });
   out.sort((a,b)=>(a.debut).localeCompare(b.debut));
   return out;
+}
+
+/* ═══ V11.5.80 — ÉVALUATIONS DU JOUR (maquette E4, validée le 16/11) ═══
+   Popup de l'accueil : frise des cours du jour qui ont une évaluation (« Saisir mes cours ») ou des
+   rattrapages (volet droit du plan de classe), détail des aménagements par élève, totaux de la
+   journée, et liste « À préparer » à cocher (cochée pour la journée, dans S.evjCoches). */
+const EVJ_COLS=[['ULIS','ULIS','#7C3AED'],['PPS','PPS','#1D4ED8'],['PAP','PAP','#0F766E'],['PPRE','PPRE','#B45309'],['tiers','⅓ temps','#111418'],['adaptee','Adaptée','#BE185D']];
+const EVJ_TYPE_COUL={diagnostique:'#0F766E', formative:'#1D4ED8', sommative:'#DC2626', 'évaluation':'#7C3AED'};
+/** Aménagements d'une fiche EBEP, dans l'ordre des colonnes. Pure. */
+function _evjCles(f){
+  if(!f) return []; const cats=getFicheCategories(f), K=['ULIS','PPS','PAP','PPRE'].filter(c=>cats.indexOf(c)>=0);
+  if(f.tiersTps) K.push('tiers'); if(f.evalAdaptee) K.push('adaptee'); return K;
+}
+/** Heure de fin avec ⅓ temps (« 08:30 » + 45 min → « 09:30 »), '' sans durée. Pure. */
+function _evjFinTiers(debut, duree){
+  const m=/^(\d{1,2}):(\d{2})/.exec(String(debut||'')), d=Number(duree)||0; if(!m || !d) return '';
+  const t=Number(m[1])*60+Number(m[2])+Math.round(d*4/3); return String(Math.floor(t/60)%24).padStart(2,'0')+':'+String(t%60).padStart(2,'0');
+}
+/** Totaux de la journée (élèves distincts par classe). Pure. */
+function _evjTotaux(cours){
+  const C=cours||[], vus={}, par={}; EVJ_COLS.forEach(([k])=>par[k]=0); let nEv=0, nRat=0, nAdaptes=0, nFin=0;
+  C.forEach(c=>{ nRat+=(c.ratt||[]).reduce((a,r)=>a+(r.noms||[]).length,0);
+    if(!(c.evs||[]).length) return; nEv+=c.evs.length;
+    nAdaptes+=(c.eleves||[]).filter(e=>e.cles.indexOf('adaptee')>=0).length;
+    if((c.eleves||[]).some(e=>e.cles.indexOf('tiers')>=0)) nFin++;
+    (c.eleves||[]).forEach(e=>{ const k=c.cls+'|'+e.uid; if(vus[k]) return; vus[k]=1; e.cles.forEach(x=>{ if(x in par) par[x]++; }); }); });
+  return {nEv, nCours:C.length, nAm:Object.keys(vus).length, nRat, par, nAdaptes, nFin};
+}
+/** Liste « À préparer » (clé stable pour la coche). Pure. */
+function _evjAPreparer(cours){
+  const L=[], cl=(c)=>String(c.cls).toUpperCase()+(c.grp ? ' '+c.grp : '');
+  (cours||[]).forEach(c=>{ const ev=(c.evs||[])[0], E=c.eleves||[];
+    if(ev){
+      const ad=E.filter(e=>e.cles.indexOf('adaptee')>=0), std=Math.max(0,(c.effectif||0)-ad.length);
+      L.push({k:'imp|'+c.slotKey+'|'+c.cls, ic:'🖨', titre:'Imprimer', txt:cl(c)+' à '+c.debut+' : '+std+' sujet'+(std>1?'s':'')+(ad.length ? ' + '+ad.length+' adapté'+(ad.length>1?'s':'')+' ('+ad.map(e=>e.nom).join(', ')+')' : '')});
+      const ti=E.filter(e=>e.cles.indexOf('tiers')>=0);
+      if(ti.length){ const f=_evjFinTiers(c.debut, ev.duree); L.push({k:'tiers|'+c.slotKey+'|'+c.cls, ic:'⏱', titre:'⅓ temps', txt:cl(c)+' à '+c.debut+' : '+ti.map(e=>e.nom).join(', ')+(f ? ' : fin à '+f+' ('+ev.duree+' min → '+Math.round(ev.duree*4/3)+' min)' : ' : prévoir le temps supplémentaire')}); }
+      const ul=E.filter(e=>e.cles.indexOf('ULIS')>=0);
+      if(ul.length) L.push({k:'ulis|'+c.slotKey+'|'+c.cls, ic:'🧑‍🏫', titre:'ULIS', txt:cl(c)+' à '+c.debut+' : '+ul.map(e=>e.nom).join(', ')+' : prévenir l’AESH ou le dispositif ULIS de l’horaire'});
+    }
+    (c.ratt||[]).forEach((r,i)=>L.push({k:'ratt|'+c.slotKey+'|'+c.cls+'|'+(r.cle||i), ic:'↺', titre:'Rattraper', txt:cl(c)+' : '+(r.noms||[]).join(', ')+' ('+r.titre+(r.date ? ', '+r.date : '')+')'}));
+  });
+  return L;
+}
+/** Collecte des cours du jour (évaluation prévue ou rattrapage). */
+function _evjCollecte(dateStr){
+  const evIdx={};
+  try{ _homeIterateSeqEvals((seq, ev, slotKey, cls, d)=>{ if(d!==dateStr) return; (evIdx[slotKey+'|'+cls]=evIdx[slotKey+'|'+cls]||[]).push({titre:ev.titre||ev.contenu||'(sans titre)', type:_evalTypeLabel(ev), duree:Number(ev.duree)||0, seq:seq.titre||''}); }); }catch(e){}
+  const out=[];
+  _homeListActiveClasses().forEach(cls=>{
+    let slots=[]; try{ slots=buildYearSlots(cls)||[]; }catch(e){ slots=[]; }
+    slots.filter(s=>s && s.dateStr===dateStr).forEach(sl=>{
+      if(typeof isSlotCancelled==='function' && isSlotCancelled(sl.dateStr, sl.debut, cls)) return;
+      const evs=evIdx[sl.slotKey+'|'+cls]||[];
+      let ratt=[]; try{ ratt=(_fdjGetEvalsARattraperGrouped(cls, sl.slotKey)||[]).map(g=>({cle:g.slotOrigineK+'|'+g.evalId, titre:g.titre||'Évaluation', date:(typeof _evlJJMM==='function' && g.date) ? _evlJJMM(g.date) : (g.date||''), noms:(g.students||[]).map(s=>s.label)})).filter(r=>r.noms.length); }catch(e){ ratt=[]; }
+      if(!evs.length && !ratt.length) return;
+      const gid=_numPublicDuSlot(sl), G=gid && S.groupes ? S.groupes[gid] : null;
+      const eleves0=(G && Array.isArray(G.students)) ? G.students : (((S.cl[cls]||{}).students)||[]);
+      const eleves=[]; eleves0.forEach(uid=>{ const f=getBesoinFiche(uid, cls), K=_evjCles(f); if(K.length) eleves.push({uid, nom:_traceShortName(uid), cles:K, note:String((f && f.notes)||'').trim().split('\n')[0].slice(0,48)}); });
+      eleves.sort((a,b)=>a.nom.localeCompare(b.nom));
+      out.push({cls, slotKey:sl.slotKey, debut:sl.debut, fin:sl.fin, grp:G ? (G.label||'groupe') : '', effectif:eleves0.length, evs, eleves, ratt});
+    });
+  });
+  return out.sort((a,b)=>String(a.debut).localeCompare(String(b.debut)) || a.cls.localeCompare(b.cls));
+}
+function closeEvalsJour(){ const bg=document.getElementById('evj-bg'); if(bg) bg.remove(); document.removeEventListener('keydown', _evjEchap, true); }
+function _evjEchap(e){ if(e.key==='Escape' && document.getElementById('evj-bg') && !document.querySelector('#mbg.open')){ e.stopPropagation(); closeEvalsJour(); } }
+/** Ouvre le popup « Évaluations du jour ». createElement. */
+function openEvalsJour(dateStr){
+  closeEvalsJour();
+  const J=dateStr || _appToday(), C=_evjCollecte(J), T=_evjTotaux(C), A=_evjAPreparer(C);
+  if(!S.evjCoches || typeof S.evjCoches!=='object') S.evjCoches={};
+  Object.keys(S.evjCoches).forEach(d=>{ if(d!==J) delete S.evjCoches[d]; });
+  const coches=S.evjCoches[J]=S.evjCoches[J]||{};
+  const E=(tag, css, txt)=>{ const x=document.createElement(tag); if(css) x.style.cssText=css; if(txt!=null) x.textContent=txt; return x; };
+  const pill=(lab, coul, n, petit)=>{ const s=E('span','display:inline-flex;align-items:center;gap:5px;font-size:'+(petit?'11px':'13px')+';font-weight:800;color:#FFFFFF;background:'+coul+';border-radius:6px;padding:'+(petit?'1px 5px':'3px 9px')+';white-space:nowrap', lab); if(n!=null) s.appendChild(E('b','font-size:'+(petit?'12px':'15px'), String(n))); return s; };
+  const bg=E('div','position:fixed;inset:0;z-index:600;background:rgba(17,20,24,.6);display:flex;align-items:flex-start;justify-content:center;padding:2vh 12px;overflow:auto'); bg.id='evj-bg';
+  bg.addEventListener('click', (e)=>{ if(e.target===bg) closeEvalsJour(); });
+  const box=E('div','width:min(1180px,100%);background:#FFFFFF;color:#111418;border-radius:16px;border:3px solid #111418;overflow:hidden;display:flex;flex-direction:column;max-height:96vh'); box.id='evj-box'; box.setAttribute('role','dialog'); bg.appendChild(box);
+  // bandeau
+  const hd=E('div','display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:12px 20px;background:#111418;color:#FFFFFF'); box.appendChild(hd);
+  hd.appendChild(E('div','font-size:21px;font-weight:800','🎯 Évaluations du jour'));
+  let lj=J; try{ lj=new Date(J+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}); }catch(e){}
+  hd.appendChild(E('span','font-size:14px;font-weight:700;color:#D1D5DB', lj)); hd.appendChild(E('span','flex:1'));
+  const kp=(v,l,c)=>{ const s=E('span','display:flex;align-items:baseline;gap:5px'); s.appendChild(E('b','font-size:21px;color:'+(c||'#FFFFFF'), String(v))); s.appendChild(E('span','font-size:12.5px;font-weight:700;color:#D1D5DB', l)); hd.appendChild(s); };
+  kp(T.nEv, 'évaluation'+(T.nEv>1?'s':'')); kp(T.nCours, 'cours'); kp(T.nAm, 'élève'+(T.nAm>1?'s':'')+' aménagé'+(T.nAm>1?'s':''), '#FACC15'); kp(T.nRat, 'à rattraper', '#FCA5A5');
+  const bx=E('button','font:inherit;font-size:17px;font-weight:800;width:34px;height:34px;border-radius:9px;border:2px solid #FFFFFF;background:transparent;color:#FFFFFF;cursor:pointer','✕'); bx.type='button'; bx.title='Fermer (Échap)'; bx.onclick=closeEvalsJour; hd.appendChild(bx);
+  // sur la journée
+  const sj=E('div','display:flex;flex-wrap:wrap;align-items:center;gap:6px 9px;padding:9px 20px;border-bottom:3px solid #111418'); sj.id='evj-synthese'; box.appendChild(sj);
+  sj.appendChild(E('b','font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;margin-right:4px','Sur la journée'));
+  EVJ_COLS.forEach(([k,l,c])=>{ if(T.par[k]) sj.appendChild(pill(k==='adaptee'?'Éval. adaptée':l, c, T.par[k])); });
+  if(!EVJ_COLS.some(([k])=>T.par[k])) sj.appendChild(E('span','font-size:13px;font-weight:700;color:#4B5159','Aucun élève à besoins particuliers'));
+  sj.appendChild(E('span','flex:1'));
+  sj.appendChild(E('span','font-size:13px;font-weight:800','🖨 Sujets adaptés : '+T.nAdaptes));
+  sj.appendChild(E('span','font-size:13px;font-weight:800','⏱ Fin décalée : '+T.nFin+' cours'));
+  // corps
+  const corps=E('div','display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,1fr);overflow:auto;background:#F3F4F6;flex:1'); box.appendChild(corps);
+  const fr=E('section','padding:14px 18px;display:flex;flex-direction:column;gap:12px;min-width:0'); fr.id='evj-frise'; corps.appendChild(fr);
+  fr.appendChild(E('div','font-size:14px;font-weight:800;letter-spacing:.05em;text-transform:uppercase','Déroulé de la journée'));
+  if(!C.length) fr.appendChild(E('div','font-size:14px;font-weight:700;color:#4B5159','Aucune évaluation prévue ni rattrapage aujourd’hui.'));
+  C.forEach(c=>{
+    const ev=c.evs[0], col=ev ? (EVJ_TYPE_COUL[ev.type]||'#7C3AED') : '#8A9099';
+    const li=E('div','display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px;align-items:start'); li.className='evj-cours'; li.dataset.cls=c.cls; fr.appendChild(li);
+    const hz=E('div','text-align:right;padding-top:8px'); hz.appendChild(E('b','font-size:19px', c.debut)); hz.appendChild(E('div','font-size:11.5px;font-weight:700;color:#4B5159', '→ '+(c.fin||''))); li.appendChild(hz);
+    const ca=E('div','min-width:0;background:#FFFFFF;border:2px solid #111418;border-left:6px solid '+col+';border-radius:0 12px 12px 0;padding:9px 12px'); li.appendChild(ca);
+    const l1=E('div','display:flex;align-items:center;gap:8px;flex-wrap:wrap'); ca.appendChild(l1);
+    l1.appendChild(E('b','font-size:14px;background:#111418;color:#FFFFFF;border-radius:6px;padding:1px 8px', c.cls.toUpperCase()));
+    l1.appendChild(E('span','font-size:12.5px;font-weight:700;color:#4B5159', c.grp || 'classe entière')); l1.appendChild(E('span','flex:1'));
+    const bo=E('button','font:inherit;font-size:12.5px;font-weight:800;padding:4px 10px;border-radius:7px;border:2px solid #111418;background:#FFFFFF;color:#111418;cursor:pointer','Ouvrir le cours ›'); bo.type='button'; bo.className='evj-ouvrir';
+    bo.onclick=()=>{ closeEvalsJour(); try{ openAppFromCodeWithSlot(c.cls, c.slotKey); }catch(e){} }; l1.appendChild(bo);
+    if(!c.evs.length) ca.appendChild(E('div','margin-top:6px;font-size:13.5px;font-weight:700;color:#4B5159','Pas d’évaluation prévue'));
+    c.evs.forEach(v=>{ const l2=E('div','display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:6px'); ca.appendChild(l2);
+      l2.appendChild(E('span','font-size:12px;font-weight:800;text-transform:uppercase;color:'+(EVJ_TYPE_COUL[v.type]||'#7C3AED'), v.type+(v.duree ? ' · '+v.duree+' min' : '')));
+      l2.appendChild(E('b','font-size:16px', v.titre)); if(v.seq) l2.appendChild(E('span','font-size:12px;font-weight:700;color:#4B5159', v.seq)); });
+    if(c.evs.length){
+      if(!c.eleves.length) ca.appendChild(E('div','margin-top:6px;font-size:13px;font-weight:700;color:#4B5159','Aucun élève à besoins particuliers'));
+      else { const tb=E('table','width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;margin-top:8px;border:2px solid #111418'); tb.className='evj-table'; ca.appendChild(tb);
+        const cg=E('colgroup'); ['112px','48px','48px','48px','52px','64px','64px',''].forEach(w=>{ const x=E('col'); if(w) x.style.width=w; cg.appendChild(x); }); tb.appendChild(cg);
+        const th=E('thead'), tr0=E('tr','background:#F3F4F6'); th.appendChild(tr0); tb.appendChild(th);
+        tr0.appendChild(E('th','padding:4px 8px;text-align:left;font-size:11.5px', c.eleves.length+' élève'+(c.eleves.length>1?'s':'')));
+        EVJ_COLS.forEach(([k,l,co])=>{ const h=E('th','padding:4px 2px;text-align:center'); h.appendChild(pill(l, co, null, true)); tr0.appendChild(h); });
+        tr0.appendChild(E('th','padding:4px 8px;text-align:left;font-size:11.5px','Note'));
+        const bd=E('tbody'); tb.appendChild(bd);
+        c.eleves.forEach((e,i)=>{ const r=E('tr','background:'+(i%2?'#F3F4F6':'#FFFFFF')); bd.appendChild(r);
+          r.appendChild(E('td','padding:4px 8px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', e.nom));
+          EVJ_COLS.forEach(([k,l,co])=>{ const d=E('td','padding:4px 2px;text-align:center'); d.appendChild(e.cles.indexOf(k)>=0 ? E('span','display:inline-block;width:19px;height:19px;border-radius:5px;background:'+co+';color:#FFFFFF;font-size:12px;font-weight:800;line-height:19px','✓') : E('span','color:#C9CDD3','·')); r.appendChild(d); });
+          const n=E('td','padding:4px 8px;font-size:12px;font-weight:700;color:#4B5159;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', e.note); n.title=e.note; r.appendChild(n); });
+        const tf=E('tfoot'), rt=E('tr','background:#111418;color:#FFFFFF;font-weight:800'); tf.appendChild(rt); tb.appendChild(tf);
+        rt.appendChild(E('td','padding:4px 8px;font-size:12px','Total'));
+        EVJ_COLS.forEach(([k])=>{ const n=c.eleves.filter(e=>e.cles.indexOf(k)>=0).length; rt.appendChild(E('td','padding:4px 2px;text-align:center', n ? String(n) : '–')); });
+        rt.appendChild(E('td')); }
+    }
+    c.ratt.forEach(r=>{ const z=E('div','margin-top:7px;border:2px solid #B91C1C;border-radius:9px;padding:4px 10px;font-size:13px'); z.className='evj-ratt';
+      z.appendChild(E('b','color:#B91C1C','↺ '+r.noms.length+' à rattraper')); z.appendChild(document.createTextNode(' · '+r.titre+(r.date ? ' · '+r.date : '')+' : ')); z.appendChild(E('b','', r.noms.join(', '))); ca.appendChild(z); });
+  });
+  // à préparer
+  const as=E('aside','padding:14px 18px;background:#FFFFFF;border-left:3px solid #111418;min-width:0'); as.id='evj-apreparer'; corps.appendChild(as);
+  const ht=E('div','font-size:14px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px'); as.appendChild(ht);
+  const majT=()=>{ const n=A.filter(a=>coches[a.k]).length; ht.textContent='À préparer · '+(A.length-n)+(n ? ' (✓ '+n+')' : ''); };
+  if(!A.length) as.appendChild(E('div','font-size:13.5px;font-weight:700;color:#4B5159','Rien à préparer.'));
+  A.forEach(a=>{ const it=E('label','display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #C9CDD3;cursor:pointer'); it.className='evj-item'; as.appendChild(it);
+    const cb=E('input','width:20px;height:20px;flex:none;accent-color:#15803D;margin-top:1px'); cb.type='checkbox'; cb.checked=!!coches[a.k]; it.appendChild(cb);
+    const tx=E('div','min-width:0'); tx.appendChild(E('b','font-size:13.5px', a.ic+' '+a.titre)); tx.appendChild(E('div','font-size:13px;margin-top:1px', a.txt)); it.appendChild(tx);
+    const st=()=>{ tx.style.opacity=cb.checked ? '.45' : '1'; tx.style.textDecoration=cb.checked ? 'line-through' : 'none'; }; st();
+    cb.onchange=()=>{ if(cb.checked) coches[a.k]=1; else delete coches[a.k]; st(); majT(); saveS(); }; });
+  majT();
+  document.body.appendChild(bg); document.addEventListener('keydown', _evjEchap, true);
+  return {cours:C.length, items:A.length};
 }
 
 /* 5 — Cours de demain à préparer. */
@@ -20242,6 +20393,10 @@ const _PAL_OUTILS_COURS = [
    sub:'Décompte du temps, alertes sonores',
    kw:'compte rebours minuteur timer chrono décompte temps alerte',
    run:()=>{ openTimerModal(); }},
+  {id:'act-horloge', icon:'🕐', label:'Horloge en grand',
+   sub:'L’heure en très grand, à projeter (fin du cours affichée)',
+   kw:'horloge heure grand projeter pendule montre afficher heure',
+   run:()=>{ openHorloge(); }},   // V11.5.79
   {id:'act-ecran', icon:'🖥️', label:'Écran classe',
    sub:'Écrans projetés du cours ouvert (accueil, séance, fin, évaluation)',
    kw:'écran classe projeter projection vidéoprojecteur accueil séance fin évaluation tbi',
@@ -76501,6 +76656,94 @@ async function _tmrProjeter(){
   _tmrUpdateUI();
   try{ showDropToast(ecran ? '🖥 Compte à rebours projeté sur l’autre écran' : '🖥 Fenêtre ouverte : glissez-la sur l’écran projeté, puis cliquez dedans pour le plein écran'); }catch(e){}
   return ecran ? 'ecran' : 'fenetre';
+}
+
+/* ═══ V11.5.79 — HORLOGE EN GRAND (demande du 16/11) ═══
+   Outils du plan de classe › « 🕐 Horloge en grand » : l'heure plein écran dans l'appli, et « 🖥 Projeter »
+   sur le 2e écran comme le compte à rebours (mêmes écrans, même autorisation). Fin du cours en cours
+   (classe ouverte) affichée dessous. Une seule minuterie d'une seconde, arrêtée quand rien n'est affiché. */
+let _hrlProj=null, _hrlIv=null;
+const _hrl2=(n)=>String(n).padStart(2,'0');
+/** « 14:05 » ou « 14:05:09 ». Pure. */
+function _hrlTexte(d, sec){ return _hrl2(d.getHours())+':'+_hrl2(d.getMinutes())+(sec ? ':'+_hrl2(d.getSeconds()) : ''); }
+/** « lundi 16 novembre ». Pure. */
+function _hrlDate(d){ const J=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'], M=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']; return J[d.getDay()]+' '+d.getDate()+' '+M[d.getMonth()]; }
+/** « Fin du cours à 09:25 · dans 12 min » (fin = « HH:MM »), vide si passé ou inconnu. Pure. */
+function _hrlFinTexte(fin, d){
+  const m=/^(\d{1,2}):(\d{2})/.exec(String(fin||'')); if(!m) return '';
+  const reste=(Number(m[1])*60+Number(m[2]))-(d.getHours()*60+d.getMinutes()); if(reste<0) return '';
+  return 'Fin du cours à '+_hrl2(Number(m[1]))+':'+m[2]+(reste>0 ? ' · dans '+reste+' min' : ' · maintenant');
+}
+/** Heure de fin du cours en cours pour la classe ouverte (ou ''). */
+function _hrlFinCours(){
+  try{ const cls=(typeof curCls!=='undefined') ? curCls : ''; if(!cls) return '';
+    const k=getCurrentSlotForCls(cls); if(!k) return '';
+    const s=(buildYearSlots(cls)||[]).find(x=>x && x.slotKey===k); return (s && s.fin) || '';
+  }catch(e){ return ''; }
+}
+function _hrlSec(){ return !!(S.reglages && S.reglages.hrlSec); }
+function _hrlProjOuverte(){ return !!(_hrlProj && !_hrlProj.closed); }
+function _hrlMaj(){
+  const d=new Date(), sec=_hrlSec(), h=_hrlTexte(d, sec), j0=_hrlDate(d), j=j0.charAt(0).toUpperCase()+j0.slice(1), f=_hrlFinTexte(_hrlFinCours(), d), fs=sec ? 'min(17vw,50vh)' : 'min(26vw,60vh)';
+  const bg=document.getElementById('hrl-bg');
+  if(bg){ const a=document.getElementById('hrl-heure'), b=document.getElementById('hrl-date'), c=document.getElementById('hrl-fin');
+    if(a){ a.textContent=h; a.style.fontSize=fs; } if(b) b.textContent=j; if(c) c.textContent=f; }
+  if(_hrlProjOuverte()){ try{ const D=_hrlProj.document, a=D.getElementById('hrl-heure'), b=D.getElementById('hrl-date'), c=D.getElementById('hrl-fin');
+    if(a){ a.textContent=h; a.style.fontSize=fs; } if(b) b.textContent=j; if(c) c.textContent=f; }catch(e){} }
+  else _hrlProj=null;
+  if(!bg && !_hrlProjOuverte() && _hrlIv){ clearInterval(_hrlIv); _hrlIv=null; }
+}
+function _hrlDemarrer(){ if(!_hrlIv) _hrlIv=setInterval(_hrlMaj, 1000); _hrlMaj(); }
+/** Construit l'affichage (heure, date, fin du cours) dans un document donné. createElement. */
+function _hrlBloc(D){
+  const wr=D.createElement('div'); wr.style.cssText='height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh;font-family:"DM Mono",Consolas,monospace;color:#FFFFFF';
+  const h=D.createElement('div'); h.id='hrl-heure'; h.style.cssText='font-size:min(26vw,60vh);font-weight:900;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums';
+  const j=D.createElement('div'); j.id='hrl-date'; j.style.cssText='font:700 5vh system-ui,sans-serif;color:#D1D5DB';
+  const f=D.createElement('div'); f.id='hrl-fin'; f.style.cssText='font:800 4.5vh system-ui,sans-serif;color:#FACC15;min-height:6vh';
+  wr.appendChild(h); wr.appendChild(j); wr.appendChild(f); return wr;
+}
+function closeHorloge(){
+  const bg=document.getElementById('hrl-bg'); if(bg) bg.remove();
+  document.removeEventListener('keydown', _hrlEchap, true); _hrlMaj();
+}
+function _hrlEchap(e){ if(e.key==='Escape' && document.getElementById('hrl-bg')){ e.stopPropagation(); e.preventDefault(); closeHorloge(); } }
+/** « 🖥 Projeter » : même principe que le compte à rebours (autre écran en plein écran si autorisé). */
+async function _hrlProjeter(){
+  if(_hrlProjOuverte()){ try{ _hrlProj.close(); }catch(e){} _hrlProj=null; _hrlMaj(); return 'fermee'; }
+  if(!_tmrEcrans && ('getScreenDetails' in window)){ try{ _tmrEcrans=await window.getScreenDetails(); }catch(e){ _tmrEcrans=null; } }
+  const ecran=_tmrEcrans ? _tmrAutreEcran(_tmrEcrans.screens, _tmrEcrans.currentScreen) : null;
+  const f=ecran ? 'popup,left='+ecran.availLeft+',top='+ecran.availTop+',width='+ecran.availWidth+',height='+ecran.availHeight+',fullscreen' : 'popup,width=900,height=520';
+  let w=null; try{ w=window.open('', 'planclasse-hrl-proj', f); }catch(e){ w=null; }
+  if(!w){ try{ showDropToast('Le navigateur a bloqué la fenêtre : autorisez les fenêtres surgissantes pour PlanClasse, puis recliquez sur « 🖥 Projeter ».'); }catch(e){} return 'bloquee'; }
+  _hrlProj=w;
+  try{ const D=w.document; if(!D.getElementById('hrl-heure')){ D.title='🕐 Horloge';
+      const st=D.createElement('style'); st.textContent='html,body{margin:0;height:100%;background:#000;overflow:hidden;cursor:none}#hrl-aide{position:fixed;bottom:2vh;left:0;right:0;text-align:center;font:500 14px system-ui,sans-serif;color:#6B7280;cursor:pointer}'; D.head.appendChild(st);
+      D.body.appendChild(_hrlBloc(D));
+      const aide=D.createElement('div'); aide.id='hrl-aide'; aide.textContent='Cliquer ici pour le plein écran (ou F11) · se ferme depuis PlanClasse'; D.body.appendChild(aide);
+      D.addEventListener('click', ()=>{ try{ D.documentElement.requestFullscreen(); }catch(x){} });
+      D.addEventListener('fullscreenchange', ()=>{ aide.style.display=D.fullscreenElement ? 'none' : ''; }); } }catch(e){ console.warn('[hrl proj]', e); }
+  if(ecran){ try{ w.moveTo(ecran.availLeft, ecran.availTop); w.resizeTo(ecran.availWidth, ecran.availHeight); }catch(e){} }
+  try{ window.addEventListener('beforeunload', ()=>{ try{ if(_hrlProjOuverte()) _hrlProj.close(); }catch(e){} }, {once:true}); }catch(e){}
+  _hrlDemarrer();
+  try{ showDropToast(ecran ? '🖥 Horloge projetée sur l’autre écran' : '🖥 Fenêtre ouverte : glissez-la sur l’écran projeté, puis cliquez dedans pour le plein écran'); }catch(e){}
+  return ecran ? 'ecran' : 'fenetre';
+}
+/** Ouvre l'horloge en grand (plein écran dans l'appli). */
+function openHorloge(){
+  closeHorloge();
+  try{ _tmrPrechargerEcrans(); }catch(e){}
+  const bg=document.createElement('div'); bg.id='hrl-bg'; bg.style.cssText='position:fixed;inset:0;z-index:9000;background:#000';
+  bg.appendChild(_hrlBloc(document));
+  const bar=document.createElement('div'); bar.id='hrl-barre'; bar.style.cssText='position:fixed;top:14px;right:14px;display:flex;gap:8px';
+  const bt=(txt, titre, fn)=>{ const b=document.createElement('button'); b.type='button'; b.textContent=txt; b.title=titre;
+    b.style.cssText='font:800 15px system-ui,sans-serif;padding:8px 14px;border-radius:9px;border:2px solid #FFFFFF;background:#000;color:#FFFFFF;cursor:pointer';
+    b.onclick=(e)=>{ e.stopPropagation(); fn(b); }; bar.appendChild(b); return b; };
+  bt(_hrlSec() ? 'Masquer les secondes' : 'Afficher les secondes', 'Secondes', (b)=>{ if(!S.reglages) S.reglages={}; S.reglages.hrlSec=!_hrlSec(); saveS(); b.textContent=_hrlSec() ? 'Masquer les secondes' : 'Afficher les secondes'; _hrlMaj(); }).id='hrl-sec';
+  bt(_hrlProjOuverte() ? '✕ Projection' : '🖥 Projeter', 'Afficher l’horloge sur l’écran projeté', async(b)=>{ await _hrlProjeter(); b.textContent=_hrlProjOuverte() ? '✕ Projection' : '🖥 Projeter'; }).id='hrl-proj';
+  bt('✕', 'Fermer (Échap)', ()=>closeHorloge()).id='hrl-fermer';
+  bg.appendChild(bar); document.body.appendChild(bg);
+  document.addEventListener('keydown', _hrlEchap, true);
+  _hrlDemarrer();
 }
 
 /** Le panneau ⚙ du compte à rebours. createElement, donc invariants de balises
