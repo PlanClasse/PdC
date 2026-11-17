@@ -4870,7 +4870,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.81';
+const APP_VERSION = 'v11.5.82';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -31795,7 +31795,10 @@ function _fdjGetCompetencesPosees(slotKey, cls){
 function _fdjGetFirstCourseStart(todayStr){
   const r = (typeof resolveDay === 'function') ? resolveDay(todayStr) : null;
   if(!r || r.isVacance) return null;
-  const active = (r.events || []).filter(e => !e.cancelled);
+  // V11.5.82 — un cours annulé par une absence déclarée (« Mes absences ») n'est pas marqué cancelled
+  // par resolveDay : on le retire aussi, sinon la fiche s'ouvrait un jour où tous les cours sont annulés.
+  const active = (r.events || []).filter(e => !e.cancelled && !(typeof isSlotCancelled === 'function'
+    && isSlotCancelled(todayStr, (typeof formatHHMM === 'function' ? formatHHMM(e.start) : ''), (typeof extractClassCode === 'function' ? (extractClassCode(e.summary) || '') : ''))));
   if(!active.length) return null;
   // Trier par heure de début
   const sorted = active.slice().sort((a,b) => {
@@ -36019,6 +36022,9 @@ function openFicheDuJourManual(){
 
 // Tentative d'affichage automatique au chargement
 function fdjTryAutoShow(){
+  // V11.5.82 — Affichage automatique à la première ouverture du jour DÉSACTIVÉ (demande du 17/11).
+  // La fiche s'ouvre toujours à la main ; S.reglages.fdjAuto=true rétablirait l'ancien comportement.
+  if(!(S.reglages && S.reglages.fdjAuto===true)) return;
   if(_fdjShouldAutoShow()){
     openFicheDuJour({auto:true});
   }
