@@ -4872,7 +4872,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.84';
+const APP_VERSION = 'v11.5.86';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -12766,33 +12766,88 @@ function _tempScopeKey(){
   if(typeof curGroupeId!=='undefined' && curGroupeId && S.groupes && S.groupes[curGroupeId] && S.groupes[curGroupeId].parentCls===curCls) return curCls+'|'+curGroupeId;
   return curCls||null;
 }
+/* ═══ V11.5.86 — PLAN TEMPORAIRE MÉMORISÉ (demande du 19/11) ═══
+   Le store n'est plus en mémoire : S.plansTemp['<scope>|<slotKey>'] = {slotKey, scope, cree, layouts:{<layoutId>: seats[]}}.
+   Un plan temporaire vaut pour UN cours ; il survit au changement de classe, au rechargement, au changement
+   de jour, et il est synchronisé. Plusieurs peuvent être préparés à l'avance (un par cours).
+   Créneau visé : le cours ouvert (curSlotKey) ; hors cours (« Mes plans de classe »), le PROCHAIN cours de la
+   classe (ou du groupe). Fin : enregistrement de la séance (instantané puis effacement), « Revenir au plan
+   habituel », ou effacement automatique 7 jours après le cours. */
+const PT_JOURS_GARDE=7;
+let _ptPurgeFaite=false, _ptCache={k:'', t:0, v:null};
+function _ptStore(){
+  if(!S.plansTemp || typeof S.plansTemp!=='object') S.plansTemp={};
+  if(!_ptPurgeFaite){ _ptPurgeFaite=true; try{ _ptPurger(S.plansTemp, (typeof _appToday==='function') ? _appToday() : new Date().toISOString().slice(0,10)); }catch(e){} }
+  return S.plansTemp;
+}
+/** Efface les plans temporaires dont le cours date de plus de 7 jours. Pure (modifie P). */
+function _ptPurger(P, today){
+  const lim=new Date(String(today)+'T12:00:00'); lim.setDate(lim.getDate()-PT_JOURS_GARDE); const L=lim.toISOString().slice(0,10); let n=0;
+  Object.keys(P||{}).forEach(k=>{ const e=P[k], d=String((e && e.slotKey) || '').slice(0,10); if(!d || d<L){ delete P[k]; n++; } }); return n;
+}
+/** « jeu. 20/11 à 08:10 » pour un slotKey « 2026-11-20_08:10 ». Pure. */
+function _ptLibSlot(sk){
+  const s=String(sk||''), d=s.slice(0,10), h=s.slice(11,16); if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return s;
+  const J=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'], D=new Date(d+'T12:00:00');
+  return J[D.getDay()]+' '+d.slice(8,10)+'/'+d.slice(5,7)+(h ? ' à '+h : '');
+}
+/** Prochain cours (non annulé) du scope courant, hors cours. Mis en cache 60 s. */
+function _ptProchainSlot(){
+  const sc=_tempScopeKey(); if(!sc) return null;
+  const now=new Date(), ck=sc+'|'+now.getFullYear()+now.getMonth()+now.getDate()+now.getHours()+now.getMinutes();
+  if(_ptCache.k===ck) return _ptCache.v;
+  let v=null;
+  try{
+    const t=toDateStr(now), hm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    let slots=[], clsAnn=curCls;
+    if(typeof curGrpInter!=='undefined' && curGrpInter && S.groupes && S.groupes[curGrpInter]){ slots=buildYearSlotsForGroupe(curGrpInter)||[]; clsAnn=''; }
+    else if(curCls) slots=(buildYearSlots(curCls)||[]).filter(s=>!(typeof curGroupeId!=='undefined' && curGroupeId) || !s.isDemi || (s.grpIds||[]).indexOf(curGroupeId)>=0);
+    const L=slots.filter(s=>s && s.slotKey && (s.dateStr>t || (s.dateStr===t && String(s.fin||s.debut||'')>=hm)) && !(typeof isSlotCancelled==='function' && isSlotCancelled(s.dateStr, s.debut, clsAnn)));
+    L.sort((a,b)=>String(a.slotKey).localeCompare(String(b.slotKey))); v=L[0] ? L[0].slotKey : null;
+  }catch(e){ v=null; }
+  _ptCache={k:ck, v}; return v;
+}
+/** Créneau visé par le plan temporaire : le cours ouvert, sinon le prochain cours. */
+function _ptSlotCible(){ return (typeof curSlotKey!=='undefined' && curSlotKey) ? curSlotKey : _ptProchainSlot(); }
+/** Clé de l'entrée du store pour le contexte courant (sans la géométrie), ou null s'il n'y en a pas. */
+function _ptEntreeCle(){
+  const sc=_tempScopeKey(); if(!sc) return null; const P=_ptStore();
+  if(!Object.keys(P).some(k=>k.indexOf(sc+'|')===0)) return null;   // rien pour ce scope : pas de calcul de créneau
+  const sl=_ptSlotCible(); if(!sl) return null; const k=sc+'|'+sl; return P[k] ? k : null;
+}
+/** Crée (si besoin) le plan temporaire du créneau visé. Rend la clé ou null. */
+function _ptCreer(){
+  const sc=_tempScopeKey(), sl=_ptSlotCible(); if(!sc || !sl) return null;
+  const P=_ptStore(), k=sc+'|'+sl; if(!P[k]) P[k]={slotKey:sl, scope:sc, cree:Date.now(), layouts:{}}; _ptCache={k:'', v:null}; return k;
+}
+/** Liste des plans temporaires préparés (pour Ctrl+K). */
+function _ptListe(){ const P=_ptStore(); return Object.keys(P).map(k=>Object.assign({cle:k}, P[k])).sort((a,b)=>String(a.slotKey).localeCompare(String(b.slotKey))); }
 /* Cle complete, ou null si le plan temporaire ne s'applique pas ici. */
 function _tempPlanKey(){
-  if(!tempPlanActive) return null;
-  if(typeof curSlotKey==='undefined' || !curSlotKey) return null;
-  if(curSlotKey!==tempPlanSlot) return null;   // autre creneau => inerte (fiche §5.1)
-  const sc=_tempScopeKey(); if(!sc) return null;
-  return sc+'|'+curSlotKey+'|'+layout;
+  const k=_ptEntreeCle(); if(!k) return null;
+  return k+'|'+layout;
 }
 /* Lecture. permFn() rend le plan PERMANENT de la branche courante ; il n'est
    appele qu'a la premiere lecture, pour amorcer la copie. */
 function _tempSeatsFor(permFn){
-  const k=_tempPlanKey(); if(!k) return null;
-  let e=_tempPlans[k];
-  if(!e){
+  const k=_ptEntreeCle(); if(!k) return null;
+  const E=_ptStore()[k]; if(!E.layouts || typeof E.layouts!=='object') E.layouts={};
+  let s=E.layouts[layout];
+  if(!Array.isArray(s)){
     let base=null;
     try{ base=(typeof permFn==='function')?permFn():null; }catch(err){ base=null; }
     if(!Array.isArray(base)) return null;      // filet : plan permanent illisible
-    e=_tempPlans[k]={seats:base.slice(), layoutId:layout, ts:Date.now()};
+    s=E.layouts[layout]=base.slice();
   }
-  return Array.isArray(e.seats)?e.seats:null;
+  return s;
 }
 /* Ecriture (setter du proxy). Rend true si l'ecriture a ete DETOURNEE vers le
-   store temporaire — l'appelant doit alors s'arreter sans toucher a S. */
+   store temporaire — l'appelant doit alors s'arreter sans toucher au plan permanent. */
 function _tempSetSeats(v){
-  const k=_tempPlanKey(); if(!k) return false;
+  const k=_ptEntreeCle(); if(!k) return false;
   if(!Array.isArray(v)) return false;
-  _tempPlans[k]={seats:v, layoutId:layout, ts:Date.now()};
+  const E=_ptStore()[k]; if(!E.layouts || typeof E.layouts!=='object') E.layouts={};
+  E.layouts[layout]=v; E.ts=Date.now();
   return true;
 }
 /* Garde des ecrivains qui court-circuitent le proxy. Rend true si l'action
@@ -12876,11 +12931,70 @@ function _buildPlanTempSnapshot(){
   return snap;
 }
 
-/* Purge des entrees du creneau arme (toutes geometries confondues). */
+/* Purge du plan temporaire du contexte courant (toutes geometries confondues). V11.5.86 : dans S.plansTemp. */
 function _tempClearAll(){
-  _tempPlans={};
-  tempPlanActive=false;
-  tempPlanSlot=null;
+  const k=_ptEntreeCle(); if(k){ delete _ptStore()[k]; }
+  _tempPlans={}; tempPlanActive=false; tempPlanSlot=null;
+  if(_pdcVerrou.mode==='temp') _pdcVerrou={cle:'', mode:''};
+  try{ saveS(); }catch(e){}
+}
+
+/* ═══ V11.5.86 — VERROU DU PLACEMENT ═══
+   Le placement est verrouillé par défaut : un déplacement, un retrait, un placement aléatoire, une rotation,
+   « vider », une synchro classique/îlots demandent d'abord de choisir « Temporaire » (pour un cours) ou
+   « Définitif » (le plan habituel). Le choix vaut pour la classe et le cours affichés ; il retombe en changeant
+   de classe ou de cours. Cadenas 🔒 discret en bas à droite du plan. */
+let _pdcVerrou={cle:'', mode:''};
+function _pdcVerrouCle(){ return (_tempScopeKey()||'')+'|'+((typeof curSlotKey!=='undefined' && curSlotKey) || ''); }
+function _pdcMode(){
+  if(_pdcVerrou.cle!==_pdcVerrouCle()) _pdcVerrou={cle:'', mode:''};
+  const tp=!!_ptEntreeCle();
+  if(_pdcVerrou.mode==='temp' && !tp) _pdcVerrou.mode='';
+  if(_pdcVerrou.mode==='def' && tp) _pdcVerrou.mode='temp';
+  return _pdcVerrou.mode;
+}
+function _pdcFixer(mode){ _pdcVerrou={cle:_pdcVerrouCle(), mode:mode||''}; _pdcMajVerrou(); }
+/** Garde des écritures du placement. Rend true si on peut modifier ; sinon ouvre le choix et rend false. */
+function _pdcPeutPlacer(){
+  if(_pdcMode()) return true;
+  try{ _pdcChoixVerrou(); }catch(e){}
+  return false;
+}
+/** Cadenas en bas à droite du plan (dans #app). createElement. */
+function _pdcMajVerrou(){
+  if(typeof document==='undefined') return; const app=document.getElementById('app'); if(!app) return;
+  let b=document.getElementById('pdc-verrou');
+  if(!b){ b=document.createElement('button'); b.type='button'; b.id='pdc-verrou'; b.onclick=(e)=>{ e.stopPropagation(); if(_pdcMode()){ _pdcFixer(''); try{ showDropToast('🔒 Placement verrouillé'); }catch(x){} } else _pdcChoixVerrou(); };
+    const bar=app.querySelector('.statbar'), ref=document.getElementById('s-cl');   // dans la barre du bas, avant le nom de la classe
+    if(bar && ref && ref.parentNode===bar) bar.insertBefore(b, ref); else if(bar) bar.appendChild(b); else app.appendChild(b); }
+  const m=_pdcMode(), tp=_ptEntreeCle();
+  b.textContent=m==='temp' ? '🔓 Temporaire' : m==='def' ? '🔓 Définitif' : (tp ? '🔒 🕘' : '🔒');
+  b.title=m ? 'Placement modifiable ('+(m==='temp' ? 'plan temporaire' : 'plan habituel')+') : cliquer pour reverrouiller' : 'Placement verrouillé : cliquer pour modifier (temporaire ou définitif)';
+  b.style.cssText='font:700 12px system-ui,sans-serif;padding:2px 9px;border-radius:7px;cursor:pointer;opacity:'+(m?'1':'.8')+';'
+    +(m==='temp' ? 'background:#7C2D12;color:#FFEDD5;border:2px solid #F97316' : m==='def' ? 'background:#15803D;color:#FFFFFF;border:2px solid #14532D' : 'background:var(--sur);color:var(--tx2);border:1.5px solid var(--brd)');
+}
+/** Choix « Temporaire / Définitif » (petite fenêtre au-dessus du cadenas). createElement. */
+function _pdcChoixVerrou(){
+  const old=document.getElementById('pdc-verrou-choix'); if(old){ old.remove(); return; }
+  const sl=_ptSlotCible(), tp=_ptEntreeCle(), enCours=!!(typeof curSlotKey!=='undefined' && curSlotKey);
+  const box=document.createElement('div'); box.id='pdc-verrou-choix';
+  const _vr=(document.getElementById('pdc-verrou')||{getBoundingClientRect:()=>({left:16, top:innerHeight-40})}).getBoundingClientRect();
+  box.style.cssText='position:fixed;left:'+Math.max(8, Math.min(innerWidth-310, _vr.left-10))+'px;bottom:'+Math.max(40, innerHeight-_vr.top+8)+'px;z-index:480;width:300px;background:var(--sur);color:var(--tx);border:2px solid #111418;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:10px;font:13px system-ui,sans-serif';
+  const h=document.createElement('div'); h.style.cssText='font-weight:800;font-size:13.5px;margin:0 2px 8px'; h.textContent='🔒 Modifier le placement'; box.appendChild(h);
+  const fermer=()=>{ box.remove(); document.removeEventListener('mousedown', hors, true); };
+  const hors=(e)=>{ if(!box.contains(e.target) && e.target.id!=='pdc-verrou') fermer(); };
+  const opt=(id, titre, sous, coul, ok, fn)=>{ const b=document.createElement('button'); b.type='button'; b.id=id; b.disabled=!ok;
+    b.style.cssText='display:block;width:100%;text-align:left;margin-top:6px;padding:8px 10px;border-radius:9px;cursor:'+(ok?'pointer':'not-allowed')+';opacity:'+(ok?'1':'.5')+';border:2px solid '+coul+';background:var(--sur);color:var(--tx);font:inherit';
+    const t=document.createElement('b'); t.textContent=titre; t.style.color=coul; b.appendChild(t);
+    const s=document.createElement('div'); s.style.cssText='font-size:12px;color:var(--tx2);margin-top:2px'; s.textContent=sous; b.appendChild(s);
+    b.onclick=()=>{ fermer(); fn(); }; box.appendChild(b); return b; };
+  opt('pdc-choix-temp', tp ? '🕘 Continuer le plan temporaire' : '🕘 Temporaire',
+    sl ? ('Pour le cours du '+_ptLibSlot(sl)+(enCours ? '' : ' (prochain cours)')+'. Le plan habituel ne bouge pas.') : 'Aucun cours à venir pour cette classe.', '#C2410C', !!sl,
+    ()=>{ if(!_ptCreer()) return; _pdcFixer('temp'); try{ renderApp(); }catch(e){} try{ showDropToast('🕘 Plan temporaire pour le cours du '+_ptLibSlot(sl)); }catch(e){} });
+  opt('pdc-choix-def', '✏️ Définitif', tp ? 'Revenez d’abord au plan habituel.' : 'Modifie le plan habituel de la classe.', '#15803D', !tp,
+    ()=>{ _pdcFixer('def'); try{ showDropToast('✏️ Placement définitif : le plan habituel est modifiable'); }catch(e){} });
+  if(tp) opt('pdc-choix-fin', '↩ Revenir au plan habituel', 'Abandonne le plan temporaire de ce cours.', '#7C2D12', true, ()=>exitTempPlan());
+  document.body.appendChild(box); setTimeout(()=>document.addEventListener('mousedown', hors, true), 0);
 }
 
 function getCls(){
@@ -20404,6 +20518,29 @@ const _PAL_OUTILS_COURS = [
    sub:'Décompte du temps, alertes sonores',
    kw:'compte rebours minuteur timer chrono décompte temps alerte',
    run:()=>{ openTimerModal(); }},
+  {id:'act-verrou', icon:'🔓', label:'Modifier le placement (temporaire ou définitif)',
+   sub:'Ouvre le cadenas du plan : temporaire pour un cours, ou définitif',
+   kw:'verrou cadenas deverrouiller placement deplacer eleves modifier plan definitif temporaire',
+   precond:()=>(_palPlanOuvert()?{ok:true}:{ok:false, why:'Ouvrez d\'abord un plan de classe'}),
+   run:()=>{ _pdcChoixVerrou(); }},   // V11.5.86
+  {id:'act-plan-temp', icon:'🕘', label:'Plan temporaire pour ce cours (ou le prochain)',
+   sub:'Déplacer des élèves pour un cours sans toucher au plan habituel',
+   kw:'plan temporaire evaluation deplacer eleves provisoire cours prochain preparer',
+   precond:()=>(_palPlanOuvert()?{ok:true}:{ok:false, why:'Ouvrez d\'abord un plan de classe'}),
+   run:()=>{ activateTempPlan(); }},
+  {id:'act-plan-habituel', icon:'↩', label:'Revenir au plan habituel',
+   sub:'Abandonner le plan temporaire de ce cours',
+   kw:'plan habituel revenir abandonner temporaire annuler',
+   precond:()=>(_palPlanOuvert() && typeof _ptEntreeCle==='function' && _ptEntreeCle()?{ok:true}:{ok:false, why:'Pas de plan temporaire ici'}),
+   run:()=>{ exitTempPlan(); }},
+  {id:'act-plans-temp-liste', icon:'🗂', label:'Plans temporaires préparés',
+   sub:'Liste des cours qui ont un plan temporaire',
+   kw:'plans temporaires prepares liste cours evaluation',
+   run:()=>{ const L=_ptListe(); try{ showModal('🕘 Plans temporaires préparés', L.length ? L.map(e=>'• '+String(e.scope||'').replace(/^grp:/,'groupe ').split('|')[0].toUpperCase()+' : cours du '+_ptLibSlot(e.slotKey)).join('\n') : 'Aucun plan temporaire en attente.', null, true); }catch(e){} }},
+  {id:'act-referent-num', icon:'📡', label:'Je suis le référent numérique (activer / désactiver)',
+   sub:'Suivi RRUPN et Pix : toutes les classes',
+   kw:'referent numerique rrupn pix toutes classes suivi acces',
+   run:()=>{ if(!S.reglages) S.reglages={}; if(S.reglages.referentNum) delete S.reglages.referentNum; else S.reglages.referentNum=true; saveS(); try{ showDropToast(S.reglages.referentNum ? '📡 Référent numérique : toutes les classes dans le suivi RRUPN et Pix' : '📡 Suivi RRUPN et Pix : mes classes'); }catch(e){} }},
   {id:'act-pdc-proj', icon:'📽', label:'Projeter le plan de classe',
    sub:'Le plan sur l’écran projeté, sans les outils, statuts à jour',
    kw:'projeter plan classe projection vidéoprojecteur écran étendu tbi places',
@@ -21526,6 +21663,15 @@ function renderParamsSuivi(){
   ]));
   pane.appendChild(_paramsSection('params-pane-statuts', renderParamsStatuts, '🏷', 'Statuts élèves', 'Couleurs, libellés et affichages de suivi.', 'psec-statuts', 'statuts'));
   pane.appendChild(_paramsSection('params-pane-alertes', renderParamsAlertes, '🚨', "Seuils d'alerte", 'Seuils et date de prise en compte pour les alertes automatiques.', 'psec-alertes', null));
+  // V11.5.85 — Référent numérique
+  const rn=document.createElement('div'); rn.id='params-referent-num'; rn.style.cssText='margin-top:14px;padding:12px 14px;border:1.5px solid var(--brd);border-radius:12px;background:var(--sur)';
+  const lb=document.createElement('label'); lb.style.cssText='display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800;cursor:pointer';
+  const cb=document.createElement('input'); cb.type='checkbox'; cb.id='referent-num-cb'; cb.checked=_rrupnReferent(); cb.style.cssText='width:18px;height:18px';
+  cb.onchange=()=>{ if(!S.reglages) S.reglages={}; if(cb.checked) S.reglages.referentNum=true; else delete S.reglages.referentNum; saveS(); try{ showDropToast(cb.checked ? '📡 Suivi RRUPN et Pix : toutes les classes' : '📡 Suivi RRUPN et Pix : mes classes'); }catch(e){} };
+  lb.appendChild(cb); lb.appendChild(document.createTextNode('📡 Je suis le référent numérique')); rn.appendChild(lb);
+  const ex=document.createElement('div'); ex.style.cssText='font-size:12.5px;color:var(--tx2);margin:4px 0 0 28px;line-height:1.5';
+  ex.textContent='Le suivi RRUPN (accès, demandes) et le suivi Pix affichent toutes les classes qui ont des élèves, tous niveaux confondus, même ceux désactivés et hors « Mes classes ». Les classes doivent avoir leur liste d’élèves (import).';
+  rn.appendChild(ex); pane.appendChild(rn);
 }
 
 
@@ -37519,6 +37665,24 @@ function isMaClasse(cls){
   const m=getMesClasses();
   return !m || m.has(cls);
 }
+/* V11.5.85 — Mode « Je suis le référent numérique » (Réglages › Suivi) : le suivi RRUPN / Pix montre
+   TOUTES les classes qui ont des élèves, tous niveaux confondus (même désactivés), sans le filtre « Mes classes ». */
+function _rrupnReferent(){ return !!(S.reglages && S.reglages.referentNum); }
+/** Tri des classes : niveau (6e → 3e) puis numéro. Pure. */
+function _rrupnTri(a, b){ const lv=(k)=>{ const i=LEVELS.indexOf(String(k).replace(/\d+$/,'')); return i<0 ? 99 : i; }, n=(k)=>parseInt(String(k).replace(/^\d+e/,''),10)||0; return lv(a)-lv(b) || n(a)-n(b) || String(a).localeCompare(String(b)); }
+/** Classe affichée dans le suivi RRUPN / Pix ? */
+function _rrupnClasseVisible(k){ return _rrupnReferent() || isMaClasse(k); }
+/** Classes du suivi RRUPN (avec élèves). En mode référent : toutes ; sinon niveaux actifs (filtre « Mes classes » si demandé). */
+function _rrupnClasses(filtreMes){
+  const avec=(k)=>S.cl[k] && (S.cl[k].students||[]).length;
+  if(_rrupnReferent()) return Object.keys(S.cl||{}).filter(k=>/^(6e|5e|4e|3e)\d+$/.test(k) && avec(k)).sort(_rrupnTri);
+  const L=[]; LEVELS.forEach(lv=>{ if(!S.en[lv]) return; for(let i=1;i<=N_SUB;i++){ const k=lv+i; if(avec(k) && (!filtreMes || isMaClasse(k))) L.push(k); } }); return L;
+}
+/** Niveaux du suivi Pix : niveaux actifs, ou (référent) tous ceux qui ont des élèves. */
+function _rrupnNiveaux(){
+  if(_rrupnReferent()) return LEVELS.filter(lv=>Object.keys(S.cl||{}).some(k=>k.replace(/\d+$/,'')===lv && (S.cl[k].students||[]).length));
+  return LEVELS.filter(l=>S.en && S.en[l]);
+}
 
 function renderTabs(){
   const t=document.getElementById('tabs'); t.innerHTML='';
@@ -44110,6 +44274,7 @@ function syncLayouts(){
   // permanent. Et l'operation n'a pas de sens ici : chaque geometrie a sa
   // propre copie temporaire.
   if(_tempBlock('la synchro classique/ilots')) return;
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
   // Build a choice modal
   document.getElementById('mt').textContent='Synchroniser les places';
   document.getElementById('mb').textContent='Choisissez le sens de la synchronisation. Les places de la vue source seront copiées vers la vue destination (écrasement).';
@@ -47694,19 +47859,16 @@ function activateTempPlan(){
     if(typeof showDropToast==='function') showDropToast('⚠️ Choisis d\'abord une classe.');
     return;
   }
-  if(typeof curSlotKey==='undefined' || !curSlotKey){
-    // Sans creneau : aucune seance ou deposer l'instantane, et rien qui
-    // purgerait le plan temporaire ensuite. On refuse, en disant pourquoi.
+  // V11.5.86 — hors cours : le plan temporaire vise le PROCHAIN cours de la classe ; plusieurs peuvent coexister.
+  const _sl=_ptSlotCible();
+  if(!_sl){
     if(typeof showModal==='function') showModal('Plan temporaire indisponible',
-      'Le plan temporaire s\'active depuis un COURS (barre du haut : ◁ ▷ pour choisir le creneau). Il est enregistre avec la seance, puis efface.',
+      'Aucun cours à venir pour cette classe dans l\'emploi du temps. Le plan temporaire vaut pour un cours précis : il est enregistré avec la séance, puis effacé.',
       null, true);
     return;
   }
-  // Un seul plan temporaire a la fois (fiche §9). S'il en restait un, arme sur
-  // un AUTRE creneau, ses entrees seraient deja inatteignables : on les purge
-  // plutot que de les laisser s'accumuler en memoire.
-  if(tempPlanSlot && tempPlanSlot!==curSlotKey) _tempPlans={};
-  tempPlanActive=true; tempPlanSlot=curSlotKey;
+  _ptCreer(); _pdcFixer('temp'); saveS();
+  if(typeof showDropToast==='function') showDropToast('🕘 Plan temporaire pour le cours du '+_ptLibSlot(_sl));
   // Pas de copie explicite ici : la premiere lecture du proxy amorce la copie
   // du plan permanent pour la geometrie affichee (_tempSeatsFor). Une bascule
   // classique <-> ilots amorcera la sienne, a partir du plan permanent
@@ -47715,7 +47877,7 @@ function activateTempPlan(){
 }
 
 function exitTempPlan(){
-  if(!tempPlanActive){ return; }
+  if(!_ptEntreeCle()){ return; }   // V11.5.86
   // Destructif (fiche §6) => confirmation. Le plan PERMANENT, lui, n'a jamais
   // bouge : seul le travail de reorganisation est perdu.
   if(typeof showModal==='function'){
@@ -47733,7 +47895,7 @@ function exitTempPlan(){
 }
 
 function toggleTempPlan(){
-  if(tempPlanActive) exitTempPlan();
+  if(_ptEntreeCle()) exitTempPlan();   // V11.5.86
   else activateTempPlan();
 }
 
@@ -47778,7 +47940,8 @@ function _renderTempPlanBanner(){
     if(!on){ if(old&&old.parentNode) old.parentNode.removeChild(old); return; }
     const b=_tempPlanBannerEl(host, i===1);
     const lbl=b.querySelector('.temp-plan-banner-lbl');
-    if(lbl) lbl.textContent='🕘 Plan temporaire — sera enregistre avec la seance puis efface. Ton plan habituel n\'est pas modifie.';
+    { const _k=_ptEntreeCle(), _e=_k ? _ptStore()[_k] : null, _enC=!!(typeof curSlotKey!=='undefined' && curSlotKey);   // V11.5.86
+      if(lbl) lbl.textContent='🕘 Plan temporaire pour le cours du '+(_e ? _ptLibSlot(_e.slotKey) : '')+(_enC ? '' : ' (prochain cours)')+' · gardé jusqu’à l’enregistrement de la séance. Ton plan habituel n’est pas modifié.'; }
     // Toujours en dernier : un rendu qui ajoute des elements a l'hote ne doit
     // pas repousser le bandeau au milieu.
     if(b.parentNode===host && host.lastChild!==b) host.appendChild(b);
@@ -47814,7 +47977,7 @@ function _ensureTempPlanMenuItem(){
   b.style.fontWeight=on?'800':'';
   b.title=on
     ? 'Abandonner le plan temporaire et revenir au plan habituel'
-    : 'Reorganiser les eleves pour ce cours seulement — le plan habituel n\'est pas modifie';
+    : 'Reorganiser les eleves pour ce cours seulement (ou le prochain cours) : le plan habituel n\'est pas modifie';
 }
 
 function renderClassroom(){
@@ -47855,6 +48018,7 @@ function renderClassroom(){
   // V035-V11.3.29 — Plan temporaire : bandeau + entree de menu. Places APRES
   // renderClassroomMobile, qui reecrit le contenu de la vue mobile.
   try{ _renderTempPlanBanner(); }catch(e){}
+  try{ _pdcMajVerrou(); }catch(e){}   // V11.5.86 — cadenas du placement
   try{ _ensureTempPlanMenuItem(); }catch(e){}
 }
 
@@ -48662,6 +48826,7 @@ function _performDeplacement(targetSeatEl){
   // Source unifiée : dragSrc (desktop) ou _v169Source (tactile).
   const src = dragSrc || _v169Source;
   if(!src) return;
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — placement verrouillé
   const to = parseInt(targetSeatEl.dataset.seatIdx);
   if(isNaN(to)) return;
   const seats = getCls().seats;
@@ -48949,7 +49114,7 @@ function _signalerClassesVides(){
     });
   return anomalies.length;
 }
-function removeSeatSlot(idx){getCls().seats[idx]=null; saveS(); renderApp();}
+function removeSeatSlot(idx){ if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return; getCls().seats[idx]=null; saveS(); renderApp(); }   // V11.5.86 — verrou
 /* ── Rotation des équipes ──────────────────────────────────────────────────
    Côté D (3 équipes) : EQ1 → EQ3 → EQ2 → EQ1 (rotation circulaire)
    Côté G (4 équipes) : EQ4 → EQ5 → EQ6 → EQ7 → EQ4 (rotation circulaire)
@@ -48961,6 +49126,7 @@ function rotatePlaces(applyClassic, applyIlot){
   // cls.seatsIlot en direct (voir plus bas), hors proxy. Elle ecraserait le
   // plan permanent. Blocage explicite plutot que refus muet.
   if(_tempBlock('la rotation des equipes')) return;
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
   // Colonne G identique dans les deux vues : EQ4→EQ5→EQ6→EQ7→EQ4
   const ROT_G=[
     ['EQ4',0,'EQ5',3],['EQ4',1,'EQ5',2],['EQ4',2,'EQ5',1],['EQ4',3,'EQ5',0],
@@ -49159,6 +49325,7 @@ function openRotatePlacesModal(){
 }
 
 function clearSeats(){
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
   const which=layout==='classic'?'classique':'îlots';
   showModal('Vider les places ?',`Tous les placements de la vue ${which} pour ${curCls} seront effacés.`,()=>{
     getCls().seats=Array(N_SEATS).fill(null); saveS(); renderApp();
@@ -49941,6 +50108,7 @@ function checkContraintes(){
 }
 
 function randomPlace(){
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
   const cls=getCls();
   const con=(S.contraintes&&S.contraintes[_scopeBucketKey()])||{separer:[],associer:[],devant:[],vueLimitee:[],isoler:[],eloigner:[]};
   // Toujours afficher le modal d'options en amont (option B validée en cadrage).
@@ -59828,6 +59996,10 @@ function _reuRendreDetail(box, r){
     if(!conf){ _reu.supprimer=r.id; _reuRendre(); setTimeout(()=>{ if(_reu.supprimer===r.id){ _reu.supprimer=''; _reuRendre(); } }, 4000); return; }
     const R=_reuStore(); const i=R.indexOf(r); if(i>=0) R.splice(i,1); _reu.supprimer=''; _reu.sel=''; saveS(); _reuRendre();
   }, 'Supprimer la réunion (les notes déjà parties dans le journal des élèves restent)'), conf));
+  if(conf){ const b2=_btnSuppr(_reuBtn('Supprimer + notes du journal', '', ()=>{   // V11.5.86
+      try{ const J=_jnlStore(); Object.keys(J).forEach(u=>{ const n=(J[u]||[]).filter(x=>!(x && x.reuId===r.id)); if(n.length) J[u]=n; else delete J[u]; }); }catch(e){}
+      const R=_reuStore(); const i=R.indexOf(r); if(i>=0) R.splice(i,1); _reu.supprimer=''; _reu.sel=''; saveS(); _reuRendre();
+    }, 'Supprimer la réunion ET les notes qu’elle a placées dans le journal des élèves'), true); b2.id='reu-suppr-notes'; hd.appendChild(b2); }
   // V11.5.59 — réunions parents (soirée ou rendez-vous) : prise de notes à gauche, historique de l'élève à droite
   if(ty.forme==='classes' || ty.forme==='eleve'){
     const sp=_reuEl('div','display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));align-items:start'); sp.id='reu-split'; box.appendChild(sp);
@@ -63486,7 +63658,7 @@ function renderDemandesCls(){
   cont.appendChild(btnAll);
   const classes=[];
   // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
-  LEVELS.forEach(lv=>{ if(!S.en[lv]) return; for(let i=1;i<=N_SUB;i++){ const k=lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k)) classes.push(k); } });
+  _rrupnClasses(true).forEach(k=>classes.push(k));   // V11.5.85 — mode référent numérique
   classes.forEach(k=>{
     const btn=document.createElement('button');
     btn.className='fp-tab'+(k===demandesCls?' act':'');
@@ -63519,7 +63691,7 @@ function renderDemandesList(){
 
   // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
   const classes=demandesCls==='all'
-    ? Object.keys(S.cl).filter(k=>S.cl[k]&&(S.cl[k].students||[]).length&&isMaClasse(k))
+    ? Object.keys(S.cl).filter(k=>S.cl[k]&&(S.cl[k].students||[]).length&&_rrupnClasseVisible(k))
     : [demandesCls];
 
   classes.forEach(cls=>{
@@ -64265,7 +64437,7 @@ async function pixExportXlsx(){
   }
 
   // Récupérer classes par niveau actif
-  const niveauxActifs = LEVELS.filter(l => S.en && S.en[l]);
+  const niveauxActifs = _rrupnNiveaux();   // V11.5.85
   if(!niveauxActifs.length){
     showModal('Export Pix','Aucun niveau actif. Active au moins un niveau dans les paramètres.', null, true);
     return;
@@ -64403,7 +64575,7 @@ function pixOpenViewer(){
     document.body.appendChild(pane);
   }
   // Init niveau actif
-  const niveauxActifs = LEVELS.filter(l => S.en && S.en[l]);
+  const niveauxActifs = _rrupnNiveaux();   // V11.5.85
   if(!niveauxActifs.length){
     pane.style.display='none';
     showModal('Suivi Pix','Aucun niveau actif.', null, true);
@@ -64436,7 +64608,7 @@ function _pixRenderViewer(){
   pane.style.background = T.pageBg;
   pane.style.color = T.text;
   pane.innerHTML = '';
-  const niveauxActifs = LEVELS.filter(l => S.en && S.en[l]);
+  const niveauxActifs = _rrupnNiveaux();   // V11.5.85
 
   // === Header (titre à gauche · onglets niveaux au centre · boutons à droite) ===
   const hdr = document.createElement('div');
@@ -64524,8 +64696,8 @@ function _pixRenderContent(content, lv){
   content.innerHTML = '';
   // V035-V11.3.21 — filtre « mes classes » : restreint l'affichage (pas les données).
   const classes = Object.keys(S.cl)
-    .filter(k => k.startsWith(lv) && (S.cl[k].students||[]).length && isMaClasse(k))
-    .sort();
+    .filter(k => k.startsWith(lv) && (S.cl[k].students||[]).length && _rrupnClasseVisible(k))
+    .sort(_rrupnTri);
 
   if(!classes.length){
     const empty = document.createElement('div');
@@ -64795,7 +64967,7 @@ async function pixExportPdf(){
     return;
   }
 
-  const niveauxActifs = LEVELS.filter(l => S.en && S.en[l]);
+  const niveauxActifs = _rrupnNiveaux();   // V11.5.85
   if(!niveauxActifs.length){
     if(btn){ btn.innerHTML = oldHtml; btn.disabled = false; }
     return;
@@ -64933,7 +65105,7 @@ function renderAccesCls(){
   // Onglets classes
   const cont=document.getElementById('acces-cls-tabs'); cont.innerHTML='';
   const classes=[];
-  LEVELS.forEach(lv=>{ if(!S.en[lv]) return; for(let i=1;i<=N_SUB;i++){ const k=lv+i; if(S.cl[k]&&(S.cl[k].students||[]).length) classes.push(k); } });
+  _rrupnClasses(false).forEach(k=>classes.push(k));   // V11.5.85 — mode référent numérique
   if(!accesCls||!classes.includes(accesCls)) accesCls=classes[0]||null;
   classes.forEach(k=>{
     const btn=document.createElement('button');
