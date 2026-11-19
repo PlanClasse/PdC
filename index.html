@@ -4326,6 +4326,7 @@ window._simHandleDisable = _simHandleDisable;
                 <button class="pmcard" onclick="openEbepList();closePlusMenu()"><span class="pmcard-ic">🧩</span>EBEP</button>
                 <span id="pmi-groupes-zone"></span>
                 <button class="pmcard" id="pmi-gender" onclick="toggleGenderColors();closePlusMenu()"><span class="pmcard-ic">🎨</span>F / G</button>
+                <button class="pmcard" id="pmi-pdc-proj" onclick="pdcProjeter();closePlusMenu()" title="Projeter le plan sur l’écran étendu (sans les outils)"><span class="pmcard-ic">📽</span>Projeter</button>
               </div>
 
               <div class="pm-zone pm-zone--verifs">
@@ -4871,7 +4872,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.83';
+const APP_VERSION = 'v11.5.84';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -37280,7 +37281,7 @@ const PLUS_TOUCHES={
   // Placement
   'rotation équipes':'R', 'pdc aléatoire':'A', 'vider le plan':'V', 'sync class.↔îlot':'K', 'pm-aff':'F', 'pm-grt':'G', 'pm-evl':'E', 'plan temporaire':'T',
   // Affichage
-  'ebep':'B', 'pmi-gender':'S', 'f / g':'S', 'pmi-delegues':'D', 'délégués':'D',
+  'ebep':'B', 'pmi-gender':'S', 'f / g':'S', 'pmi-pdc-proj':'J', 'projeter':'J', 'pmi-delegues':'D', 'délégués':'D',
   // Vérifs
   'contraintes':'C', 'alertes seuils':'L',
   // Données
