@@ -4302,6 +4302,7 @@ window._simHandleDisable = _simHandleDisable;
           <button class="pmitem" onclick="openTirageModal();closeOutilsMenu()">🎲 Tirage au sort</button>
           <button class="pmitem" onclick="openTimerModal();closeOutilsMenu()">⏱ Compte à rebours</button>
           <button class="pmitem" onclick="openHorloge();closeOutilsMenu()">🕐 Horloge en grand</button>
+          <button class="pmitem" onclick="pdcProjeter();closeOutilsMenu()">📽 Projeter le plan</button>
         </div>
         <!-- ⋯ Plus -->
         <div class="plus-menu-wrap" style="display:flex">
@@ -4870,7 +4871,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.82';
+const APP_VERSION = 'v11.5.83';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20402,6 +20403,11 @@ const _PAL_OUTILS_COURS = [
    sub:'Décompte du temps, alertes sonores',
    kw:'compte rebours minuteur timer chrono décompte temps alerte',
    run:()=>{ openTimerModal(); }},
+  {id:'act-pdc-proj', icon:'📽', label:'Projeter le plan de classe',
+   sub:'Le plan sur l’écran projeté, sans les outils, statuts à jour',
+   kw:'projeter plan classe projection vidéoprojecteur écran étendu tbi places',
+   precond:()=>(_palPlanOuvert()?{ok:true}:{ok:false, why:'Ouvrez d\'abord un plan de classe'}),
+   run:()=>{ pdcProjeter(); }},   // V11.5.83
   {id:'act-horloge', icon:'🕐', label:'Horloge en grand',
    sub:'L’heure en très grand, à projeter (fin du cours affichée)',
    kw:'horloge heure grand projeter pendule montre afficher heure',
@@ -40357,7 +40363,7 @@ function makeSeat(idx,name,extraCls){
       if(planCompIds.length){
         const liveCompsMap=getStudentLiveComps(name);
         const histoCompsMap=getStudentHistoComps(name);
-        const cwrap=document.createElement('div');
+        const cwrap=document.createElement('div'); cwrap.className='seat-comps';   // V11.5.83 — retirées de la projection
         cwrap.style.cssText='display:flex;gap:2px;justify-content:center;flex-wrap:wrap;pointer-events:none';
         const lvItems=_refItemsUniverse(curCls?curCls.slice(0,-1):'5e'); // V035-V11.1.4 — pastilles : items importés résolus
         const colors={1:'#EF4444',2:'#F97316',3:'#22C55E',4:'#8B5CF6'};
@@ -76670,6 +76676,102 @@ async function _tmrProjeter(){
   try{ window.addEventListener('beforeunload', ()=>{ try{ if(_tmrProjOuverte()) _tmrProj.close(); }catch(e){} }, {once:true}); }catch(e){}
   _tmrUpdateUI();
   try{ showDropToast(ecran ? '🖥 Compte à rebours projeté sur l’autre écran' : '🖥 Fenêtre ouverte : glissez-la sur l’écran projeté, puis cliquez dedans pour le plein écran'); }catch(e){}
+  return ecran ? 'ecran' : 'fenetre';
+}
+
+/* ═══ V11.5.83 — PROJECTION DU PLAN DE CLASSE (demande du 19/11) ═══
+   Outils › « 📽 Projeter le plan » : une fenêtre sur l'écran étendu (même mécanisme que le compte à
+   rebours : _tmrEcrans, _tmrAutreEcran) montre une COPIE du plan (#cls-area), recopiée à chaque
+   changement (MutationObserver) : les statuts posés dans l'appli apparaissent aussitôt.
+   Retiré de la copie : boutons et cases, besoins particuliers (EBEP), fiche de suivi, compétences,
+   surlignages (recherche, EBEP). Options : statuts visibles ou non, retourner (vue élève / vue prof). */
+let _pdcpWin=null, _pdcpObs=null, _pdcpT=0;
+const PDCP_RETIRER='.seat-x,.seat-besoin,.seat-fs,.seat-comps,.seat-partic-minus,.seat-partic-flash,.seat-taf-cb,button,input,select,textarea';
+const PDCP_CLASSES_RETIREES=['hl-seat','ebep-hl-seat','grp-hl-seat','selected','sel','drag-over','dragging'];
+function _pdcpOpts(){ const R=(S.reglages=S.reglages||{}); if(!R.pdcProj || typeof R.pdcProj!=='object') R.pdcProj={statuts:true, retourner:false}; return R.pdcProj; }
+function _pdcpOuverte(){ return !!(_pdcpWin && !_pdcpWin.closed); }
+/** Nettoie la copie du plan (élément du document projeté). Statuts retirés si demandé. */
+function _pdcpNettoyer(root, statuts){
+  root.querySelectorAll(PDCP_RETIRER).forEach(x=>x.remove());
+  root.querySelectorAll('[title]').forEach(x=>x.removeAttribute('title'));
+  root.querySelectorAll('[onclick]').forEach(x=>x.removeAttribute('onclick'));
+  root.querySelectorAll('.seat').forEach(s=>{
+    PDCP_CLASSES_RETIREES.forEach(c=>s.classList.remove(c));
+    if(!statuts){ [...s.classList].filter(c=>/^st-/.test(c)).forEach(c=>s.classList.remove(c)); s.querySelectorAll('.seat-badges-minor,.seat-badges-major').forEach(x=>x.remove()); }
+  });
+  return root;
+}
+/** Titre de la projection : classe (et groupe). */
+function _pdcpTitre(){
+  let t=(typeof curCls!=='undefined' && curCls) ? String(curCls).toUpperCase() : 'Plan de classe';
+  try{ if(typeof curGroupeId!=='undefined' && curGroupeId && S.groupes && S.groupes[curGroupeId]) t+=' · '+(S.groupes[curGroupeId].label||'groupe'); }catch(e){}
+  return t;
+}
+function _pdcpAjuster(){
+  if(!_pdcpOuverte()) return; const D=_pdcpWin.document, z=D.getElementById('pdcp-zone'), p=D.getElementById('pdcp-plan'); if(!z || !p) return;
+  p.style.transform='none'; const w=p.scrollWidth||1, h=p.scrollHeight||1, W=z.clientWidth-30, H=z.clientHeight-30;
+  const k=Math.max(.2, Math.min(4, Math.min(W/w, H/h))); p.style.transform='scale('+k+')';
+}
+/** Recopie le plan dans la fenêtre projetée. */
+function _pdcpMaj(){
+  if(!_pdcpOuverte()){ _pdcpArreterObs(); return; }
+  const src=document.getElementById('cls-area'); const D=_pdcpWin.document, z=D.getElementById('pdcp-plan'), ti=D.getElementById('pdcp-titre'); if(!src || !z) return;
+  const O=_pdcpOpts(), cp=src.cloneNode(true); cp.removeAttribute('id'); cp.id='pdcp-copie';
+  _pdcpNettoyer(cp, O.statuts!==false);
+  if(O.retourner) cp.classList.toggle('flipped');
+  z.textContent=''; z.appendChild(D.importNode(cp, true));
+  if(ti) ti.textContent=_pdcpTitre();
+  try{ D.documentElement.className=document.documentElement.className; D.body.className=document.body.className; D.documentElement.setAttribute('style', document.documentElement.getAttribute('style')||''); }catch(e){}
+  _pdcpAjuster();
+}
+function _pdcpPlanifier(){ clearTimeout(_pdcpT); _pdcpT=setTimeout(_pdcpMaj, 120); }
+function _pdcpArreterObs(){ if(_pdcpObs){ try{ _pdcpObs.disconnect(); }catch(e){} _pdcpObs=null; } }
+function _pdcpObserver(){
+  _pdcpArreterObs(); const src=document.getElementById('cls-area'); if(!src || typeof MutationObserver==='undefined') return;
+  _pdcpObs=new MutationObserver(_pdcpPlanifier); _pdcpObs.observe(src, {subtree:true, childList:true, attributes:true, characterData:true});
+}
+/** Petit panneau de pilotage dans l'appli, visible tant que la projection est ouverte. createElement. */
+function _pdcpPanneau(){
+  let p=document.getElementById('pdcp-ctrl'); if(p) p.remove(); if(!_pdcpOuverte()) return;
+  const O=_pdcpOpts();
+  p=document.createElement('div'); p.id='pdcp-ctrl'; p.style.cssText='position:fixed;left:14px;bottom:14px;z-index:480;display:flex;align-items:center;gap:6px;padding:6px 8px;background:#111418;color:#FFFFFF;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.3);font:700 13px system-ui,sans-serif';
+  p.appendChild(document.createTextNode('📽 Plan projeté'));
+  const bt=(txt, titre, fn, on)=>{ const b=document.createElement('button'); b.type='button'; b.textContent=txt; b.title=titre;
+    b.style.cssText='font:inherit;font-size:12.5px;padding:4px 9px;border-radius:7px;cursor:pointer;border:2px solid #FFFFFF;background:'+(on?'#FFFFFF':'transparent')+';color:'+(on?'#111418':'#FFFFFF');
+    b.onclick=(e)=>{ e.stopPropagation(); fn(); }; p.appendChild(b); return b; };
+  bt((O.statuts!==false?'✓ ':'')+'Statuts', 'Afficher ou masquer les statuts sur l’écran projeté', ()=>{ O.statuts=!(O.statuts!==false); saveS(); _pdcpMaj(); _pdcpPanneau(); }, O.statuts!==false).id='pdcp-statuts';
+  bt('⇅ Retourner', 'Retourner le plan projeté (tableau en haut ou en bas)', ()=>{ O.retourner=!O.retourner; saveS(); _pdcpMaj(); _pdcpPanneau(); }, !!O.retourner).id='pdcp-retourner';
+  bt('✕ Arrêter', 'Fermer la projection', ()=>pdcProjeter()).id='pdcp-arreter';
+  document.body.appendChild(p);
+}
+/** « 📽 Projeter le plan » : ouvre (ou ferme) la fenêtre projetée. */
+async function pdcProjeter(){
+  if(_pdcpOuverte()){ try{ _pdcpWin.close(); }catch(e){} _pdcpWin=null; _pdcpArreterObs(); _pdcpPanneau(); return 'fermee'; }
+  if(!document.getElementById('cls-area')){ try{ showDropToast('Ouvrez d’abord un plan de classe.'); }catch(e){} return 'sans-plan'; }
+  if(!_tmrEcrans && ('getScreenDetails' in window)){ try{ _tmrEcrans=await window.getScreenDetails(); }catch(e){ _tmrEcrans=null; } }
+  const ecran=_tmrEcrans ? _tmrAutreEcran(_tmrEcrans.screens, _tmrEcrans.currentScreen) : null;
+  const f=ecran ? 'popup,left='+ecran.availLeft+',top='+ecran.availTop+',width='+ecran.availWidth+',height='+ecran.availHeight+',fullscreen' : 'popup,width=1100,height=760';
+  let w=null; try{ w=window.open('', 'planclasse-pdc-proj', f); }catch(e){ w=null; }
+  if(!w){ try{ showDropToast('Le navigateur a bloqué la fenêtre : autorisez les fenêtres surgissantes pour PlanClasse, puis recliquez sur « 📽 Projeter le plan ».'); }catch(e){} return 'bloquee'; }
+  _pdcpWin=w;
+  try{ const D=w.document; if(!D.getElementById('pdcp-plan')){ D.title='📽 Plan de classe';
+      document.querySelectorAll('style, link[rel="stylesheet"]').forEach(s=>D.head.appendChild(D.importNode(s, true)));
+      const st=D.createElement('style'); st.textContent='html,body{margin:0;height:100%;overflow:hidden;background:var(--bg,#F3F4F6)}'
+        +'#pdcp-titre{height:56px;display:flex;align-items:center;justify-content:center;font:800 30px system-ui,sans-serif;color:var(--tx,#111418)}'
+        +'#pdcp-zone{position:absolute;top:56px;left:0;right:0;bottom:0;display:flex;align-items:flex-start;justify-content:center;overflow:hidden}'
+        +'#pdcp-plan{transform-origin:top center;pointer-events:none;padding:0 50px}#pdcp-plan .cls-area{margin:0;overflow:visible!important;padding-left:34px!important;padding-right:34px!important;width:auto!important;max-width:none!important}'
+        +'#pdcp-aide{position:fixed;bottom:8px;left:0;right:0;text-align:center;font:500 13px system-ui,sans-serif;color:#6B7280;cursor:pointer}';
+      D.head.appendChild(st);
+      const ti=D.createElement('div'); ti.id='pdcp-titre'; D.body.appendChild(ti);
+      const z=D.createElement('div'); z.id='pdcp-zone'; const pl=D.createElement('div'); pl.id='pdcp-plan'; z.appendChild(pl); D.body.appendChild(z);
+      const aide=D.createElement('div'); aide.id='pdcp-aide'; aide.textContent='Cliquer pour le plein écran (ou F11) · se pilote depuis PlanClasse'; D.body.appendChild(aide);
+      D.addEventListener('click', ()=>{ try{ D.documentElement.requestFullscreen(); }catch(x){} });
+      D.addEventListener('fullscreenchange', ()=>{ aide.style.display=D.fullscreenElement ? 'none' : ''; setTimeout(_pdcpAjuster, 50); });
+      w.addEventListener('resize', ()=>setTimeout(_pdcpAjuster, 50)); } }catch(e){ console.warn('[pdc proj]', e); }
+  if(ecran){ try{ w.moveTo(ecran.availLeft, ecran.availTop); w.resizeTo(ecran.availWidth, ecran.availHeight); }catch(e){} }
+  try{ window.addEventListener('beforeunload', ()=>{ try{ if(_pdcpOuverte()) _pdcpWin.close(); }catch(e){} }, {once:true}); }catch(e){}
+  _pdcpMaj(); _pdcpObserver(); _pdcpPanneau();
+  try{ showDropToast(ecran ? '📽 Plan projeté sur l’autre écran' : '📽 Fenêtre ouverte : glissez-la sur l’écran projeté, puis cliquez dedans pour le plein écran'); }catch(e){}
   return ecran ? 'ecran' : 'fenetre';
 }
 
