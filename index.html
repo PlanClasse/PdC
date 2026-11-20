@@ -4872,7 +4872,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.87';
+const APP_VERSION = 'v11.5.89';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -34564,12 +34564,26 @@ function _sdcAnnulerBascule(){
   return {ok:true, message:'Bascule annulée : l’ancien planning est rétabli.'};
 }
 
+/** V11.5.88 — Le cours a-t-il commencé ? (date + heure de début ≤ maintenant). Pure si `now` est fourni. */
+function _sdcCoursPasse(c, now){
+  if(!c || !c.dateStr) return true;
+  const n=now || new Date(), t=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'), hm=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+  return c.dateStr<t || (c.dateStr===t && String(c.debut||'00:00')<=hm);
+}
+/** V11.5.88 — Annule l'enregistrement d'une séance faite EN AVANCE (démonstration) : séance et coches du cours. */
+function _sdcAnnulerEnregistrementAnticipe(cls, slotKey){
+  if(!S.seances || !cls || !slotKey) return false; let n=0;
+  Object.keys(S.seances).filter(k=>k===cls || k.indexOf(cls+'|')===0).forEach(k=>{ const a=S.seances[k]; if(!Array.isArray(a)) return; const b=a.filter(s=>!s || s.slotKey!==slotKey); n+=a.length-b.length; S.seances[k]=b; });
+  try{ Object.keys(S.seanceCoches||{}).filter(k=>{ const p=k.split('|'); return p[0]===slotKey && p[1]===cls; }).forEach(k=>{ delete S.seanceCoches[k]; }); }catch(e){}
+  if(n){ try{ if(typeof invalidateYearSlotsCache==='function') invalidateYearSlotsCache(); }catch(e){} try{ if(typeof invalidateLayoutCache==='function') invalidateLayoutCache(); }catch(e){} saveS(); }
+  return n>0;
+}
 /* ── Écriture d'un cours ───────────────────────────────────────────────── */
 function _sdcEnregistrer(cls, slotKey, text, etoiles){
   cls=_sdcClsCanon(cls);
   const cours=_sdcCoursDeClasse(cls).find(c=>c.slotKey===slotKey);
   if(!cours) return {ok:false, message:'Cours introuvable.'};
-  if(cours.saved) return {ok:false, message:'Ce cours est déjà enregistré : modifiez-le depuis la séance ou le cahier de texte.'};
+  if(cours.saved && (typeof _sdcCoursPasse!=='function' || _sdcCoursPasse(cours))) return {ok:false, message:'Ce cours est déjà enregistré : modifiez-le depuis la séance ou le cahier de texte.'};   // V11.5.88 : un cours à venir enregistré en avance reste modifiable
   if(!_sdcApresBascule(cours.dateStr, cls)) return {ok:false, message:'Ce cours est antérieur à la bascule : il relève de l’ancien planning.'};
   const progE=getProgression(_sdcNiveau(cls))||[];
   if(typeof pushUndo==='function') try{ pushUndo(); }catch(e){}
@@ -35119,7 +35133,8 @@ function _sdcRendre(){
   }
   if(!cur){ grille.appendChild(_sdcEl('div','sdc-aucun', cls ? 'Aucun cours à afficher pour '+String(cls).toUpperCase()+'.' : 'Aucun cours.')); return; }
 
-  const enregistre=!!cur.saved;
+  const enAvance=!!cur.saved && !_sdcCoursPasse(cur);   // V11.5.88 — séance enregistrée avant le cours (démonstration)
+  const enregistre=!!cur.saved && !enAvance;
   const avant=!_sdcApresBascule(cur.dateStr, cls);
   const lectureSeule=enregistre||avant;
   // V11.3.94 — cours enregistré : avec ses en-têtes /SEQ /Séance (et son TAF).
@@ -35156,6 +35171,13 @@ function _sdcRendre(){
       const phr=('⚠ Ce cours avait été annulé : '+ri.n+' élément'+(ri.n>1?'s':'')+' de son contenu '+(ri.n>1?'ont':'a')+' déjà été repris'+(ri.vers?' dans le cours du '+d(ri.vers):'')+'.').replace(/\.\.$/,'.');
       colG.appendChild(_sdcEl('div','sdc-reprise-info',phr)); }
   }catch(e){}
+  if(enAvance){   // V11.5.88
+    const w=_sdcEl('div','sdc-reprise-info'); w.id='sdc-en-avance';
+    w.appendChild(_sdcEl('span',null,'ℹ Une séance a déjà été enregistrée pour ce cours, avant qu’il ait lieu (démonstration ?). Le contenu reste modifiable jusqu’au cours. '));
+    const b=_sdcEl('button','bs','Annuler l’enregistrement anticipé'); b.type='button'; b.id='sdc-annuler-anticipe';
+    b.onclick=()=>{ if(_sdcAnnulerEnregistrementAnticipe(cls, slotKey)){ try{ showDropToast('Enregistrement anticipé annulé : le cours redevient « à venir »'); }catch(e){} } try{ _sdcRendre(); }catch(e){ try{ openSaisieCours({cls, slotKey}); }catch(x){} } };
+    w.appendChild(b); colG.appendChild(w);
+  }
   if(!lectureSeule) _sdcZoneRestes(colG, cls, slotKey, prog, lectureSeule, (f)=>{ ta.value=f(ta.value); maj(true); });
 
   // ── Bibliothèque : choisir une séance, en prendre tout ou partie
@@ -76861,7 +76883,13 @@ async function _tmrProjeter(){
    changement (MutationObserver) : les statuts posés dans l'appli apparaissent aussitôt.
    Retiré de la copie : boutons et cases, besoins particuliers (EBEP), fiche de suivi, compétences,
    surlignages (recherche, EBEP). Options : statuts visibles ou non, retourner (vue élève / vue prof). */
-let _pdcpWin=null, _pdcpObs=null, _pdcpT=0;
+let _pdcpWin=null, _pdcpObs=null, _pdcpT=0, _pdcpVeille=0;
+/** V11.5.89 — Fenêtre projetée fermée (depuis l'appli OU directement sur l'écran étendu) : on range tout, panneau compris. */
+function _pdcpFermee(){
+  if(_pdcpVeille){ clearInterval(_pdcpVeille); _pdcpVeille=0; }
+  _pdcpWin=null; _pdcpArreterObs();
+  const p=document.getElementById('pdcp-ctrl'); if(p) p.remove();
+}
 const PDCP_RETIRER='.seat-x,.seat-besoin,.seat-fs,.seat-comps,.seat-partic-minus,.seat-partic-flash,.seat-taf-cb,button,input,select,textarea';
 const PDCP_CLASSES_RETIREES=['hl-seat','ebep-hl-seat','grp-hl-seat','selected','sel','drag-over','dragging'];
 function _pdcpOpts(){ const R=(S.reglages=S.reglages||{}); if(!R.pdcProj || typeof R.pdcProj!=='object') R.pdcProj={statuts:true, retourner:false}; return R.pdcProj; }
@@ -76890,7 +76918,7 @@ function _pdcpAjuster(){
 }
 /** Recopie le plan dans la fenêtre projetée. */
 function _pdcpMaj(){
-  if(!_pdcpOuverte()){ _pdcpArreterObs(); return; }
+  if(!_pdcpOuverte()){ _pdcpFermee(); return; }   // V11.5.89
   const src=document.getElementById('cls-area'); const D=_pdcpWin.document, z=D.getElementById('pdcp-plan'), ti=D.getElementById('pdcp-titre'); if(!src || !z) return;
   const O=_pdcpOpts(), cp=src.cloneNode(true); cp.removeAttribute('id'); cp.id='pdcp-copie';
   _pdcpNettoyer(cp, O.statuts!==false);
@@ -76922,7 +76950,7 @@ function _pdcpPanneau(){
 }
 /** « 📽 Projeter le plan » : ouvre (ou ferme) la fenêtre projetée. */
 async function pdcProjeter(){
-  if(_pdcpOuverte()){ try{ _pdcpWin.close(); }catch(e){} _pdcpWin=null; _pdcpArreterObs(); _pdcpPanneau(); return 'fermee'; }
+  if(_pdcpOuverte()){ try{ _pdcpWin.close(); }catch(e){} _pdcpFermee(); return 'fermee'; }
   if(!document.getElementById('cls-area')){ try{ showDropToast('Ouvrez d’abord un plan de classe.'); }catch(e){} return 'sans-plan'; }
   if(!_tmrEcrans && ('getScreenDetails' in window)){ try{ _tmrEcrans=await window.getScreenDetails(); }catch(e){ _tmrEcrans=null; } }
   const ecran=_tmrEcrans ? _tmrAutreEcran(_tmrEcrans.screens, _tmrEcrans.currentScreen) : null;
@@ -76947,6 +76975,10 @@ async function pdcProjeter(){
   if(ecran){ try{ w.moveTo(ecran.availLeft, ecran.availTop); w.resizeTo(ecran.availWidth, ecran.availHeight); }catch(e){} }
   try{ window.addEventListener('beforeunload', ()=>{ try{ if(_pdcpOuverte()) _pdcpWin.close(); }catch(e){} }, {once:true}); }catch(e){}
   _pdcpMaj(); _pdcpObserver(); _pdcpPanneau();
+  // V11.5.89 — fermeture faite sur l'écran étendu (croix, Alt+F4) : le panneau de l'appli disparaît aussi
+  try{ w.addEventListener('pagehide', ()=>setTimeout(()=>{ if(!_pdcpOuverte()) _pdcpFermee(); }, 80)); }catch(e){}
+  if(_pdcpVeille) clearInterval(_pdcpVeille);
+  _pdcpVeille=setInterval(()=>{ if(!_pdcpOuverte()) _pdcpFermee(); }, 1000);
   try{ showDropToast(ecran ? '📽 Plan projeté sur l’autre écran' : '📽 Fenêtre ouverte : glissez-la sur l’écran projeté, puis cliquez dedans pour le plein écran'); }catch(e){}
   return ecran ? 'ecran' : 'fenetre';
 }
