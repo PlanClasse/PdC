@@ -4872,7 +4872,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.89';
+const APP_VERSION = 'v11.5.90';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -59630,6 +59630,12 @@ function _jnlBlocEbep(uid, cls){
 }
 /** V11.5.59 — contenu de la fiche (en-tête, filtres, liste) dans une boîte donnée.
  *  o.lecture : consultation seule (réunions parents) — ni ＋ Note, ni ✕, ni ✎ / 🗑. o.refaire : redessiner. */
+/** V11.5.90 — Totaux de la fiche sur la période : absences (cours où l'élève est noté absent) et participations. Pure. */
+function _jnlTotaux(entrees, libAbsent){
+  const A=String(libAbsent||'Absent'); let abs=0, part=0, cours=0;
+  (entrees||[]).forEach(e=>{ if(!e || e.genre!=='cours') return; cours++; if((e.statuts||[]).indexOf(A)>=0) abs++; part+=Number(e.partic)||0; });
+  return {absences:abs, participations:part, cours};
+}
 function _jnlFicheContenu(box, uid, cls, o){
   o=o||{}; const lecture=!!o.lecture, refaire=(typeof o.refaire==='function') ? o.refaire : ()=>{};
   const nom=getFullName(uid);
@@ -59644,6 +59650,12 @@ function _jnlFicheContenu(box, uid, cls, o){
   const note=String(((S.observations||{})[cls+'|'+uid])||'').trim();
   const {dateFrom, dateTo}=computeVgDateBounds(obsSuivi.periode, obsSuivi.du, obsSuivi.au);
   const tout=_jnlFicheEntrees(_jnlSourcesFiche(cls), uid, cls, dateFrom, dateTo);
+  { let la='Absent'; try{ const st=getStatuts().find(x=>x.key==='absent'); if(st && st.label) la=st.label; }catch(e){}   // V11.5.90 — totaux rapides
+    const T=_jnlTotaux(tout, la), per=({all:'année',s1:'semestre 1',s2:'semestre 2',t1:'trimestre 1',t2:'trimestre 2',t3:'trimestre 3',custom:'dates choisies'}[obsSuivi.periode]||'année');
+    const tz=_jnlEl('div','display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center'); tz.id='jnl-totaux'; gauche.appendChild(tz);
+    tz.appendChild(_jnlPuce('🚫 '+T.absences+' absence'+(T.absences>1?'s':''), T.absences ? '#FEE2E2' : '#F3F4F6', T.absences ? '#991B1B' : '#4B5563'));
+    tz.appendChild(_jnlPuce('✋ '+T.participations+' participation'+(T.participations>1?'s':''), T.participations ? '#DCFCE7' : '#F3F4F6', T.participations ? '#166534' : '#4B5563'));
+    tz.appendChild(_jnlEl('span','font-size:11px;color:var(--tx3)', 'période : '+per)); }
   const btn=(t, css, fn, titre)=>{ const b=_jnlEl('button','padding:6px 12px;border-radius:8px;border:1px solid var(--brd);background:var(--sur);color:var(--tx);font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;'+(css||''), t); b.type='button'; if(titre) b.title=titre; b.onclick=fn; return b; };
   const cp=btn('📋 Copier','', ()=>{ const t=_jnlTexteFiche(nom, cls, vues());
     try{ navigator.clipboard.writeText(t).then(()=>{ cp.textContent='✔ Copié'; setTimeout(()=>{ cp.textContent='📋 Copier'; },1500); }); }catch(e){} }, 'Copier ce qui est affiché');
