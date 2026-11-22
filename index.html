@@ -4872,7 +4872,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.92';
+const APP_VERSION = 'v11.5.93';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -14814,7 +14814,7 @@ function _espCoursSemaine(lundi){
       let docs=[]; try{ docs=(_docsDistribuesAuCours(c.slotKey, cls)||[]).map(_impLibelle).filter(Boolean); }catch(e){ docs=[]; }
       let rp={traces:[], evals:[]}; try{ rp=_impRappels(cls, {slotKey:c.slotKey}, gid); }catch(e){}
       let photo=[]; try{ photo=_impEbep(cls, gid, 'photo'); }catch(e){}
-      const ebep=(photo.length && (docs.length || rp.traces.length) ? photo.length : 0) + rp.evals.reduce((s,x)=>s+(x.adaptees|0), 0);
+      const ebep=(photo.length && (docs.length || rp.traces.length) ? photo.length : 0) + rp.evals.reduce((s,x)=>s+(x.adaptees|0)+(x.amenagees|0), 0);   // V11.5.93
       out.push({cls, gid, lv, slotKey:c.slotKey, dateStr:c.dateStr, debut:c.debut||'', fin:c.fin||'', passe,
         enregistre:!!(c.saved && _seanceRenseignee(c.saved)), rempli:!!c.rempli,
         docs, docsEtat:(passe || c.saved) ? null : _hmImpCours(col, lv, cls, gid, docs),
@@ -17358,6 +17358,13 @@ function _ebepWithPhotocopiesForCls(clsCode){
   });
   return out;
 }
+/** V11.5.93 — Élèves de la classe avec « Évaluation aménagée ». */
+function _ebepWithEvalAmenageeForCls(clsCode){
+  if(!S.besoinsEleves || !S.besoinsEleves[clsCode]) return [];
+  const cl=S.cl && S.cl[clsCode], dans=(cl && cl.students) ? new Set(cl.students) : null, out=[];
+  Object.entries(S.besoinsEleves[clsCode]).forEach(([uid, f])=>{ if(f && f.evalAmenagee && (!dans || dans.has(uid))) out.push(uid); });
+  return out;
+}
 function _ebepWithEvalAdapteeForCls(clsCode){
   // V019-v159 — symétrique à _ebepWithPhotocopiesForCls
   if(!S.besoinsEleves || !S.besoinsEleves[clsCode]) return [];
@@ -17654,6 +17661,8 @@ function _impStore(){
 function _impEbep(cls, gid, quoi){
   const base=quoi==='eval'
     ? ((typeof _ebepWithEvalAdapteeForCls==='function') ? _ebepWithEvalAdapteeForCls(cls) : [])
+    : quoi==='amen'   // V11.5.93 — évaluation aménagée
+    ? ((typeof _ebepWithEvalAmenageeForCls==='function') ? _ebepWithEvalAmenageeForCls(cls) : [])
     : ((typeof _ebepWithPhotocopiesForCls==='function') ? _ebepWithPhotocopiesForCls(cls) : []);
   if(!gid) return base;
   const g=S.groupes && S.groupes[gid];
@@ -17684,7 +17693,7 @@ function _impRappels(cls, sl, gid){
     if(fi.evalId){ const q=prog.find(x=>x && x.id===fi.seqId), ev=q && (q.evals||[]).find(x=>x && x.id===fi.evalId); if(ev) titre=ev.titre || (ev.isFinal ? 'Évaluation finale' : 'Évaluation'); }
     titre=String(titre||'Évaluation').trim();
     const k=titre.toLowerCase(); if(vusE.has(k)) return; vusE.add(k);
-    out.evals.push({ label:titre, n:_impEffectif(cls, gid), adaptees:_impEbep(cls, gid, 'eval').length });
+    out.evals.push({ label:titre, n:_impEffectif(cls, gid), adaptees:_impEbep(cls, gid, 'eval').length, amenagees:_impEbep(cls, gid, 'amen').length });   // V11.5.93
   });
   return out;
 }
@@ -18207,7 +18216,9 @@ function _impCarteJour(c, col){
     g.appendChild(_impEl('div'));
   };
   _rp.traces.forEach(t=>rappel('📓 Trace écrite : '+t.label, 'EBEP photocopies : '+t.uids.map(u=>(typeof _traceShortName==='function') ? _traceShortName(u) : u).join(', '), t.uids.length+' à imprimer', 'imp-ambre'));
-  _rp.evals.forEach(ev=>rappel('📝 Évaluation : '+ev.label, ev.adaptees ? 'dont '+ev.adaptees+' adaptée'+(ev.adaptees>1?'s':'')+' (EBEP)' : '', ev.n+' élèves', 'imp-neutre'));
+  _rp.evals.forEach(ev=>{ const am=ev.amenagees|0, ad=ev.adaptees|0;   // V11.5.93 — adaptées et aménagées
+    const det=[ad ? ad+' adaptée'+(ad>1?'s':'') : '', am ? am+' aménagée'+(am>1?'s':'') : ''].filter(Boolean).join(' · ');
+    rappel('📝 Évaluation : '+ev.label, det ? 'dont '+det+' (EBEP)' : '', ev.n+' élèves', 'imp-neutre'); });
   return carte;
 }
 function _impRendreRetour(zone, corps){
@@ -18484,12 +18495,12 @@ function _homeGetEvalsPrevuesAujourdhui(){
    Popup de l'accueil : frise des cours du jour qui ont une évaluation (« Saisir mes cours ») ou des
    rattrapages (volet droit du plan de classe), détail des aménagements par élève, totaux de la
    journée, et liste « À préparer » à cocher (cochée pour la journée, dans S.evjCoches). */
-const EVJ_COLS=[['ULIS','ULIS','#7C3AED'],['PPS','PPS','#1D4ED8'],['PAP','PAP','#0F766E'],['PPRE','PPRE','#B45309'],['tiers','⅓ temps','#111418'],['adaptee','Adaptée','#BE185D']];
+const EVJ_COLS=[['ULIS','ULIS','#7C3AED'],['PPS','PPS','#1D4ED8'],['PAP','PAP','#0F766E'],['PPRE','PPRE','#B45309'],['tiers','⅓ temps','#111418'],['adaptee','Adaptée','#BE185D'],['amenagee','Aménagée','#0369A1']];   // V11.5.93
 const EVJ_TYPE_COUL={diagnostique:'#0F766E', formative:'#1D4ED8', sommative:'#DC2626', 'évaluation':'#7C3AED'};
 /** Aménagements d'une fiche EBEP, dans l'ordre des colonnes. Pure. */
 function _evjCles(f){
   if(!f) return []; const cats=getFicheCategories(f), K=['ULIS','PPS','PAP','PPRE'].filter(c=>cats.indexOf(c)>=0);
-  if(f.tiersTps) K.push('tiers'); if(f.evalAdaptee) K.push('adaptee'); return K;
+  if(f.tiersTps) K.push('tiers'); if(f.evalAdaptee) K.push('adaptee'); else if(f.evalAmenagee) K.push('amenagee'); return K;
 }
 /** Heure de fin avec ⅓ temps (« 08:30 » + 45 min → « 09:30 »), '' sans durée. Pure. */
 function _evjFinTiers(debut, duree){
@@ -18498,13 +18509,14 @@ function _evjFinTiers(debut, duree){
 }
 /** Totaux de la journée (élèves distincts par classe). Pure. */
 function _evjTotaux(cours){
-  const C=cours||[], vus={}, par={}; EVJ_COLS.forEach(([k])=>par[k]=0); let nEv=0, nRat=0, nAdaptes=0, nFin=0;
+  const C=cours||[], vus={}, par={}; EVJ_COLS.forEach(([k])=>par[k]=0); let nEv=0, nRat=0, nAdaptes=0, nFin=0, nAmenages=0;
   C.forEach(c=>{ nRat+=(c.ratt||[]).reduce((a,r)=>a+(r.noms||[]).length,0);
     if(!(c.evs||[]).length) return; nEv+=c.evs.length;
     nAdaptes+=(c.eleves||[]).filter(e=>e.cles.indexOf('adaptee')>=0).length;
+    nAmenages+=(c.eleves||[]).filter(e=>e.cles.indexOf('amenagee')>=0).length;   // V11.5.93
     if((c.eleves||[]).some(e=>e.cles.indexOf('tiers')>=0)) nFin++;
     (c.eleves||[]).forEach(e=>{ const k=c.cls+'|'+e.uid; if(vus[k]) return; vus[k]=1; e.cles.forEach(x=>{ if(x in par) par[x]++; }); }); });
-  return {nEv, nCours:C.length, nAm:Object.keys(vus).length, nRat, par, nAdaptes, nFin};
+  return {nEv, nCours:C.length, nAm:Object.keys(vus).length, nRat, par, nAdaptes, nFin, nAmenages};
 }
 /** Liste « À préparer » (clé stable pour la coche). Pure. */
 function _evjAPreparer(cours){
@@ -18512,7 +18524,8 @@ function _evjAPreparer(cours){
   (cours||[]).forEach(c=>{ const ev=(c.evs||[])[0], E=c.eleves||[];
     if(ev){
       const ad=E.filter(e=>e.cles.indexOf('adaptee')>=0), std=Math.max(0,(c.effectif||0)-ad.length);
-      L.push({k:'imp|'+c.slotKey+'|'+c.cls, ic:'🖨', titre:'Imprimer', txt:cl(c)+' à '+c.debut+' : '+std+' sujet'+(std>1?'s':'')+(ad.length ? ' + '+ad.length+' adapté'+(ad.length>1?'s':'')+' ('+ad.map(e=>e.nom).join(', ')+')' : '')});
+      const am=E.filter(e=>e.cles.indexOf('amenagee')>=0);   // V11.5.93 — sujets aménagés (mêmes contenus, présentation aménagée)
+      L.push({k:'imp|'+c.slotKey+'|'+c.cls, ic:'🖨', titre:'Imprimer', txt:cl(c)+' à '+c.debut+' : '+Math.max(0, std-am.length)+' sujet'+(Math.max(0, std-am.length)>1?'s':'')+(ad.length ? ' + '+ad.length+' adapté'+(ad.length>1?'s':'')+' ('+ad.map(e=>e.nom).join(', ')+')' : '')+(am.length ? ' + '+am.length+' aménagé'+(am.length>1?'s':'')+' ('+am.map(e=>e.nom).join(', ')+')' : '')});
       const ti=E.filter(e=>e.cles.indexOf('tiers')>=0);
       if(ti.length){ const f=_evjFinTiers(c.debut, ev.duree); L.push({k:'tiers|'+c.slotKey+'|'+c.cls, ic:'⏱', titre:'⅓ temps', txt:cl(c)+' à '+c.debut+' : '+ti.map(e=>e.nom).join(', ')+(f ? ' : fin à '+f+' ('+ev.duree+' min → '+Math.round(ev.duree*4/3)+' min)' : ' : prévoir le temps supplémentaire')}); }
       const ul=E.filter(e=>e.cles.indexOf('ULIS')>=0);
@@ -18568,10 +18581,10 @@ function openEvalsJour(dateStr){
   // sur la journée
   const sj=E('div','display:flex;flex-wrap:wrap;align-items:center;gap:6px 9px;padding:9px 20px;border-bottom:3px solid #111418'); sj.id='evj-synthese'; box.appendChild(sj);
   sj.appendChild(E('b','font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;margin-right:4px','Sur la journée'));
-  EVJ_COLS.forEach(([k,l,c])=>{ if(T.par[k]) sj.appendChild(pill(k==='adaptee'?'Éval. adaptée':l, c, T.par[k])); });
+  EVJ_COLS.forEach(([k,l,c])=>{ if(T.par[k]) sj.appendChild(pill(k==='adaptee'?'Éval. adaptée':k==='amenagee'?'Éval. aménagée':l, c, T.par[k])); });
   if(!EVJ_COLS.some(([k])=>T.par[k])) sj.appendChild(E('span','font-size:13px;font-weight:700;color:#4B5159','Aucun élève à besoins particuliers'));
   sj.appendChild(E('span','flex:1'));
-  sj.appendChild(E('span','font-size:13px;font-weight:800','🖨 Sujets adaptés : '+T.nAdaptes));
+  sj.appendChild(E('span','font-size:13px;font-weight:800','🖨 Sujets adaptés : '+T.nAdaptes+(T.nAmenages ? ' · aménagés : '+T.nAmenages : '')));
   sj.appendChild(E('span','font-size:13px;font-weight:800','⏱ Fin décalée : '+T.nFin+' cours'));
   // corps
   const corps=E('div','display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,1fr);overflow:auto;background:#F3F4F6;flex:1'); box.appendChild(corps);
@@ -18595,7 +18608,7 @@ function openEvalsJour(dateStr){
     if(c.evs.length){
       if(!c.eleves.length) ca.appendChild(E('div','margin-top:6px;font-size:13px;font-weight:700;color:#4B5159','Aucun élève à besoins particuliers'));
       else { const tb=E('table','width:100%;border-collapse:collapse;table-layout:fixed;font-size:13px;margin-top:8px;border:2px solid #111418'); tb.className='evj-table'; ca.appendChild(tb);
-        const cg=E('colgroup'); ['112px','48px','48px','48px','52px','64px','64px',''].forEach(w=>{ const x=E('col'); if(w) x.style.width=w; cg.appendChild(x); }); tb.appendChild(cg);
+        const cg=E('colgroup'); ['112px','48px','48px','48px','52px','64px','72px','64px',''].forEach(w=>{ const x=E('col'); if(w) x.style.width=w; cg.appendChild(x); }); tb.appendChild(cg);
         const th=E('thead'), tr0=E('tr','background:#F3F4F6'); th.appendChild(tr0); tb.appendChild(th);
         tr0.appendChild(E('th','padding:4px 8px;text-align:left;font-size:11.5px', c.eleves.length+' élève'+(c.eleves.length>1?'s':'')));
         EVJ_COLS.forEach(([k,l,co])=>{ const h=E('th','padding:4px 2px;text-align:center'); h.appendChild(pill(l, co, null, true)); tr0.appendChild(h); });
@@ -20309,7 +20322,7 @@ const _PARAMS_INDEX = [
    kw:'contrainte association séparation placement éloigner rapprocher voisin binôme côte'},
   {tab:'placement', anchor:'psec-besoins', icon:'🧩', title:'Besoins particuliers',
    sub:'Repères et aménagements élève par élève',
-   kw:'besoin aménagement repère PPS PAP PAI PPRE ULIS handicap accompagnement ebep adaptations adaptation photocopies tiers temps évaluation adaptée observations'},
+   kw:'besoin aménagement repère PPS PAP PAI PPRE ULIS handicap accompagnement ebep adaptations adaptation photocopies tiers temps évaluation adaptée évaluation aménagée observations'},
   // Onglet Groupes & matières (V035-V11.1.9 — Horizon 3 B : ces deux sections
   // n'avaient JAMAIS été indexées → invisibles à la recherche, au fil d'Ariane
   // nommé et aux menus survolés ; friction corrigée par le déménagement).
@@ -25849,8 +25862,16 @@ const BESOINS_CATS=['ULIS','PPS','PPRE','PAP','PAI','EBEP','Autre'];
 const EBEP_ADAPTS_BASE=[
   {key:'photocopies', label:'Photocopies à fournir', short:'Photocopies',  icon:'📄', builtin:true},
   {key:'evalAdaptee', label:'Évaluation adaptée',    short:'Éval. adaptée', icon:'📝', builtin:true},
+  {key:'evalAmenagee', label:'Évaluation aménagée',  short:'Éval. aménagée', icon:'📐', builtin:true},   // V11.5.93 — exclusive de « adaptée »
   {key:'tiersTps',    label:'Tiers temps',           short:'Tiers temps',   icon:'⏱', builtin:true},
 ];
+/** V11.5.93 — « Évaluation adaptée » et « Évaluation aménagée » s'excluent : cocher l'une décoche l'autre. Pure (modifie f). */
+const EBEP_EVAL_EXCLUSIFS=['evalAdaptee','evalAmenagee'];
+function _ebepAdaptPoser(f, key, val){
+  if(!f) return f; f[key]=!!val;
+  if(val && EBEP_EVAL_EXCLUSIFS.indexOf(key)>=0) EBEP_EVAL_EXCLUSIFS.forEach(k=>{ if(k!==key) f[k]=false; });
+  return f;
+}
 function getEbepAdaptations(){
   const perso=(S && S.reglages && Array.isArray(S.reglages.ebepAdapts)) ? S.reglages.ebepAdapts : [];
   return EBEP_ADAPTS_BASE.concat(perso.filter(a=>a && a.key && String(a.label||'').trim())
@@ -26092,7 +26113,9 @@ function renderParamsBesoins(targetPane){
         const cb=document.createElement('input'); cb.type='checkbox';
         cb.checked=!!(fiche&&fiche[key]);
         cb.style.cssText='width:14px;height:14px;cursor:pointer;accent-color:var(--acc)';
-        cb.onchange=()=>{ if(!clsB[id]) clsB[id]={}; clsB[id][key]=cb.checked; saveS(); };
+        cb.dataset.cle=key;
+        cb.onchange=()=>{ if(!clsB[id]) clsB[id]={}; if(typeof _ebepAdaptPoser==='function') _ebepAdaptPoser(clsB[id], key, cb.checked); else clsB[id][key]=cb.checked; saveS();   // V11.5.93 — exclusivité adaptée / aménagée
+          ckRow.querySelectorAll('input[type=checkbox]').forEach(x=>{ if(x.dataset.cle) x.checked=!!clsB[id][x.dataset.cle]; }); };
         label.appendChild(cb); label.appendChild(document.createTextNode(lbl));
         ckRow.appendChild(label);
       });
@@ -32132,7 +32155,7 @@ function _fdjRenderCard(event, todayStr){
   //   - tiers temps SEUL (pas d'éval adaptée)
   //   - cumul des deux
   // Remplace nbEvalAdaptees (v181.4.3) qui agrégait les deux.
-  let nbEA = 0, nbTT = 0, nbBoth = 0;
+  let nbEA = 0, nbTT = 0, nbBoth = 0, nbAM = 0, nbAMT = 0;   // V11.5.93 — + éval aménagée (seule / avec tiers temps)
   if(cls && S.besoinsEleves && S.besoinsEleves[cls]){
     const clObj = S.cl && S.cl[cls];
     const inClass = clObj && Array.isArray(clObj.students) ? new Set(clObj.students) : null;
@@ -32141,6 +32164,8 @@ function _fdjRenderCard(event, todayStr){
       if(inClass && !inClass.has(uid)) return;
       const ea = !!fiche.evalAdaptee;
       const tt = !!fiche.tiersTps;
+      const am = !ea && !!fiche.evalAmenagee;
+      if(am){ if(tt) nbAMT++; else nbAM++; return; }
       if(ea && tt) nbBoth++;
       else if(ea) nbEA++;
       else if(tt) nbTT++;
@@ -32316,6 +32341,8 @@ function _fdjRenderCard(event, todayStr){
   if(nbEA > 0)   adaptParts.push('éval adapt. : ' + nbEA);
   if(nbTT > 0)   adaptParts.push('tiers tps : ' + nbTT);
   if(nbBoth > 0) adaptParts.push('éval adapt. + tiers tps : ' + nbBoth);
+  if(nbAM > 0)   adaptParts.push('éval aménag. : ' + nbAM);   // V11.5.93
+  if(nbAMT > 0)  adaptParts.push('éval aménag. + tiers tps : ' + nbAMT);
   const adaptHtml = adaptParts.length
     ? `<span class="fdj-evalprev-adapt">${_fdjEsc(adaptParts.join(' · '))}</span>`
     : '';
@@ -39333,8 +39360,9 @@ function _toggleBesoinCat(cat){
 function _toggleBesoinAdapt(key){
   const uid=popupCurrentName; if(!uid) return;
   const f=_besoinEnsureFiche(uid); if(!f) return;
-  f[key]=!f[key];
+  if(typeof _ebepAdaptPoser==='function') _ebepAdaptPoser(f, key, !f[key]); else f[key]=!f[key];   // V11.5.93 — exclusivité adaptée / aménagée
   _besoinSyncAfterWrite();
+  try{ document.querySelectorAll('.stbp-ck input[type=checkbox]').forEach(x=>{ if(x.dataset.cle) x.checked=!!f[x.dataset.cle]; }); }catch(e){}
 }
 function _setBesoinNotes(val){
   const uid=popupCurrentName; if(!uid) return;
@@ -39384,7 +39412,7 @@ function _renderStBesoinPanel(){
   getEbepAdaptations().map(a=>[a.key, a.icon+' '+a.label]).forEach(pair=>{   // V11.4.51
     const key=pair[0], lbl=pair[1];
     const row=document.createElement('label'); row.className='stbp-ck';
-    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!f[key];
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!f[key]; cb.dataset.cle=key;
     cb.onclick=ev=>ev.stopPropagation();
     cb.onchange=()=>_toggleBesoinAdapt(key);
     row.appendChild(cb); row.appendChild(document.createTextNode(' '+lbl));
@@ -39855,6 +39883,7 @@ function getEbepInfoParts(uid, clsCode){
   if(cats.length) parts.push(cats.join(', '));
   if(fiche.photocopies) parts.push('Fournir les photocopies');
   if(fiche.evalAdaptee) parts.push('Évaluation adaptée');
+  if(fiche.evalAmenagee) parts.push('Évaluation aménagée');   // V11.5.93
   if(fiche.tiersTps) parts.push('Tiers temps');
   getEbepAdaptations().filter(a=>!a.builtin && fiche[a.key]).forEach(a=>parts.push(a.label));   // V11.4.51
   return parts;
@@ -40167,6 +40196,7 @@ const EBEP_PAGE_CATS = ['ULIS','PAP','PPRE','PPS','EBEP','Autre']; // PAI exclu 
 const EBEP_PAGE_ADAPTS = [
   {key:'photocopies', label:'📄 Photocopies à fournir',  short:'Photocopies'},
   {key:'evalAdaptee', label:'📝 Évaluation adaptée',     short:'Éval. adaptée'},
+  {key:'evalAmenagee', label:'📐 Évaluation aménagée',   short:'Éval. aménagée'},   // V11.5.93
   {key:'tiersTps',    label:'⏱ Tiers temps',             short:'Tiers temps'},
 ];
 
@@ -40257,7 +40287,7 @@ function _ebepAPreparer(fiche, uid, cours){
       (c.docs||[]).forEach(dd=>out.push(Object.assign({ type:'doc', texte:dd+' (adapté)' }, base)));
       (c.traces||[]).forEach(t=>out.push(Object.assign({ type:'trace', texte:'Trace écrite : '+t }, base)));
     }
-    if(fiche.evalAdaptee || fiche.tiersTps) (c.evals||[]).forEach(ev=>out.push(Object.assign({ type:'eval', texte:'Évaluation : '+ev+(fiche.evalAdaptee ? ' (adaptée)' : '')+(fiche.tiersTps ? ' — tiers temps' : '') }, base)));
+    if(fiche.evalAdaptee || fiche.evalAmenagee || fiche.tiersTps) (c.evals||[]).forEach(ev=>out.push(Object.assign({ type:'eval', texte:'Évaluation : '+ev+(fiche.evalAdaptee ? ' (adaptée)' : '')+(fiche.evalAmenagee ? ' (aménagée)' : '')+(fiche.tiersTps ? ' — tiers temps' : '') }, base)));
   });
   return out;
 }
@@ -40373,7 +40403,7 @@ function renderEbepPage(){
     adapts.forEach(a=>{
       const td=el('td', 'ebep-tab-a');
       const cb=el('input'); cb.type='checkbox'; cb.checked=!!l.fiche[a.key]; cb.title=a.label+' — '+l.nom;
-      cb.onchange=()=>{ l.fiche[a.key]=cb.checked; saveS(); renderEbepPage(); };
+      cb.onchange=()=>{ if(typeof _ebepAdaptPoser==='function') _ebepAdaptPoser(l.fiche, a.key, cb.checked); else l.fiche[a.key]=cb.checked; saveS(); renderEbepPage(); };   // V11.5.93 — exclusivité
       td.appendChild(cb); tr.appendChild(td);
     });
     const tdB=el('td', 'ebep-tab-a');
@@ -62641,7 +62671,7 @@ function _evlBandeTouches(L){
 /* Saisie (tableau) — V11.5.35 : curseur et saisie au clavier (0–3, A/D/N, *, ⌫, Tab, flèches, Entrée) */
 /** V11.5.63 — Aménagements EBEP en court : « ULIS, PAP · éval. adaptée · ⅓ temps ». Pure. */
 function _evlEbepCourt(parts){
-  const M={'Évaluation adaptée':'éval. adaptée', 'Tiers temps':'⅓ temps', 'Fournir les photocopies':'photocopies'};
+  const M={'Évaluation adaptée':'éval. adaptée', 'Évaluation aménagée':'éval. aménagée', 'Tiers temps':'⅓ temps', 'Fournir les photocopies':'photocopies'};
   return (Array.isArray(parts) ? parts : []).map(p=>M[p]||p).filter(Boolean).join(' · ');
 }
 /** V11.5.63 — Aménagements d'un élève (fiche de sa classe ; évaluation multi-classes : la classe qui le contient). */
