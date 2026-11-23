@@ -4873,7 +4873,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.96';
+const APP_VERSION = 'v11.5.98';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -4970,12 +4970,20 @@ function defaultClsData(lv,sub){
 
 // Zone C (Versailles) official 2026-2027 vacances (BO / arrêté du 22/10/2025).
 // Convention : debut = 1er samedi de congés, fin = lundi de reprise.
+/** V11.5.97 — Les vacances d'été 2027 par défaut finissaient le 31/08/2028 (coquille) :
+ *  toute l'année 2027-28 passait pour des vacances. Corrige la seule entrée reprise
+ *  telle quelle des valeurs par défaut (même id, même début) ; une saisie de
+ *  l'utilisateur n'est jamais touchée. Renvoie le nombre de corrections. */
+function _vacCorrigerEte2027(L){
+  let n=0; (Array.isArray(L) ? L : []).forEach(v=>{ if(v && v.id==='v5' && v.debut==='2027-07-03' && v.fin==='2028-08-31'){ v.fin='2027-08-31'; n++; } });
+  return n;
+}
 const VACANCES_DEFAULT=[
   {id:'v1', label:'Toussaint',      debut:'2026-10-17', fin:'2026-11-02'},
   {id:'v2', label:'Noël',           debut:'2026-12-19', fin:'2027-01-04'},
   {id:'v3', label:'Hiver',          debut:'2027-02-06', fin:'2027-02-22'},
   {id:'v4', label:'Printemps',      debut:'2027-04-03', fin:'2027-04-19'},
-  {id:'v5', label:'Été',            debut:'2027-07-03', fin:'2028-08-31'},
+  {id:'v5', label:'Été',            debut:'2027-07-03', fin:'2027-08-31'},   // V11.5.97 — était 2028-08-31 (coquille)
   {id:'f1', label:'Toussaint (férié)',     debut:'2026-11-01', fin:'2026-11-01'},
   {id:'f2', label:'Armistice',            debut:'2026-11-11', fin:'2026-11-11'},
   {id:'f3', label:'Noël (férié)',         debut:'2026-12-25', fin:'2026-12-25'},
@@ -6169,6 +6177,7 @@ function loadS(){
       if(!parsed.edt) parsed.edt=defaultEdtConfig();
       if(!parsed.edt.periodes) parsed.edt.periodes=defaultEdtConfig().periodes;
       if(!parsed.edt.vacances) parsed.edt.vacances=[...VACANCES_DEFAULT];
+      if(typeof _vacCorrigerEte2027==='function') _vacCorrigerEte2027(parsed.edt.vacances);   // V11.5.97
       if(!parsed.edt.overrides) parsed.edt.overrides=[];
       if(!parsed.groupes) parsed.groupes={};
       if(!parsed.edtMapping) parsed.edtMapping={};
@@ -12899,7 +12908,9 @@ function _tempPlanKey(){
 function _tempSeatsFor(permFn){
   if(typeof _peEdition==='function' && _peEdition()){   // V11.5.92 — édition du plan d'évaluation
     const sc=_tempScopeKey(); if(sc){ const P=_peStore(), E=P[sc]=P[sc]||{layouts:{}}; if(!E.layouts) E.layouts={};
-      let s=E.layouts[layout]; if(!Array.isArray(s)){ let base=null; try{ base=(typeof permFn==='function')?permFn():null; }catch(err){ base=null; } if(!Array.isArray(base)) return null; s=E.layouts[layout]=base.slice(); }
+      let s=E.layouts[layout]; if(!Array.isArray(s)){ let base=null; try{ base=(typeof permFn==='function')?permFn():null; }catch(err){ base=null; } if(!Array.isArray(base)) return null; s=E.layouts[layout]=base.slice();
+        if(layout==='classic2' && typeof _peRegrouperEbep==='function'){ try{ const eb=_peEbepDuScope(), r=_peRegrouperEbep(s, layout, eb.A, eb.B);   // V11.5.98 — EBEP regroupés à la création
+          if(r.n){ s=E.layouts[layout]=r.seats; setTimeout(()=>{ try{ showDropToast('🎯 Plan d’évaluation : '+r.n+' élève'+(r.n>1?'s':'')+' EBEP regroupé'+(r.n>1?'s':'')+' aux tables de devant'); }catch(e){} }, 0); } }catch(err){} } }
       return s; } }
   const k=_ptEntreeCle(); if(!k) return null;
   const E=_ptStore()[k]; if(!E.layouts || typeof E.layouts!=='object') E.layouts={};
@@ -13026,11 +13037,32 @@ function _pdcMode(){
   return _pdcVerrou.mode;
 }
 function _pdcFixer(mode){ _pdcVerrou={cle:_pdcVerrouCle(), mode:mode||''}; _pdcMajVerrou(); }
-/** Garde des écritures du placement. Rend true si on peut modifier ; sinon ouvre le choix et rend false. */
-function _pdcPeutPlacer(){
+/** Garde des écritures du placement. Rend true si on peut modifier ; sinon ouvre le choix et rend false.
+ *  V11.5.98 — `reprise` (facultatif) : l'action demandée, gardée puis rejouée une fois le mode choisi
+ *  (temporaire, définitif ou plan d'évaluation) ; abandonnée si l'utilisateur ferme le choix ou change
+ *  de classe ou de cours. Avant, le déplacement fait cadenas fermé était perdu. */
+let _pdcAttente=null, _pdcChoixFermer=null;
+function _pdcPeutPlacer(reprise){
   if(_pdcMode()) return true;
+  if(typeof _pdcChoixFermer==='function'){ try{ _pdcChoixFermer(); }catch(e){} }   // un choix déjà ouvert est remplacé (la nouvelle action prime)
+  _pdcAttente=(typeof reprise==='function') ? {cle:_pdcVerrouCle(), fn:reprise} : null;
   try{ _pdcChoixVerrou(); }catch(e){}
   return false;
+}
+/** V11.5.98 — Rejoue l'action gardée si un mode vient d'être choisi pour la même classe et le même cours. */
+function _pdcRejouerAttente(){
+  const a=(typeof _pdcAttente!=='undefined') ? _pdcAttente : null; _pdcAttente=null;
+  if(!a || typeof a.fn!=='function' || !_pdcMode() || a.cle!==_pdcVerrouCle()) return false;
+  try{ a.fn(); }catch(e){ console.warn('[verrou] reprise', e); return false; }
+  return true;
+}
+/** V11.5.98 — Source d'un déplacement rejoué, relue dans le plan du mode choisi (le plan temporaire
+ *  ou d'évaluation peut placer l'élève ailleurs que le plan affiché au moment du geste). Pure. */
+function _pdcResoudreSource(seats, src){
+  if(!src || !src.name) return null;
+  const at=(Array.isArray(seats) ? seats : []).indexOf(src.name);
+  if(at<0) return {t:'student', name:src.name};
+  return {t:'seat', name:src.name, from:at};
 }
 /** Cadenas en bas à droite du plan (dans #app). createElement. */
 function _pdcMajVerrou(){
@@ -13047,19 +13079,20 @@ function _pdcMajVerrou(){
 }
 /** Choix « Temporaire / Définitif » (petite fenêtre au-dessus du cadenas). createElement. */
 function _pdcChoixVerrou(){
-  const old=document.getElementById('pdc-verrou-choix'); if(old){ old.remove(); return; }
+  const old=document.getElementById('pdc-verrou-choix'); if(old){ if(typeof _pdcChoixFermer==='function') _pdcChoixFermer(); else old.remove(); return; }
   const sl=_ptSlotCible(), tp=_ptEntreeCle(), enCours=!!(typeof curSlotKey!=='undefined' && curSlotKey);
   const box=document.createElement('div'); box.id='pdc-verrou-choix';
   const _vr=(document.getElementById('pdc-verrou')||{getBoundingClientRect:()=>({left:16, top:innerHeight-40})}).getBoundingClientRect();
   box.style.cssText='position:fixed;left:'+Math.max(8, Math.min(innerWidth-310, _vr.left-10))+'px;bottom:'+Math.max(40, innerHeight-_vr.top+8)+'px;z-index:480;width:300px;background:var(--sur);color:var(--tx);border:2px solid #111418;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:10px;font:13px system-ui,sans-serif';
   const h=document.createElement('div'); h.style.cssText='font-weight:800;font-size:13.5px;margin:0 2px 8px'; h.textContent='🔒 Modifier le placement'; box.appendChild(h);
-  const fermer=()=>{ box.remove(); document.removeEventListener('mousedown', hors, true); };
+  const fermer=(garder)=>{ box.remove(); document.removeEventListener('mousedown', hors, true); if(_pdcChoixFermer===fermer) _pdcChoixFermer=null; if(!garder) _pdcAttente=null; };   // V11.5.98 — fermer sans choisir abandonne l'action gardée
   const hors=(e)=>{ if(!box.contains(e.target) && e.target.id!=='pdc-verrou') fermer(); };
+  _pdcChoixFermer=fermer;
   const opt=(id, titre, sous, coul, ok, fn)=>{ const b=document.createElement('button'); b.type='button'; b.id=id; b.disabled=!ok;
     b.style.cssText='display:block;width:100%;text-align:left;margin-top:6px;padding:8px 10px;border-radius:9px;cursor:'+(ok?'pointer':'not-allowed')+';opacity:'+(ok?'1':'.5')+';border:2px solid '+coul+';background:var(--sur);color:var(--tx);font:inherit';
     const t=document.createElement('b'); t.textContent=titre; t.style.color=coul; b.appendChild(t);
     const s=document.createElement('div'); s.style.cssText='font-size:12px;color:var(--tx2);margin-top:2px'; s.textContent=sous; b.appendChild(s);
-    b.onclick=()=>{ fermer(); fn(); }; box.appendChild(b); return b; };
+    b.onclick=()=>{ fermer(true); fn(); if(_pdcRejouerAttente()){ try{ showDropToast(_pdcMode()==='temp' ? '🕘 Fait dans le plan temporaire' : _pdcMode()==='eval' ? '🎯 Fait dans le plan d’évaluation' : '✏️ Fait dans le plan habituel'); }catch(e){} } else _pdcAttente=null; }; box.appendChild(b); return b; };
   opt('pdc-choix-temp', tp ? '🕘 Continuer le plan temporaire' : '🕘 Temporaire',
     sl ? ('Pour le cours du '+_ptLibSlot(sl)+(enCours ? '' : ' (prochain cours)')+'. Le plan habituel ne bouge pas.') : 'Aucun cours à venir pour cette classe.', '#C2410C', !!sl,
     ()=>{ if(!_ptCreer()) return; _pdcFixer('temp'); try{ renderApp(); }catch(e){} try{ showDropToast('🕘 Plan temporaire pour le cours du '+_ptLibSlot(sl)); }catch(e){} });
@@ -44483,8 +44516,8 @@ function syncLayouts(){
   // permanent. Et l'operation n'a pas de sens ici : chaque geometrie a sa
   // propre copie temporaire.
   if(_tempBlock('la synchro classique/ilots')) return;
-  if(typeof _s2Est==='function' && _s2Est(layout)){ _s2PasEncore('La synchronisation classique / îlots'); return; }   // V11.5.94
-  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
+  if(typeof _s2Est==='function' && _s2Est(layout)){ if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>syncLayouts())) return; _s2SyncChoix(); return; }   // V11.5.94 ; V11.5.98 — synchro de la nouvelle salle
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>syncLayouts())) return;   // V11.5.86 — verrou ; V11.5.98 — rejouée
   // Build a choice modal
   document.getElementById('mt').textContent='Synchroniser les places';
   document.getElementById('mb').textContent='Choisissez le sens de la synchronisation. Les places de la vue source seront copiées vers la vue destination (écrasement).';
@@ -48882,7 +48915,7 @@ function _s2Transfert(src, l){
   return out;
 }
 function _s2Reprendre(){
-  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>_s2Reprendre())) return;   // V11.5.98 — rejouée
   if(!_s2Est(layout)) return;
   const l=layout, src=_seatsForLayoutId(_s2EstIlots(l) ? 'ilots' : 'classic');
   if(!src.some(Boolean)){ try{ showDropToast('ℹ️ Le plan '+(_s2EstIlots(l) ? 'îlots' : 'classique')+' de l’ancienne salle est vide'); }catch(e){} return; }
@@ -48890,6 +48923,82 @@ function _s2Reprendre(){
     try{ showDropToast('↺ Plan '+(_s2EstIlots(l) ? 'îlots' : 'classique')+' de l’ancienne salle repris en '+_s2Libelle(l)); }catch(e){} };
   if((getCls().seats||[]).some(Boolean)) showModal('Reprendre l’ancienne salle ?', 'Les places actuelles de la vue '+_s2Libelle(l)+' seront remplacées par celles du plan '+(_s2EstIlots(l) ? 'îlots' : 'classique')+' de l’ancienne salle (qui reste intact).', go);
   else go();
+}
+/* ═══ V11.5.98 — Plan d'évaluation de la nouvelle salle : EBEP regroupés (demande du 22/11, GO du 23/11) ═══
+   À la création du plan d'évaluation en Classique 2 : les élèves « évaluation adaptée » ensemble, les
+   « évaluation aménagée » ensemble (un élève qui a les deux compte en adaptée), aux tables de devant.
+   Chaque groupe part de la table libre la plus en avant (à égalité, la plus centrale) et s'étend aux
+   tables voisines ; les élèves déplacés vont à la place libre la plus proche de la leur. */
+function _s2Cmp(a, b){ for(let i=0;i<a.length;i++){ if(a[i]!==b[i]) return a[i]<b[i] ? -1 : 1; } return 0; }
+/** Pure. → {seats, n} (n = élèves EBEP placés ; 0 = rien à faire). */
+function _peRegrouperEbep(seats, l, A, B){
+  const G=S2_GEO[l], N=S2_N[l]||(seats||[]).length, out=(Array.isArray(seats) ? seats : []).slice(0, N); while(out.length<N) out.push(null);
+  if(!G || !G.tables) return {seats:out, n:0};
+  const SA=[...new Set((A||[]).filter(Boolean))], setA=new Set(SA), SB=[...new Set((B||[]).filter(u=>u && !setA.has(u)))];
+  if(!SA.length && !SB.length) return {seats:out, n:0};
+  const g=_s2Grille(l), libres=G.tables.map(x=>x.idx.slice());
+  const rang=(tb)=>Math.max(...tb.map(i=>g[i][0])), centre=(tb)=>Math.abs(tb.reduce((s,i)=>s+g[i][1],0)/tb.length-2.5);
+  const dist=(a, b)=>Math.min(...a.map(i=>Math.min(...b.map(j=>Math.max(Math.abs(g[i][0]-g[j][0]), Math.abs(g[i][1]-g[j][1]))))));
+  const tables=(n)=>{ const pris=[]; while(pris.length<Math.ceil(n/2) && libres.length){ let b=0, cle=null;
+      libres.forEach((tb,i)=>{ const c=[pris.length ? Math.min(...pris.map(p=>dist(p, tb))) : 0, -rang(tb), centre(tb)]; if(!cle || _s2Cmp(c, cle)<0){ cle=c; b=i; } });
+      pris.push(libres.splice(b,1)[0]); } return [].concat(...pris); };
+  const PA=tables(SA.length), PB=tables(SB.length), resa=new Set(PA.concat(PB)), ebep=new Set(SA.concat(SB)), depl=[];
+  for(let i=0;i<N;i++){ const u=out[i]; if(!u) continue; if(ebep.has(u)) out[i]=null; else if(resa.has(i)){ depl.push([u,i]); out[i]=null; } }
+  let n=0; [[SA,PA],[SB,PB]].forEach(([L,P])=>L.forEach((u,k)=>{ if(P[k]!=null){ out[P[k]]=u; n++; } }));
+  depl.forEach(([u,i])=>{ let b=-1, cle=null; for(let j=0;j<N;j++){ if(out[j]) continue; const c=[resa.has(j) ? 1 : 0, Math.max(Math.abs(g[i][0]-g[j][0]), Math.abs(g[i][1]-g[j][1])), Math.abs(g[i][0]-g[j][0]), j]; if(!cle || _s2Cmp(c, cle)<0){ cle=c; b=j; } }
+    if(b>=0) out[b]=u; });
+  return {seats:out, n};
+}
+/** EBEP « adaptée » / « aménagée » du plan affiché (classe ou demi-groupe). */
+function _peEbepDuScope(){
+  const cls=(typeof curCls!=='undefined') ? curCls : ''; if(!cls) return {A:[], B:[]};
+  const g=(typeof curGroupeId!=='undefined' && curGroupeId && S.groupes && S.groupes[curGroupeId] && S.groupes[curGroupeId].parentCls===cls) ? S.groupes[curGroupeId] : null;
+  const dans=new Set(((g ? g.students : (S.cl[cls]||{}).students)||[]));
+  const f=(L)=>(L||[]).filter(u=>dans.has(u));
+  return {A:f(_ebepWithEvalAdapteeForCls(cls)), B:f(_ebepWithEvalAmenageeForCls(cls))};
+}
+/* ═══ V11.5.98 — Synchro Classique 2 ↔ îlots 7 / 8 (GO du 23/11) ═══
+   Classique 2 → îlots : la grande table d'une équipe va dans l'îlot de même numéro ; les autres élèves
+   (centre, petite table, équipe 8 en îlots 7) complètent les îlots qui ont de la place, au plus près de
+   leur table (places volantes en dernier). Îlots → Classique 2 : les 2 premières places de l'îlot vont à la
+   grande table de l'équipe, les autres à la place libre la plus proche. Positions comparées sur les grilles
+   virtuelles (rang ramené de 0 = fond à 1 = devant). Pure. */
+function _s2Synchro(src, from, to){
+  src=Array.isArray(src) ? src : []; const Gs=S2_GEO[from], Gt=S2_GEO[to], N=S2_N[to]||N_SEATS, out=Array(N).fill(null);
+  if(!Gs || !Gt) return out;
+  const gs=_s2Grille(from), gt=_s2Grille(to), Rs=_s2RangMax(from), Rt=_s2RangMax(to), reste=[], vus=new Set();
+  const prendre=(i)=>{ const u=src[i]; if(!u || vus.has(u)) return null; vus.add(u); return u; };
+  if(Gs.tables){ Gs.tables.forEach(tb=>{ const il=tb.eq && (Gt.ilots||[]).find(x=>x.eq===tb.eq); tb.idx.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(il) out[il.idx[k]]=u; else reste.push([u,i]); }); }); }
+  else { (Gs.ilots||[]).forEach(il=>{ const tb=(Gt.tables||[]).find(x=>x.eq===il.eq); il.idx.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(tb && k<2) out[tb.idx[k]]=u; else reste.push([u,i]); }); });
+    (Gs.volantes||[]).forEach(i=>{ const u=prendre(i); if(u) reste.push([u,i]); }); }
+  const V=new Set(Gt.volantes||[]), pos=(g, R, i)=>g[i] ? [g[i][0]/R, g[i][1]/5] : null, cand=[];
+  reste.forEach(([u,i],r)=>{ const a=pos(gs, Rs, i); for(let j=0;j<N;j++){ if(out[j]) continue; const b=pos(gt, Rt, j); cand.push([(a && b ? Math.hypot(a[0]-b[0], a[1]-b[1]) : 9)+(V.has(j) ? 10 : 0), r, j]); } });
+  cand.sort((a,b)=>a[0]-b[0] || a[1]-b[1] || a[2]-b[2]);
+  const fait=new Set(); cand.forEach(([,r,j])=>{ if(fait.has(r) || out[j]) return; out[j]=reste[r][0]; fait.add(r); });
+  return out;
+}
+/** Porteur des places de la nouvelle salle pour le plan affiché (groupe inter-classes, demi-groupe, classe). */
+function _s2PorteurCourant(){
+  if(typeof curGrpInter!=='undefined' && curGrpInter && S.groupes && S.groupes[curGrpInter]) return S.groupes[curGrpInter];
+  if(typeof curGroupeId!=='undefined' && curGroupeId && S.groupes && S.groupes[curGroupeId] && S.groupes[curGroupeId].parentCls===curCls) return S.groupes[curGroupeId];
+  return S.cl[curCls]||null;
+}
+/** Choix du sens (createElement). */
+function _s2SyncChoix(){
+  const h=_s2PorteurCourant(); if(!h) return; const il=_s2IlotsDe(h), nil=_s2Libelle(il);
+  document.getElementById('mt').textContent='Synchroniser les places';
+  document.getElementById('mb').textContent='Choisissez le sens. Les places de la vue d’arrivée sont remplacées ; la vue de départ ne bouge pas.';
+  document.getElementById('mok').style.display='none';
+  const extra=document.getElementById('modal-extra'); extra.textContent='';
+  const btn=(id, titre, sous, from, to)=>{ const b=document.createElement('button'); b.type='button'; b.id=id;
+    b.style.cssText='width:100%;margin-top:8px;padding:8px 12px;border-radius:var(--r2);border:1.5px solid var(--brd);background:var(--sur);cursor:pointer;text-align:left;font-family:inherit';
+    const t1=document.createElement('div'); t1.style.cssText='font-size:13px;font-weight:600;color:var(--tx)'; t1.textContent=titre; b.appendChild(t1);
+    const t2=document.createElement('div'); t2.style.cssText='font-size:11px;color:var(--tx2);margin-top:2px'; t2.textContent=sous; b.appendChild(t2);
+    b.onclick=()=>{ _s2Ecrire(h, to, _s2Synchro(_s2Seats(h, from), from, to)); saveS(); closeModal(); renderApp(); try{ showDropToast('⇄ '+_s2Libelle(from)+' → '+_s2Libelle(to)); }catch(e){} };
+    extra.appendChild(b); };
+  btn('s2-sync-vers-ilots', 'Classique 2 → '+nil, 'Chaque grande table va dans l’îlot de son équipe ; les autres élèves complètent les îlots, au plus près de leur table.', 'classic2', il);
+  btn('s2-sync-vers-classique', nil+' → Classique 2', 'Deux élèves de chaque îlot vont à la grande table de l’équipe ; les autres à la place libre la plus proche.', il, 'classic2');
+  document.getElementById('mbg').classList.add('open');
 }
 /** Positions à l'écran (et pour le PDF). o = {nb, nSt, seats}. Pure (lit les constantes du plan). */
 function _s2Placement(l, Hs, o){
@@ -49368,13 +49477,17 @@ let _v169SuppressNextClick = false; // V020-v169-fix1 — quand un touchend cons
 const V169_LONG_PRESS_MS = 500;
 const V169_MOVE_THRESHOLD_PX = 10;
 
-function _performDeplacement(targetSeatEl){
+function _performDeplacement(targetSeatEl, rejeu){
   // Source unifiée : dragSrc (desktop) ou _v169Source (tactile).
-  const src = dragSrc || _v169Source;
+  // V11.5.98 — `rejeu` : déplacement gardé pendant le choix du cadenas, rejoué dans le plan du mode choisi
+  // (source relue dans CE plan : l'élève peut y être placé ailleurs).
+  const src = rejeu ? _pdcResoudreSource(getCls().seats, rejeu) : (dragSrc || _v169Source);
   if(!src) return;
-  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — placement verrouillé
   const to = parseInt(targetSeatEl.dataset.seatIdx);
   if(isNaN(to)) return;
+  // V11.5.86 — placement verrouillé ; V11.5.98 — le geste n'est plus perdu
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer((()=>{ const g={t:src.t, name:src.name, from:src.from}; return ()=>_performDeplacement({dataset:{seatIdx:String(to)}}, g); })())){ _v169ClearSource(); return; }
+  if(rejeu && src.from===to){ renderApp(); return; }
   const seats = getCls().seats;
   const occ = seats[to] || null;
   if(src.t === 'student'){
@@ -49661,7 +49774,7 @@ function _signalerClassesVides(){
     });
   return anomalies.length;
 }
-function removeSeatSlot(idx){ if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return; getCls().seats[idx]=null; saveS(); renderApp(); }   // V11.5.86 — verrou
+function removeSeatSlot(idx){ if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>removeSeatSlot(idx))) return; getCls().seats[idx]=null; saveS(); renderApp(); }   // V11.5.86 — verrou
 /* ── Rotation des équipes ──────────────────────────────────────────────────
    Côté D (3 équipes) : EQ1 → EQ3 → EQ2 → EQ1 (rotation circulaire)
    Côté G (4 équipes) : EQ4 → EQ5 → EQ6 → EQ7 → EQ4 (rotation circulaire)
@@ -49673,7 +49786,7 @@ function rotatePlaces(applyClassic, applyIlot){
   // cls.seatsIlot en direct (voir plus bas), hors proxy. Elle ecraserait le
   // plan permanent. Blocage explicite plutot que refus muet.
   if(_tempBlock('la rotation des equipes')) return;
-  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>rotatePlaces(applyClassic, applyIlot))) return;   // V11.5.86 — verrou ; V11.5.98 — rejouée
   // Colonne G identique dans les deux vues : EQ4→EQ5→EQ6→EQ7→EQ4
   const ROT_G=[
     ['EQ4',0,'EQ5',3],['EQ4',1,'EQ5',2],['EQ4',2,'EQ5',1],['EQ4',3,'EQ5',0],
@@ -49873,7 +49986,7 @@ function openRotatePlacesModal(){
 }
 
 function clearSeats(){
-  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>clearSeats())) return;   // V11.5.86 — verrou ; V11.5.98 — rejouée
   const which=(typeof _s2Est==='function' && _s2Est(layout)) ? _s2Libelle(layout) : layout==='classic'?'classique':'îlots';
   showModal('Vider les places ?',`Tous les placements de la vue ${which} pour ${curCls} seront effacés.`,()=>{
     getCls().seats=Array(((getCls().seats||[]).length)||N_SEATS).fill(null); saveS(); renderApp();
@@ -50657,7 +50770,7 @@ function checkContraintes(){
 }
 
 function randomPlace(){
-  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>randomPlace())) return;   // V11.5.86 — verrou ; V11.5.98 — rejouée
   const cls=getCls();
   const con=(S.contraintes&&S.contraintes[_scopeBucketKey()])||{separer:[],associer:[],devant:[],vueLimitee:[],isoler:[],eloigner:[]};
   // Toujours afficher le modal d'options en amont (option B validée en cadrage).
@@ -62693,6 +62806,7 @@ function _evlRendre(){
   if(_evl.vue==='carnet' && !_evl.cls) _evlRendreClasses(corps);
   else if(_evl.vue==='carnet') _evlRendreCarnet(corps);
   else if(_evl.vue==='evals') (_evl.saisie ? _evlRendreSaisie(corps) : _evlRendreEvals(corps));
+  else if(_evl.vue==='ratt') _evlRendreRatt(corps);   // V11.5.98
   else _evlRendreBiblio(corps);
   corps.scrollTop=y;
   if(_evl.saisie && _evl.clavier) _evlVoirCurseur(corps);   // V11.5.51 — après la restauration du défilement
@@ -62729,7 +62843,76 @@ function _evlBarreFiltres(){
     _evlClassesFiltre(L, _evl.niv, '').forEach(c=>{ const on=_evl.cls===c;
       const b=_evlChip(String(c).toUpperCase(), on, ()=>choisir(_evl.niv, on ? '' : c), on ? 'Revenir au niveau' : 'Seulement '+String(c).toUpperCase());
       b.className='evl-f-cls'; b.style.borderRadius='8px'; if(on){ b.style.background=_evlCoulNiv(c); b.style.borderColor=_evlCoulNiv(c); } bar.appendChild(b); }); }
+  // V11.5.98 — à droite : récap des évaluations à rattraper (classes du filtre)
+  bar.appendChild(_evlEl('span','flex:1'));
+  { const R=_evlRattrapDonnees(), n=R.reduce((s,g)=>s+g.n,0), on=_evl.vue==='ratt';
+    const b=_evlEl('button','font:inherit;font-size:12.5px;font-weight:800;padding:4px 12px;border-radius:8px;cursor:pointer;min-height:30px;border:2px solid '+(on?'#991B1B':(n?'#B91C1C':'#8A9099'))+';background:'+(on?'#991B1B':'var(--sur)')+';color:'+(on?'#fff':(n?'#B91C1C':'var(--tx2)')),
+      '↺ À rattraper'+(n ? ' · '+n : ''));
+    b.type='button'; b.id='evl-ratt-btn'; b.title=on ? 'Revenir à la vue précédente' : 'Élèves à rattraper, par évaluation puis par classe';
+    b.onclick=()=>{ if(_evl.vue==='ratt') _evl.vue=_evl.vuePrec||'carnet'; else { _evl.vuePrec=_evl.vue; _evl.vue='ratt'; } _evl.saisie=false; _evlRendre(); };
+    bar.appendChild(b); }
   return bar;
+}
+/* ═══ V11.5.98 — Récap des évaluations à rattraper (demande du 22/11) ═══
+   Même source que le volet droit du plan de classe : S.evalVerifs en attente ('pending'),
+   recalculés d'après les absences du cours de l'évaluation (_evalVerifsResync). Lecture seule :
+   on coche « rattrapé » dans le volet droit, au cours où l'élève rattrape. */
+/** Regroupe les rattrapages en attente par évaluation (niveau|séquence|évaluation), puis par classe.
+ *  Un élève figure sous chaque évaluation qu'il doit rattraper, une seule fois par classe. Pure.
+ *  → [{cle, niv, seqId, evalId, titre, type, du, n, classes:[{cls, dates:[AAAA-MM-JJ], eleves:[uid]}]}] (plus ancienne d'abord) */
+function _evlRattrapRecap(verifs, classes, infoDe, ordreDe){
+  const C=new Set(classes||[]), G={};
+  Object.keys(verifs||{}).forEach(k=>{
+    const v=verifs[k]; if(!v || v.status!=='pending') return;
+    const p=String(k).split('|'); if(p.length<5) return;
+    const so=p[0], cls=p[1], seqId=p[2], evalId=p[3], uid=p.slice(4).join('|'); if(!C.has(cls) || !uid) return;
+    const niv=_evlNivCls(cls), gk=niv+'|'+seqId+'|'+evalId, d=String(so).slice(0,10);
+    const g=G[gk]=G[gk]||{cle:gk, niv, seqId, evalId, titre:'', type:'', du:d, n:0, _c:{}};
+    if(d<g.du) g.du=d;
+    const c=g._c[cls]=g._c[cls]||{cls, dates:[], eleves:[]};
+    if(c.dates.indexOf(d)<0) c.dates.push(d);
+    if(c.eleves.indexOf(uid)<0){ c.eleves.push(uid); g.n++; }
+  });
+  return Object.values(G).map(g=>{
+    const I=(typeof infoDe==='function' && infoDe(g)) || {}; g.titre=I.titre || 'Évaluation'; g.type=I.type || '';
+    g.classes=Object.values(g._c).sort((a,b)=>String(a.cls).localeCompare(String(b.cls),'fr',{numeric:true})).map(c=>{
+      c.dates.sort(); if(typeof ordreDe==='function') c.eleves.sort((a,b)=>ordreDe(c.cls,a)-ordreDe(c.cls,b)); return c; });
+    delete g._c; return g;
+  }).sort((a,b)=>String(a.du).localeCompare(String(b.du)) || String(a.titre).localeCompare(String(b.titre),'fr'));
+}
+/** Récap pour les classes du filtre courant (Tout / niveau / classe). */
+function _evlRattrapDonnees(){
+  const Cf=_evlClassesFiltre(_reuClasses(), _evl.niv, _evl.cls);
+  Cf.forEach(c=>{ try{ _evalVerifsResync(c); }catch(e){} });
+  const info=(g)=>{ try{ const seq=(getProgression(g.niv)||[]).find(s=>s && s.id===g.seqId); const ev=seq && (seq.evals||[]).find(e=>e && e.id===g.evalId);
+      if(ev) return {titre:ev.titre||ev.contenu||(seq.titre ? 'Évaluation · '+seq.titre : ''), type:(typeof _evalTypeLabel==='function') ? _evalTypeLabel(ev) : ''};
+      if(seq && seq.evalContenu) return {titre:seq.evalContenu}; }catch(e){} return null; };
+  const ordre=(cls, u)=>{ const L=((S.cl && S.cl[cls] && S.cl[cls].students)||[]), i=L.indexOf(u); return i<0 ? 9999 : i; };
+  return _evlRattrapRecap(S.evalVerifs||{}, Cf, info, ordre);
+}
+function _evlRendreRatt(corps){
+  const R=_evlRattrapDonnees(), n=R.reduce((s,g)=>s+g.n,0);
+  const hd=_evlEl('div','display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 2px 12px'); corps.appendChild(hd);
+  hd.appendChild(_evlEl('span','font-size:19px;font-weight:800','↺ Évaluations à rattraper'));
+  hd.appendChild(_evlEl('span','font-size:13px;color:var(--tx2)', n ? n+' rattrapage'+(n>1?'s':'')+' · '+R.length+' évaluation'+(R.length>1?'s':'') : ''));
+  corps.appendChild(_evlEl('div','font-size:12.5px;color:var(--tx2);margin:-6px 2px 12px','Élèves absents le jour de l’évaluation, pas encore cochés « rattrapé ». On les coche dans le volet droit du plan de classe, au cours où ils rattrapent.'));
+  if(!R.length){ corps.appendChild(_evlEl('div','padding:18px;border:1px dashed var(--brd);border-radius:12px;color:var(--tx2);font-size:14px;text-align:center','Aucune évaluation à rattraper pour '+(_evl.cls ? String(_evl.cls).toUpperCase() : _evl.niv==='*' ? 'vos classes' : 'les '+_evl.niv+'e')+'.')); return; }
+  const grille=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;align-items:start'); grille.id='evl-ratt'; corps.appendChild(grille);
+  R.forEach(g=>{
+    const carte=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-left:5px solid '+_evlCoulNiv(g.niv)+';border-radius:12px;padding:10px 12px'); carte.className='evl-ratt-eval'; carte.dataset.cle=g.cle; grille.appendChild(carte);
+    const t=_evlEl('div','display:flex;align-items:baseline;gap:8px'); carte.appendChild(t);
+    t.appendChild(_evlEl('b','font-size:15px;flex:1;min-width:0', '🏆 '+g.titre));
+    t.appendChild(_evlPastille(String(g.n), '#B91C1C'));
+    carte.appendChild(_evlEl('div','font-size:12px;color:var(--tx2);margin:1px 0 6px', g.niv+'e'+(g.type ? ' · '+g.type : '')));
+    g.classes.forEach(c=>{
+      const L=_evlEl('div','display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px dashed var(--brd)'); L.className='evl-ratt-cls'; L.dataset.cls=c.cls; carte.appendChild(L);
+      const g1=_evlEl('div','flex:0 0 74px'); L.appendChild(g1);
+      g1.appendChild(_evlEl('b','display:inline-block;padding:1px 7px;border-radius:6px;color:#fff;font-size:12px;background:'+_evlCoulNiv(c.cls), String(c.cls).toUpperCase()));
+      g1.appendChild(_evlEl('div','font-size:11px;color:var(--tx3);margin-top:2px', c.dates.map(_evlJJMM).join(', ')));
+      const N=_evlEl('div','flex:1;display:flex;flex-wrap:wrap;gap:4px'); L.appendChild(N);
+      c.eleves.forEach(u=>{ const nm=(typeof getFullName==='function' && getFullName(u)) || u; const s=_evlEl('span','font-size:12.5px;padding:2px 8px;border-radius:999px;background:#FEE2E2;color:#7F1D1D;border:1px solid #FCA5A5', nm); s.className='evl-ratt-el'; N.appendChild(s); });
+    });
+  });
 }
 /* ═══ V11.5.71 — Carnet retravaillé (contraste, couleurs des notes, compteurs, moyennes de colonne) ═══ */
 /** Couleur d'une note selon la part du barème : < 25 % rouge, < 50 % orange, < 75 % vert, sinon bleu. Pure. */
