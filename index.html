@@ -1593,9 +1593,12 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .st-tag-avert{background:#D97706}
 .eh{font-size:10px;color:var(--tx3);text-align:center;padding:.7rem .4rem;font-style:italic}
 /* Seat highlight */
-.seat.hl-seat{outline:3px solid var(--acc);outline-offset:2px;z-index:10}
-.seat.ebep-hl-seat{outline:3px solid #2563EB;outline-offset:2px;z-index:9;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
-.seat.grp-hl-seat{outline:3px solid #16A34A;outline-offset:2px;z-index:9;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+/* V11.5.100 — Mise en évidence lisible sur les cadres colorés des équipes : un contour coloré se confondait avec
+   la couleur de l'équipe. Fond teinté + anneau blanc puis anneau d'une couleur qu'aucune équipe n'utilise
+   (EBEP cyan, groupe rose, sélection noire sur fond jaune). */
+.seat.ebep-hl-seat{outline:none;z-index:9;background:#CFFAFE!important;box-shadow:0 0 0 3px #fff,0 0 0 7px #0891B2,0 4px 12px rgba(8,145,178,.4)}
+.seat.grp-hl-seat{outline:none;z-index:9;background:#FCE7F3!important;box-shadow:0 0 0 3px #fff,0 0 0 7px #DB2777,0 4px 12px rgba(219,39,119,.35)}
+.seat.hl-seat{outline:none;z-index:10;background:#FEF08A!important;box-shadow:0 0 0 3px #fff,0 0 0 7px #111418,0 6px 16px rgba(0,0,0,.35)}
 
 /* CLASSROOM */
 /* V020-v170 — Fix bug scroll PdC (datant d'avant v167).
@@ -4878,7 +4881,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.99';
+const APP_VERSION = 'v11.5.101';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -48987,20 +48990,32 @@ function _peEbepDuScope(){
   const f=(L)=>(L||[]).filter(u=>dans.has(u));
   return {A:f(_ebepWithEvalAdapteeForCls(cls)), B:f(_ebepWithEvalAmenageeForCls(cls))};
 }
-/* ═══ V11.5.98 — Synchro Classique 2 ↔ îlots 7 / 8 (GO du 23/11) ═══
-   Classique 2 → îlots : la grande table d'une équipe va dans l'îlot de même numéro ; les autres élèves
-   (centre, petite table, équipe 8 en îlots 7) complètent les îlots qui ont de la place, au plus près de
-   leur table (places volantes en dernier). Îlots → Classique 2 : les 2 premières places de l'îlot vont à la
-   grande table de l'équipe, les autres à la place libre la plus proche. Positions comparées sur les grilles
-   virtuelles (rang ramené de 0 = fond à 1 = devant). Pure. */
+/* ═══ V11.5.98 / V11.5.101 — Synchro Classique 2 ↔ îlots 7 / 8 ═══
+   V11.5.101 (validé le 23/11) : chaque îlot = la grande table de l'équipe + une table rattachée
+   (S2_RATTACH : centre 1 → EQ4, centre 2 → EQ5, centre 3 → EQ2, centre 4 → EQ6, centre 5 → EQ1,
+   centre 6 → EQ7, petite table → EQ3). Table de l'équipe 8 : places volantes en îlots 7, îlot 8 en îlots 8.
+   Aller-retour exact. Un élève sans place prévue (îlot 8 complet vers Classique 2…) va à la place libre la
+   plus proche (grilles virtuelles, rang ramené de 0 = fond à 1 = devant ; volantes en dernier).
+   ⚠️ Si une table du centre passe dans la colonne de gauche (piste du 23/11), revoir S2_RATTACH et S2_GEO. */
+const S2_RATTACH={EQ4:[8,9], EQ5:[10,11], EQ2:[12,13], EQ6:[14,15], EQ1:[16,17], EQ7:[18,19], EQ3:[22,23]};
+/** Couples [place Classique 2, place îlots] pour îlots 7 ou 8. Pure. */
+function _s2Correspondance(il){
+  const G=S2_GEO[il], T=S2_GEO.classic2.tables, P=[]; if(!G || !G.ilots) return P;
+  G.ilots.forEach(x=>{ const tb=T.find(y=>y.eq===x.eq); if(tb){ P.push([tb.idx[0], x.idx[0]], [tb.idx[1], x.idx[1]]); }
+    const r=S2_RATTACH[x.eq]; if(r){ P.push([r[0], x.idx[2]], [r[1], x.idx[3]]); } });
+  const V=G.volantes||[], t8=T.find(y=>y.eq==='EQ8'); if(V.length>=2 && t8){ P.push([t8.idx[0], V[0]], [t8.idx[1], V[1]]); }
+  return P;
+}
+/** Pure. */
 function _s2Synchro(src, from, to){
   src=Array.isArray(src) ? src : []; const Gs=S2_GEO[from], Gt=S2_GEO[to], N=S2_N[to]||N_SEATS, out=Array(N).fill(null);
   if(!Gs || !Gt) return out;
-  const gs=_s2Grille(from), gt=_s2Grille(to), Rs=_s2RangMax(from), Rt=_s2RangMax(to), reste=[], vus=new Set();
-  const prendre=(i)=>{ const u=src[i]; if(!u || vus.has(u)) return null; vus.add(u); return u; };
-  if(Gs.tables){ Gs.tables.forEach(tb=>{ const il=tb.eq && (Gt.ilots||[]).find(x=>x.eq===tb.eq); tb.idx.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(il) out[il.idx[k]]=u; else reste.push([u,i]); }); }); }
-  else { (Gs.ilots||[]).forEach(il=>{ const tb=(Gt.tables||[]).find(x=>x.eq===il.eq); il.idx.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(tb && k<2) out[tb.idx[k]]=u; else reste.push([u,i]); }); });
-    (Gs.volantes||[]).forEach(i=>{ const u=prendre(i); if(u) reste.push([u,i]); }); }
+  const vus=new Set(), reste=[];
+  const versIlots=(from==='classic2' && _s2EstIlots(to)), versC2=(_s2EstIlots(from) && to==='classic2');
+  const P=versIlots ? _s2Correspondance(to) : versC2 ? _s2Correspondance(from).map(([a,b])=>[b,a]) : [];
+  P.forEach(([a,b])=>{ const u=src[a]; if(!u || vus.has(u) || out[b]) return; out[b]=u; vus.add(u); });
+  src.forEach((u,i)=>{ if(u && !vus.has(u)){ vus.add(u); reste.push([u,i]); } });
+  const gs=_s2Grille(from), gt=_s2Grille(to), Rs=_s2RangMax(from), Rt=_s2RangMax(to);
   const V=new Set(Gt.volantes||[]), pos=(g, R, i)=>g[i] ? [g[i][0]/R, g[i][1]/5] : null, cand=[];
   reste.forEach(([u,i],r)=>{ const a=pos(gs, Rs, i); for(let j=0;j<N;j++){ if(out[j]) continue; const b=pos(gt, Rt, j); cand.push([(a && b ? Math.hypot(a[0]-b[0], a[1]-b[1]) : 9)+(V.has(j) ? 10 : 0), r, j]); } });
   cand.sort((a,b)=>a[0]-b[0] || a[1]-b[1] || a[2]-b[2]);
@@ -49026,8 +49041,8 @@ function _s2SyncChoix(){
     const t2=document.createElement('div'); t2.style.cssText='font-size:11px;color:var(--tx2);margin-top:2px'; t2.textContent=sous; b.appendChild(t2);
     b.onclick=()=>{ _s2Ecrire(h, to, _s2Synchro(_s2Seats(h, from), from, to)); saveS(); closeModal(); renderApp(); try{ showDropToast('⇄ '+_s2Libelle(from)+' → '+_s2Libelle(to)); }catch(e){} };
     extra.appendChild(b); };
-  btn('s2-sync-vers-ilots', 'Classique 2 → '+nil, 'Chaque grande table va dans l’îlot de son équipe ; les autres élèves complètent les îlots, au plus près de leur table.', 'classic2', il);
-  btn('s2-sync-vers-classique', nil+' → Classique 2', 'Deux élèves de chaque îlot vont à la grande table de l’équipe ; les autres à la place libre la plus proche.', il, 'classic2');
+  btn('s2-sync-vers-ilots', 'Classique 2 → '+nil, 'Chaque îlot reçoit la grande table de l’équipe et sa table rattachée (centre ou petite table) ; table de l’équipe 8 : places volantes en îlots 7.', 'classic2', il);
+  btn('s2-sync-vers-classique', nil+' → Classique 2', 'Chaque îlot retourne à la grande table de l’équipe et à sa table rattachée.', il, 'classic2');
   document.getElementById('mbg').classList.add('open');
 }
 /** Positions à l'écran (et pour le PDF). o = {nb, nSt, seats}. Pure (lit les constantes du plan). */
