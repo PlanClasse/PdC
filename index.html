@@ -4881,7 +4881,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.101';
+const APP_VERSION = 'v11.5.102';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -41573,7 +41573,7 @@ function _eaRendreEcran(bg){
     const total=V.minuteur;
     if(!_ea.fin && V.minuteurAuto) _ea.fin=Date.now()+total*1000;   // V11.4.15 — minuteur de l'écran affiché
     const maj=()=>{
-      const reste=_ea.fin ? Math.max(0, Math.round((_ea.fin-Date.now())/1000)) : total;
+      const reste=_ea.fin ? Math.max(0, Math.ceil((_ea.fin-Date.now())/1000)) : total;   // V11.5.102 — ceil, comme _tmrRestant
       if(_ea.fin && reste===0 && !_ea.musFin && (cfg.musique||{}).arret!=='fermeture' && _eaMus.audio){ _ea.musFin=true; _eaMusiqueArreter(true); }   // V11.4.7
       if(_ea.fin && reste===0){ ch.textContent=V.minuteurFin; lb.textContent=''; c1.setAttribute('stroke-dashoffset',100.5); return; }
       ch.textContent=Math.floor(reste/60)+':'+String(reste%60).padStart(2,'0');
@@ -77271,6 +77271,34 @@ function _eocJouer(a, force){
 }
 
 let _endOfClassTimer = null;
+let _eocProchain = 0;   // V11.5.102 — heure (ms) du prochain contrôle de fin de cours, relue par le métronome
+/* ═══ V11.5.102 — MÉTRONOME EN WORKER (audit du 23/11 : « chrono et annonces pas toujours fiables »)
+   Fenêtre cachée, minimisée ou RECOUVERTE (Windows détecte l'occultation) : Chrome espace les timers de la
+   page à 1 s, puis à UNE FOIS PAR MINUTE après ~5 min (« intensive throttling », timers enchaînés). Le
+   décompte restait juste (calculé depuis l'heure de fin) mais n'était plus AFFICHÉ ni SONNÉ à l'heure :
+   la fenêtre projetée du compte à rebours (2e écran) pouvait rester figée jusqu'à une minute, la sonnerie
+   de fin et l'annonce de fin de cours partir jusqu'à une minute en retard.
+   Les timers d'un worker dédié ne sont pas soumis à ce bridage : il envoie un battement toutes les 250 ms,
+   la page relit l'horloge système (Date.now) à chaque battement. Les timers de la page restent en place
+   (secours si le worker est refusé) ; les deux appellent des fonctions sans effet en double. */
+let _metro=null;   // null = pas encore tenté ; false = indisponible ; sinon le Worker
+function _metroDemarrer(){
+  if(_metro!==null) return !!_metro;
+  _metro=false;
+  try{
+    if(typeof Worker!=='function' || typeof Blob!=='function' || typeof URL==='undefined' || !URL.createObjectURL) return false;
+    const url=URL.createObjectURL(new Blob(['setInterval(function(){ postMessage(0); }, 250);'], {type:'text/javascript'}));
+    const w=new Worker(url);
+    w.onmessage=()=>{ _metroBattre(); };
+    w.onerror=()=>{ try{ w.terminate(); }catch(e){} _metro=false; };
+    _metro=w; return true;
+  }catch(e){ _metro=false; return false; }
+}
+/** Un battement : rien à faire tant que rien n'est dû (coût négligeable). */
+function _metroBattre(){
+  try{ if(typeof _tmrIv!=='undefined' && _tmrIv) _tmrTick(); }catch(e){}
+  try{ if(_eocProchain && Date.now()>=_eocProchain) _endOfClassScheduleNext(); }catch(e){}
+}
 let _eocVisibilityHooked = false; // V035-V11.3.36 — écouteurs posés une seule fois
 const _endOfClassLastTriggered = new Set();
 
@@ -77475,6 +77503,7 @@ function _endOfClassScheduleNext(){
   let delay = 60000;
   try { delay = _endOfClassTick(); } catch(e){ console.warn('[V031] tick err', e); }
   if(typeof delay !== 'number' || delay < 1000) delay = 60000;
+  _eocProchain = Date.now() + delay;   // V11.5.102 — le métronome (worker) rattrape un timer bridé
   _endOfClassTimer = setTimeout(_endOfClassScheduleNext, delay);
 }
 
@@ -77501,6 +77530,8 @@ function _endOfClassStart(){
     });
   }
   // Premier tick légèrement différé pour laisser le boot finir
+  _eocProchain = Date.now() + 2000;   // V11.5.102
+  try{ _metroDemarrer(); }catch(e){}
   _endOfClassTimer = setTimeout(_endOfClassScheduleNext, 2000);
 }
 
@@ -77613,6 +77644,7 @@ function _tmrStart(sec){
   if(_tmrSec <= 0) return;
   _tmrEnd = Date.now() + _tmrSec * 1000;
   _tmrIv = setInterval(_tmrTick, 250);
+  try{ _metroDemarrer(); }catch(e){}   // V11.5.102 — battement non bridé (fenêtre cachée ou recouverte)
   // Retour au premier plan : recalage immédiat, sans attendre le prochain tick.
   document.addEventListener('visibilitychange', _tmrTick);
   _tmrUpdateUI();
