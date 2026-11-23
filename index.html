@@ -1354,6 +1354,11 @@ body.pdc-univ-on.pdc-univ-cur-is-custom .pmcard-lay-edit{display:flex !important
 .tb-r2-pill:hover{filter:brightness(.95)}
 .tb-r2-pill.tb-r2-sea{background:#FFFBEB;color:#92400E;border-color:#FDE68A}
 .tb-r2-pill.tb-r2-sea:hover{background:#FEF3C7}
+/* V11.5.99 — 💾 Séance : rouge = pas encore enregistrée (cours commencé ou passé), vert = enregistrée */
+.tb-r2-pill.tb-r2-sea.sea-ko{background:#DC2626;color:#fff;border-color:#991B1B}
+.tb-r2-pill.tb-r2-sea.sea-ko:hover{background:#B91C1C}
+.tb-r2-pill.tb-r2-sea.sea-ok{background:#16A34A;color:#fff;border-color:#166534}
+.tb-r2-pill.tb-r2-sea.sea-ok:hover{background:#15803D}
 .tb-r2-pill.tb-r2-prc{background:#F0F4FF;color:#3730A3;border-color:#C7D2FE}
 .tb-r2-pill.tb-r2-prc:hover{background:#E0E7FF}
 .tb-r2-pill .tb-r2-pill-ic{font-size:13px;line-height:1}
@@ -4873,7 +4878,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.98';
+const APP_VERSION = 'v11.5.99';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -37384,11 +37389,34 @@ function openGroupeInterPlan(gid, slotKey){
   if(slotKey && typeof renderTbRow2Context==='function') renderTbRow2Context();
 }
 
+/** V11.5.99 — État du bouton 💾 Séance : 'ok' (séance enregistrée), 'ko' (cours commencé ou passé, pas
+ *  enregistrée), '' (pas de cours ouvert, ou cours à venir pas encore enregistré). Pure. */
+function _seaEtat(enregistree, slotKey, maintenant){
+  if(!slotKey) return '';
+  if(enregistree) return 'ok';
+  const p=String(slotKey).split('_'), d=new Date(p[0]+'T'+(p[1]||'00:00')+':00');
+  if(isNaN(d.getTime())) return 'ko';
+  return d.getTime()<=maintenant.getTime() ? 'ko' : '';
+}
+function _seaEnregistree(cls, slotKey){
+  if(!S.seances || !slotKey) return false;
+  if(typeof curGrpInter!=='undefined' && curGrpInter && S.groupes && S.groupes[curGrpInter]) return ((S.seances['grp:'+curGrpInter])||[]).some(s=>s && s.slotKey===slotKey);
+  if(!cls) return false;
+  return Object.keys(S.seances).some(k=>(k===cls || k.indexOf(cls+'|')===0) && Array.isArray(S.seances[k]) && S.seances[k].some(s=>s && s.slotKey===slotKey));
+}
+function _seaBoutonMaj(){
+  const b=document.getElementById('btn-seance'); if(!b) return;
+  const sk=(typeof curSlotKey!=='undefined') ? curSlotKey : null;
+  const e=_seaEtat(sk ? _seaEnregistree(curCls, sk) : false, sk, (typeof _appNow==='function') ? _appNow() : new Date());
+  b.classList.toggle('sea-ok', e==='ok'); b.classList.toggle('sea-ko', e==='ko');
+  b.title=e==='ok' ? 'Séance enregistrée : cliquer pour la revoir ou la modifier' : e==='ko' ? 'Séance pas encore enregistrée : cliquer pour l’enregistrer' : 'Enregistrer la séance';
+}
 /* V018-v147 — Rendu du contexte cours dans la ligne 2 (date · heure · classe · séquence · séance).
    Appelée à l'ouverture (openApp) et après chaque navigation entre cours (navCoursPrev/Next). */
 function renderTbRow2Context(){
   const ctx=document.getElementById('tb-r2-ctx');
   if(!ctx) return;
+  try{ _seaBoutonMaj(); }catch(e){}   // V11.5.99
   if(!curSlotKey||!curCls){ ctx.innerHTML=''; ctx.title=''; try{ _eaBoutonPdc(); }catch(e){} try{ if(typeof _bnBoutonPdc==='function') _bnBoutonPdc(); }catch(e){} return; }
   const parts=String(curSlotKey).split('_');
   const dateStr=parts[0]||'';
@@ -39840,6 +39868,7 @@ function _readSeancesScoped(){
   return readSeancesBucket(curCls, _grp);
 }
 function _writeSeanceScoped(slotKey, seance){
+  setTimeout(()=>{ try{ _seaBoutonMaj(); }catch(e){} }, 0);   // V11.5.99 — 💾 Séance passe au vert
   if(_isScopeGrpInter()){
     if(!S.seances) S.seances={};
     const bk='grp:'+curGrpInter;
@@ -44900,6 +44929,7 @@ function writeSeanceForSlot(clsCode, slotKey, seance){
  * Jamais de cascade.
  */
 function deleteSeanceForSlot(clsCode, grp, slotKey){
+  setTimeout(()=>{ try{ _seaBoutonMaj(); }catch(e){} }, 0);   // V11.5.99
   if(!S.seances||!clsCode||!slotKey) return;
   const bucketKey=grp?(clsCode+'|'+grp):clsCode;
   const arr=S.seances[bucketKey];
@@ -62867,16 +62897,27 @@ function _evlRattrapRecap(verifs, classes, infoDe, ordreDe){
     const p=String(k).split('|'); if(p.length<5) return;
     const so=p[0], cls=p[1], seqId=p[2], evalId=p[3], uid=p.slice(4).join('|'); if(!C.has(cls) || !uid) return;
     const niv=_evlNivCls(cls), gk=niv+'|'+seqId+'|'+evalId, d=String(so).slice(0,10);
-    const g=G[gk]=G[gk]||{cle:gk, niv, seqId, evalId, titre:'', type:'', du:d, n:0, _c:{}};
+    const g=G[gk]=G[gk]||{cle:gk, niv, lv:String(cls).replace(/[0-9]+$/,''), seqId, evalId, titre:'', type:'', du:d, n:0, _c:{}};   // V11.5.99 — lv = clé de la progression (« 3e »)
     if(d<g.du) g.du=d;
     const c=g._c[cls]=g._c[cls]||{cls, dates:[], eleves:[]};
     if(c.dates.indexOf(d)<0) c.dates.push(d);
     if(c.eleves.indexOf(uid)<0){ c.eleves.push(uid); g.n++; }
   });
-  return Object.values(G).map(g=>{
+  // V11.5.99 — même évaluation = même niveau et même titre (une évaluation peut avoir un identifiant par classe
+  // ou par demi-groupe) : les cartes sont fusionnées. Sans titre retrouvé, chaque identifiant garde sa carte.
+  const F={};
+  Object.values(G).forEach(g=>{
     const I=(typeof infoDe==='function' && infoDe(g)) || {}; g.titre=I.titre || 'Évaluation'; g.type=I.type || '';
+    const fk=I.titre ? g.niv+'|t|'+String(I.titre).trim().toLowerCase().replace(/\s+/g,' ') : g.cle;
+    const f=F[fk]; if(!f){ F[fk]=g; return; }
+    if(g.du<f.du) f.du=g.du; if(!f.type) f.type=g.type;
+    Object.keys(g._c).forEach(cls=>{ const s=g._c[cls], c=f._c[cls]=f._c[cls]||{cls, dates:[], eleves:[]};
+      s.dates.forEach(d=>{ if(c.dates.indexOf(d)<0) c.dates.push(d); }); s.eleves.forEach(u=>{ if(c.eleves.indexOf(u)<0) c.eleves.push(u); }); });
+  });
+  return Object.values(F).map(g=>{
     g.classes=Object.values(g._c).sort((a,b)=>String(a.cls).localeCompare(String(b.cls),'fr',{numeric:true})).map(c=>{
       c.dates.sort(); if(typeof ordreDe==='function') c.eleves.sort((a,b)=>ordreDe(c.cls,a)-ordreDe(c.cls,b)); return c; });
+    g.n=g.classes.reduce((s,c)=>s+c.eleves.length,0);
     delete g._c; return g;
   }).sort((a,b)=>String(a.du).localeCompare(String(b.du)) || String(a.titre).localeCompare(String(b.titre),'fr'));
 }
@@ -62884,7 +62925,7 @@ function _evlRattrapRecap(verifs, classes, infoDe, ordreDe){
 function _evlRattrapDonnees(){
   const Cf=_evlClassesFiltre(_reuClasses(), _evl.niv, _evl.cls);
   Cf.forEach(c=>{ try{ _evalVerifsResync(c); }catch(e){} });
-  const info=(g)=>{ try{ const seq=(getProgression(g.niv)||[]).find(s=>s && s.id===g.seqId); const ev=seq && (seq.evals||[]).find(e=>e && e.id===g.evalId);
+  const info=(g)=>{ try{ const seq=(getProgression(g.lv)||[]).find(s=>s && s.id===g.seqId); /* V11.5.99 — « 3e » (avant : « 3 », jamais trouvé) */ const ev=seq && (seq.evals||[]).find(e=>e && e.id===g.evalId);
       if(ev) return {titre:ev.titre||ev.contenu||(seq.titre ? 'Évaluation · '+seq.titre : ''), type:(typeof _evalTypeLabel==='function') ? _evalTypeLabel(ev) : ''};
       if(seq && seq.evalContenu) return {titre:seq.evalContenu}; }catch(e){} return null; };
   const ordre=(cls, u)=>{ const L=((S.cl && S.cl[cls] && S.cl[cls].students)||[]), i=L.indexOf(u); return i<0 ? 9999 : i; };
@@ -62893,24 +62934,24 @@ function _evlRattrapDonnees(){
 function _evlRendreRatt(corps){
   const R=_evlRattrapDonnees(), n=R.reduce((s,g)=>s+g.n,0);
   const hd=_evlEl('div','display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 2px 12px'); corps.appendChild(hd);
-  hd.appendChild(_evlEl('span','font-size:19px;font-weight:800','↺ Évaluations à rattraper'));
-  hd.appendChild(_evlEl('span','font-size:13px;color:var(--tx2)', n ? n+' rattrapage'+(n>1?'s':'')+' · '+R.length+' évaluation'+(R.length>1?'s':'') : ''));
-  corps.appendChild(_evlEl('div','font-size:12.5px;color:var(--tx2);margin:-6px 2px 12px','Élèves absents le jour de l’évaluation, pas encore cochés « rattrapé ». On les coche dans le volet droit du plan de classe, au cours où ils rattrapent.'));
+  hd.appendChild(_evlEl('span','font-size:23px;font-weight:800','↺ Évaluations à rattraper'));   // V11.5.99 — plus grand
+  hd.appendChild(_evlEl('span','font-size:15px;color:var(--tx2)', n ? n+' rattrapage'+(n>1?'s':'')+' · '+R.length+' évaluation'+(R.length>1?'s':'') : ''));
+  corps.appendChild(_evlEl('div','font-size:14px;color:var(--tx2);margin:-6px 2px 14px','Élèves absents le jour de l’évaluation, pas encore cochés « rattrapé ». On les coche dans le volet droit du plan de classe, au cours où ils rattrapent.'));
   if(!R.length){ corps.appendChild(_evlEl('div','padding:18px;border:1px dashed var(--brd);border-radius:12px;color:var(--tx2);font-size:14px;text-align:center','Aucune évaluation à rattraper pour '+(_evl.cls ? String(_evl.cls).toUpperCase() : _evl.niv==='*' ? 'vos classes' : 'les '+_evl.niv+'e')+'.')); return; }
-  const grille=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;align-items:start'); grille.id='evl-ratt'; corps.appendChild(grille);
+  const grille=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:16px;align-items:start'); grille.id='evl-ratt'; corps.appendChild(grille);
   R.forEach(g=>{
-    const carte=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-left:5px solid '+_evlCoulNiv(g.niv)+';border-radius:12px;padding:10px 12px'); carte.className='evl-ratt-eval'; carte.dataset.cle=g.cle; grille.appendChild(carte);
+    const carte=_evlEl('div','background:var(--sur);border:1px solid var(--brd);border-left:6px solid '+_evlCoulNiv(g.niv)+';border-radius:14px;padding:14px 16px'); carte.className='evl-ratt-eval'; carte.dataset.cle=g.cle; grille.appendChild(carte);
     const t=_evlEl('div','display:flex;align-items:baseline;gap:8px'); carte.appendChild(t);
-    t.appendChild(_evlEl('b','font-size:15px;flex:1;min-width:0', '🏆 '+g.titre));
-    t.appendChild(_evlPastille(String(g.n), '#B91C1C'));
-    carte.appendChild(_evlEl('div','font-size:12px;color:var(--tx2);margin:1px 0 6px', g.niv+'e'+(g.type ? ' · '+g.type : '')));
+    t.appendChild(_evlEl('b','font-size:19px;line-height:1.25;flex:1;min-width:0', '🏆 '+g.titre));
+    t.appendChild(_evlPastille(String(g.n), '#B91C1C', 'font-size:15px;min-width:34px'));
+    carte.appendChild(_evlEl('div','font-size:14px;color:var(--tx2);margin:3px 0 8px', g.niv+'e'+(g.type ? ' · '+g.type : '')+' · '+g.classes.length+' classe'+(g.classes.length>1?'s':'')));
     g.classes.forEach(c=>{
-      const L=_evlEl('div','display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px dashed var(--brd)'); L.className='evl-ratt-cls'; L.dataset.cls=c.cls; carte.appendChild(L);
-      const g1=_evlEl('div','flex:0 0 74px'); L.appendChild(g1);
-      g1.appendChild(_evlEl('b','display:inline-block;padding:1px 7px;border-radius:6px;color:#fff;font-size:12px;background:'+_evlCoulNiv(c.cls), String(c.cls).toUpperCase()));
-      g1.appendChild(_evlEl('div','font-size:11px;color:var(--tx3);margin-top:2px', c.dates.map(_evlJJMM).join(', ')));
-      const N=_evlEl('div','flex:1;display:flex;flex-wrap:wrap;gap:4px'); L.appendChild(N);
-      c.eleves.forEach(u=>{ const nm=(typeof getFullName==='function' && getFullName(u)) || u; const s=_evlEl('span','font-size:12.5px;padding:2px 8px;border-radius:999px;background:#FEE2E2;color:#7F1D1D;border:1px solid #FCA5A5', nm); s.className='evl-ratt-el'; N.appendChild(s); });
+      const L=_evlEl('div','display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-top:1px dashed var(--brd)'); L.className='evl-ratt-cls'; L.dataset.cls=c.cls; carte.appendChild(L);
+      const g1=_evlEl('div','flex:0 0 92px'); L.appendChild(g1);
+      g1.appendChild(_evlEl('b','display:inline-block;padding:2px 9px;border-radius:7px;color:#fff;font-size:15px;background:'+_evlCoulNiv(c.cls), String(c.cls).toUpperCase()));
+      g1.appendChild(_evlEl('div','font-size:13px;color:var(--tx2);margin-top:3px', c.dates.map(_evlJJMM).join(', ')));
+      const N=_evlEl('div','flex:1;display:flex;flex-wrap:wrap;gap:6px'); L.appendChild(N);
+      c.eleves.forEach(u=>{ const nm=(typeof getFullName==='function' && getFullName(u)) || u; const s=_evlEl('span','font-size:15px;font-weight:600;padding:4px 11px;border-radius:999px;background:#FEE2E2;color:#7F1D1D;border:1px solid #FCA5A5', nm); s.className='evl-ratt-el'; N.appendChild(s); });
     });
   });
 }
