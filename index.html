@@ -4327,6 +4327,7 @@ window._simHandleDisable = _simHandleDisable;
                 <span id="pmi-groupes-zone"></span>
                 <button class="pmcard" id="pmi-gender" onclick="toggleGenderColors();closePlusMenu()"><span class="pmcard-ic">🎨</span>F / G</button>
                 <button class="pmcard" id="pmi-pdc-proj" onclick="pdcProjeter();closePlusMenu()" title="Projeter le plan sur l’écran étendu (sans les outils)"><span class="pmcard-ic">📽</span>Projeter</button>
+                <button class="pmcard" id="pmi-salle2" onclick="toggleSalle2();closePlusMenu()" title="Nouvelle salle de techno (Classique 2, îlots 7 / 8) ou ancienne salle : les deux jeux de plans sont conservés"><span class="pmcard-ic">🏫</span><span id="pmi-salle2-lb">Nouvelle salle</span></button>
               </div>
 
               <div class="pm-zone pm-zone--verifs">
@@ -4872,7 +4873,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.93';
+const APP_VERSION = 'v11.5.94';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -4892,6 +4893,26 @@ const ILOT_MAP={
 const FLOAT_IDX=[2,27];
 // Default float targets
 const FLOAT_DEFAULT=['EQ1','EQ4'];
+// V11.5.94 — NOUVELLE SALLE DE TECHNO : « Classique 2 », îlots 7 et 8. Géométries et
+// places PROPRES (holder.seatsS2[lay]), indépendantes des plans historiques
+// (classic / ilots), qui restent disponibles (réglage S.reglages.salle2).
+// Indices : Classique 2 = gauche EQ4→EQ7 (0-7), centre 6 tables (8-19), droite
+// EQ3, petite table, EQ2, EQ8, EQ1 (20-29). Îlots 7 = EQ4..EQ7, EQ3, EQ2, EQ1
+// (0-27) + 2 volantes (28, 29). Îlots 8 = EQ4..EQ7, EQ3, EQ2, EQ8, EQ1 (0-31).
+const S2_LAYS=['classic2','ilots7','ilots8'];
+const S2_N={classic2:30, ilots7:30, ilots8:32};
+const S2_IC8={bg:'#C2410C',bd:'#9A3412',tx:'#fff'};
+const S2_GEO={
+  classic2:{tables:[
+    {eq:'EQ4',idx:[0,1],col:'L',r:0},{eq:'EQ5',idx:[2,3],col:'L',r:1},{eq:'EQ6',idx:[4,5],col:'L',r:2},{eq:'EQ7',idx:[6,7],col:'L',r:3},
+    {idx:[8,9],col:'C',r:0},{idx:[10,11],col:'C',r:1},{idx:[12,13],col:'C',r:2},{idx:[14,15],col:'C',r:3},{idx:[16,17],col:'C',r:4},{idx:[18,19],col:'C',r:5},
+    {eq:'EQ3',idx:[20,21],col:'R',r:0},{lbl:'Petite table',idx:[22,23],col:'P',r:1},{eq:'EQ2',idx:[24,25],col:'R',r:2},{eq:'EQ8',idx:[26,27],col:'R',r:3},{eq:'EQ1',idx:[28,29],col:'R',r:4}],
+    devant:[6,7,18,19,28,29]},
+  ilots7:{ilots:[{eq:'EQ4',idx:[0,1,2,3],col:'L',r:0},{eq:'EQ5',idx:[4,5,6,7],col:'L',r:1},{eq:'EQ6',idx:[8,9,10,11],col:'L',r:2},{eq:'EQ7',idx:[12,13,14,15],col:'L',r:3},
+    {eq:'EQ3',idx:[16,17,18,19],col:'R',r:0},{eq:'EQ2',idx:[20,21,22,23],col:'R',r:1},{eq:'EQ1',idx:[24,25,26,27],col:'R',r:2}], volantes:[28,29]},
+  ilots8:{ilots:[{eq:'EQ4',idx:[0,1,2,3],col:'L',r:0},{eq:'EQ5',idx:[4,5,6,7],col:'L',r:1},{eq:'EQ6',idx:[8,9,10,11],col:'L',r:2},{eq:'EQ7',idx:[12,13,14,15],col:'L',r:3},
+    {eq:'EQ3',idx:[16,17,18,19],col:'R',r:0},{eq:'EQ2',idx:[20,21,22,23],col:'R',r:1},{eq:'EQ8',idx:[24,25,26,27],col:'R',r:2},{eq:'EQ1',idx:[28,29,30,31],col:'R',r:3}], volantes:[]}
+};
 
 // V020-v181.8.0 — PdC Universel : registre des layouts disponibles.
 // Porté de PdC_Universel v001. Additif, lu uniquement quand
@@ -6514,6 +6535,7 @@ function loadS(){
           // Also clear seats that had demo students
           if(cl.seatsClassic) cl.seatsClassic=cl.seatsClassic.map(s=>s&&demoPattern.test(s)?null:s);
           if(cl.seatsIlot) cl.seatsIlot=cl.seatsIlot.map(s=>s&&demoPattern.test(s)?null:s);
+          if(typeof _s2Map==='function') _s2Map(cl, s=>s&&demoPattern.test(s)?null:s);   // V11.5.94
           if(cl.statuts) Object.keys(cl.statuts).forEach(s=>{ if(demoPattern.test(s)) delete cl.statuts[s]; });
         }
       });
@@ -6545,6 +6567,7 @@ function loadS(){
             };
             if(cl.seatsClassic) cl.seatsClassic=cl.seatsClassic.map(migrSeat);
             if(cl.seatsIlot)    cl.seatsIlot=cl.seatsIlot.map(migrSeat);
+            if(typeof _s2Map==='function') _s2Map(cl, migrSeat);   // V11.5.94
           }
         });
       }
@@ -8578,6 +8601,7 @@ function migrateSeatKeys(){
       if(cl.students)     cl.students=cl.students.map(convDisplay);
       if(cl.seatsClassic) cl.seatsClassic=cl.seatsClassic.map(convDisplay);
       if(cl.seatsIlot)    cl.seatsIlot=cl.seatsIlot.map(convDisplay);
+      if(typeof _s2Map==='function') _s2Map(cl, convDisplay);   // V11.5.94
       if(cl.statuts){
         const ns={};
         Object.entries(cl.statuts).forEach(([sid,v])=>{
@@ -8685,6 +8709,7 @@ function migrateSeatKeys(){
         if(cl.students)     cl.students=cl.students.map(convUid);
         if(cl.seatsClassic) cl.seatsClassic=cl.seatsClassic.map(convUid);
         if(cl.seatsIlot)    cl.seatsIlot=cl.seatsIlot.map(convUid);
+        if(typeof _s2Map==='function') _s2Map(cl, convUid);   // V11.5.94
         if(cl.statuts)      cl.statuts=remapObj(cl.statuts);
       }
     });
@@ -8694,6 +8719,7 @@ function migrateSeatKeys(){
       if(g.students)     g.students=g.students.map(convUid);
       if(g.seatsClassic) g.seatsClassic=g.seatsClassic.map(convUid);
       if(g.seatsIlot)    g.seatsIlot=g.seatsIlot.map(convUid);
+      if(typeof _s2Map==='function') _s2Map(g, convUid);   // V11.5.94
     });
 
     // 2e. S.contraintes
@@ -8780,6 +8806,7 @@ function migrateSeatKeys(){
       const clsStudents=cl.students||[];
       if(cl.seatsClassic) cl.seatsClassic=cl.seatsClassic.map(v=>convOrphan(v,clsStudents));
       if(cl.seatsIlot)    cl.seatsIlot=cl.seatsIlot.map(v=>convOrphan(v,clsStudents));
+      if(typeof _s2Map==='function') _s2Map(cl, v=>convOrphan(v,clsStudents));   // V11.5.94
     }
   });
   Object.values(S.groupes||{}).forEach(g=>{
@@ -8792,6 +8819,7 @@ function migrateSeatKeys(){
       : ((g.students||g.members||[]));
     if(g.seatsClassic) g.seatsClassic=g.seatsClassic.map(v=>convOrphan(v,validList));
     if(g.seatsIlot)    g.seatsIlot=g.seatsIlot.map(v=>convOrphan(v,validList));
+    if(typeof _s2Map==='function') _s2Map(g, v=>convOrphan(v,validList));   // V11.5.94
   });
 
   if(changed){
@@ -9496,6 +9524,7 @@ function _importRows(rows){
         const newStudentIds=students.map(s=>s.uid);
         c.seatsClassic=c.seatsClassic.map(sid=>newStudentIds.includes(sid)?sid:null);
         c.seatsIlot=c.seatsIlot.map(sid=>newStudentIds.includes(sid)?sid:null);
+        if(typeof _s2Map==='function') _s2Map(c, sid=>newStudentIds.includes(sid)?sid:null);   // V11.5.94
         c.students=newStudentIds;
         const newStatuts={};
         Object.keys(oldStatuts).forEach(k=>{ if(newStudentIds.includes(k)) newStatuts[k]=oldStatuts[k]; });
@@ -9807,6 +9836,7 @@ function renderNickPageTable(){
       c.students=c.students.filter(s=>s!==id);
       c.seatsClassic=c.seatsClassic.map(s=>s===id?null:s);
       c.seatsIlot=c.seatsIlot.map(s=>s===id?null:s);
+      if(typeof _s2Map==='function') _s2Map(c, s=>s===id?null:s);   // V11.5.94
       // Retirer des groupes — V035-v181.15.8 (v4c-1) : de TOUT groupe contenant
       // l'élève (demi-groupe legacy ET groupe inter-classes), et purger ses sièges.
       if(S.groupes) Object.values(S.groupes).forEach(g=>{
@@ -9816,6 +9846,7 @@ function renderNickPageTable(){
           if(g.members)  g.members =g.members.filter(s=>s!==id);
           if(g.seatsClassic) g.seatsClassic=g.seatsClassic.map(s=>s===id?null:s);
           if(g.seatsIlot)    g.seatsIlot   =g.seatsIlot.map(s=>s===id?null:s);
+          if(typeof _s2Map==='function') _s2Map(g, s=>s===id?null:s);   // V11.5.94
         }
       });
       delete (S.nickNames||{})[id];
@@ -11967,6 +11998,7 @@ function _ytpExecuteTransition(){
       const c = Snext.cl[cls];
       c.seatsClassic = Array(N_SEATS).fill(null);
       c.seatsIlot    = Array(N_SEATS).fill(null);
+      c.seatsS2      = {};   // V11.5.94
       c.students     = [];
       c.statuts      = {};
     });
@@ -13054,6 +13086,7 @@ function getCls(){
         // V035-V11.3.29 — Plan temporaire : le corps historique est intact,
         // simplement isole dans _perm() pour pouvoir etre consulte en second.
         const _perm=()=>{
+          if(typeof _s2Est==='function' && _s2Est(layout)) return _s2Seats(g, layout);   // V11.5.94 — nouvelle salle
           if(layout==='classic') return g.seatsClassic;
           if(layout==='ilots')   return g.seatsIlot;
           if(_pdcUg&&g.layouts&&g.layouts[layout]) return g.layouts[layout].students;
@@ -13064,7 +13097,8 @@ function getCls(){
       },
       set:v=>{
         if(_tempSetSeats(v)) return;   // V035-V11.3.29 — derive vers le store temporaire
-        if(layout==='classic') g.seatsClassic=v;
+        if(typeof _s2Est==='function' && _s2Est(layout)) _s2Ecrire(g, layout, v);   // V11.5.94
+        else if(layout==='classic') g.seatsClassic=v;
         else if(layout==='ilots') g.seatsIlot=v;
         else if(_pdcUg&&g.layouts&&g.layouts[layout]) g.layouts[layout].students=v;
         else g.seatsClassic=v; // filet
@@ -13107,6 +13141,7 @@ function getCls(){
         // ou redimensionne l'occupation du groupe) — le garder dans _perm()
         // preserve cet effet, y compris a l'amorcage de la copie temporaire.
         const _perm=()=>{
+          if(typeof _s2Est==='function' && _s2Est(layout)) return _s2Seats(grp, layout);   // V11.5.94 — nouvelle salle
           if(layout==='classic') return grp.seatsClassic;
           if(layout==='ilots')   return grp.seatsIlot;
           if(_pdcU&&c.layouts&&c.layouts[layout]) return _grpCustomOcc(grp, c, layout);
@@ -13117,7 +13152,8 @@ function getCls(){
       },
       set:v=>{
         if(_tempSetSeats(v)) return;   // V035-V11.3.29 — derive vers le store temporaire
-        if(layout==='classic') grp.seatsClassic=v;
+        if(typeof _s2Est==='function' && _s2Est(layout)) _s2Ecrire(grp, layout, v);   // V11.5.94
+        else if(layout==='classic') grp.seatsClassic=v;
         else if(layout==='ilots') grp.seatsIlot=v;
         else if(_pdcU&&c.layouts&&c.layouts[layout]){ _grpCustomOcc(grp, c, layout); grp.layouts[layout].students=v; }
         else grp.seatsClassic=v; // filet
@@ -13130,6 +13166,7 @@ function getCls(){
       get:()=>{
         // V035-V11.3.29 — Plan temporaire : corps historique intact dans _perm().
         const _perm=()=>{
+          if(typeof _s2Est==='function' && _s2Est(layout)) return _s2Seats(c, layout);   // V11.5.94 — nouvelle salle
           if(layout==='classic') return c.seatsClassic;
           if(layout==='ilots')   return c.seatsIlot;
           if(_pdcU&&c.layouts&&c.layouts[layout]) return c.layouts[layout].students;
@@ -13140,7 +13177,8 @@ function getCls(){
       },
       set:v=>{
         if(_tempSetSeats(v)) return;   // V035-V11.3.29 — derive vers le store temporaire
-        if(layout==='classic') c.seatsClassic=v;
+        if(typeof _s2Est==='function' && _s2Est(layout)) _s2Ecrire(c, layout, v);   // V11.5.94
+        else if(layout==='classic') c.seatsClassic=v;
         else if(layout==='ilots') c.seatsIlot=v;
         else if(_pdcU&&c.layouts&&c.layouts[layout]) c.layouts[layout].students=v;
         else c.seatsClassic=v; // filet
@@ -20611,6 +20649,10 @@ const _PAL_OUTILS_COURS = [
    kw:'projeter plan classe projection vidéoprojecteur écran étendu tbi places',
    precond:()=>(_palPlanOuvert()?{ok:true}:{ok:false, why:'Ouvrez d\'abord un plan de classe'}),
    run:()=>{ pdcProjeter(); }},   // V11.5.83
+  {id:'act-salle2', icon:'🏫', label:'Nouvelle salle / ancienne salle',
+   sub:'Classique 2 et îlots 7 / 8, ou les plans historiques (rien n’est effacé)',
+   kw:'salle nouvelle ancienne classique 2 ilots 7 8 huit sept disposition techno plan',
+   run:()=>{ toggleSalle2(); }},   // V11.5.94
   {id:'act-horloge', icon:'🕐', label:'Horloge en grand',
    sub:'L’heure en très grand, à projeter (fin du cours affichée)',
    kw:'horloge heure grand projeter pendule montre afficher heure',
@@ -28135,7 +28177,7 @@ function resolveMapping(summary){
         label:m.label||m.rawCode||nc,
         parentCls:m.parentCls,
         students:[...((parentCl.students)||[])],
-        seatsClassic:[...(parentCl.seatsClassic||Array(30).fill(null))],
+        seatsClassic:[...(parentCl.seatsClassic||Array(30).fill(null))], seatsS2:(typeof _s2Copie==='function' ? _s2Copie(parentCl) : {}),
         seatsIlot:[...(parentCl.seatsIlot||Array(30).fill(null))]
       };
       m.groupeId=gid; m.id=gid;
@@ -28148,7 +28190,7 @@ function resolveMapping(summary){
         label:m.label||m.rawCode||nc,
         parentCls:m.parentCls,
         students:[...((parentCl.students)||[])],
-        seatsClassic:[...(parentCl.seatsClassic||Array(30).fill(null))],
+        seatsClassic:[...(parentCl.seatsClassic||Array(30).fill(null))], seatsS2:(typeof _s2Copie==='function' ? _s2Copie(parentCl) : {}),
         seatsIlot:[...(parentCl.seatsIlot||Array(30).fill(null))]
       };
       saveS();
@@ -28298,7 +28340,7 @@ function renderGroupeRow(container, nc, rawCode, mapping){
       const parentCl2=S.cl[mapping.parentCls]||{};
       S.groupes[gid]={label:mapping.label||mapping.rawCode||nc, parentCls:mapping.parentCls,
         students:[...((parentCl2.students)||[])],
-        seatsClassic:[...(parentCl2.seatsClassic||Array(30).fill(null))],
+        seatsClassic:[...(parentCl2.seatsClassic||Array(30).fill(null))], seatsS2:(typeof _s2Copie==='function' ? _s2Copie(parentCl2) : {}),
         seatsIlot:[...(parentCl2.seatsIlot||Array(30).fill(null))]
       };
       mapping.groupeId=gid; mapping.id=gid;
@@ -28440,7 +28482,7 @@ function getAppOpenContextFromRawCode(rawCode, slotKey, fallbackCls){
           label:mapping.label||mapping.rawCode||rawCode||gid,
           parentCls:mapping.parentCls,
           students:[...((parentCl.students)||[])],
-          seatsClassic:[...(parentCl.seatsClassic||Array(30).fill(null))],
+          seatsClassic:[...(parentCl.seatsClassic||Array(30).fill(null))], seatsS2:(typeof _s2Copie==='function' ? _s2Copie(parentCl) : {}),
           seatsIlot:[...(parentCl.seatsIlot||Array(30).fill(null))]
         };
         groupe=S.groupes[gid];
@@ -30494,6 +30536,7 @@ function _scprecBuildPlanNode(seance){
     +'display:flex;align-items:center;gap:5px;flex-wrap:wrap';
   const vue=(P.layoutId==='classic')?'rangées'
            :(P.layoutId==='ilots')?'îlots'
+           :(typeof _s2Est==='function' && _s2Est(P.layoutId))?_s2Libelle(P.layoutId)
            :((P.geometrie&&P.geometrie.label)||P.layoutId||'plan perso');
   hd.textContent='🕘 Plan de ce cours — '+vue;
   wrap.appendChild(hd);
@@ -30540,6 +30583,21 @@ function _scprecBuildPlanNode(seance){
       wrap.appendChild(vw);
     }
 
+  } else if(typeof _s2Est==='function' && _s2Est(P.layoutId)){
+    // V11.5.94 — Nouvelle salle : une boîte par table d'équipe / îlot, le reste groupé.
+    body.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
+    const G=S2_GEO[P.layoutId], U=(G.tables||G.ilots||[]).concat((G.volantes||[]).map(i=>({lbl:'Volante', idx:[i]})));
+    U.forEach(u=>{ if(u.idx.every(i=>!P.seats[i])) return;
+      const box=document.createElement('div');
+      box.style.cssText='border:1px solid var(--brd);border-radius:6px;padding:3px;background:var(--bg);flex:1 1 30%;min-width:0';
+      const lb=document.createElement('div');
+      lb.style.cssText='font-size:8px;font-weight:800;color:var(--tx3);margin-bottom:2px;letter-spacing:.06em';
+      lb.textContent=u.eq||u.lbl||'Table'; box.appendChild(lb);
+      const g=document.createElement('div');
+      g.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px';
+      u.idx.forEach(i=>g.appendChild(_scprecSeatCell(P.seats[i]||null, K(P.seats[i]), true)));
+      box.appendChild(g); body.appendChild(box); });
+    wrap.appendChild(body);
   } else if(P.geometrie && P.geometrie.rows && P.geometrie.cols && Array.isArray(P.geometrie.seats)){
     // Layout perso : la geometrie a ete RECOPIEE dans l'instantane (lot 2), donc
     // la seance reste lisible meme si le layout d'origine a ete purge depuis.
@@ -37247,7 +37305,7 @@ function openGroupeInterPlan(gid, slotKey){
   // openApp efface curGrpInter (entrée classe) → on le repositionne juste après.
   openApp(repCls||undefined, null, slotKey||null);
   curGrpInter=gid; curGroupeId=null;
-  if(layout!=='classic' && layout!=='ilots') layout='classic';
+  if(layout!=='classic' && layout!=='ilots' && !(typeof _s2Est==='function' && _s2Est(layout))) layout='classic';
   renderTabs(); renderApp();
   // Rafraîchir la ligne 2 pour afficher le nom du groupe (pas la classe représentative)
   if(slotKey && typeof renderTbRow2Context==='function') renderTbRow2Context();
@@ -42488,12 +42546,14 @@ function renderApp(){
     const grp=S.groupes[curGroupeId];
     if(grp.seatsClassic) grp.seatsClassic=grp.seatsClassic.map(id=>id&&grp.students.includes(id)?id:null);
     if(grp.seatsIlot)    grp.seatsIlot=grp.seatsIlot.map(id=>id&&grp.students.includes(id)?id:null);
+    if(typeof _s2Map==='function') _s2Map(grp, id=>id&&grp.students.includes(id)?id:null);   // V11.5.94
   }
   // V035-v4b : idem pour le groupe inter-classes actif
   if(_grpScope){
     const grpI=S.groupes[curGrpInter];
     if(grpI.seatsClassic) grpI.seatsClassic=grpI.seatsClassic.map(id=>id&&grpI.students.includes(id)?id:null);
     if(grpI.seatsIlot)    grpI.seatsIlot=grpI.seatsIlot.map(id=>id&&grpI.students.includes(id)?id:null);
+    if(typeof _s2Map==='function') _s2Map(grpI, id=>id&&grpI.students.includes(id)?id:null);   // V11.5.94
   }
   const cls=getCls();
   const placed=cls.seats.filter(Boolean).length;
@@ -42552,7 +42612,8 @@ function renderApp(){
     // au cas où on revient d'un cycle ON dans la même session. Restaure aussi
     // l'onclick=toggleLayout perdu en mode ON, et normalise layout (si on sortait
     // d'un custom, layout pouvait être 'customN' → ramener à 'classic').
-    if(layout!=='classic' && layout!=='ilots') layout='classic';
+    if(layout!=='classic' && layout!=='ilots' && !(typeof _s2Est==='function' && _s2Est(layout))) layout='classic';
+    if(typeof _s2Normaliser==='function') layout=_s2Normaliser(layout, _s2Actif(), _s2NbIlots(getCls()));   // V11.5.94 — nouvelle salle
     const _bl=document.getElementById('btn-lay');
     if(_bl){
       _bl.style.background='#F0FAF0';
@@ -42565,7 +42626,8 @@ function renderApp(){
       _bl.style.cursor='';
       _bl.onclick=toggleLayout;
     }
-    document.getElementById('btn-lay').textContent=layout==='classic'?'⬡ Îlots':'⊞ Classique';
+    document.getElementById('btn-lay').textContent=(typeof _s2BoutonLay==='function') ? _s2BoutonLay() : (layout==='classic'?'⬡ Îlots':'⊞ Classique');
+    { const _ps=document.getElementById('pmi-salle2-lb'); if(_ps) _ps.textContent=_s2Actif() ? 'Ancienne salle' : 'Nouvelle salle'; }
   }
   const bv=document.getElementById('btn-vue');
   bv.textContent=flipped?'↺ Vue prof':'↻ Vue élève'; bv.classList.toggle('act',flipped);
@@ -44381,6 +44443,7 @@ function syncLayouts(){
   // permanent. Et l'operation n'a pas de sens ici : chaque geometrie a sa
   // propre copie temporaire.
   if(_tempBlock('la synchro classique/ilots')) return;
+  if(typeof _s2Est==='function' && _s2Est(layout)){ _s2PasEncore('La synchronisation classique / îlots'); return; }   // V11.5.94
   if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
   // Build a choice modal
   document.getElementById('mt').textContent='Synchroniser les places';
@@ -48142,7 +48205,8 @@ function renderClassroom(){
     // Nettoyage des styles inline éventuels d'un rendu custom précédent.
     area.style.gridTemplateRows='';
     area.style.gridTemplateColumns='';
-    if(layout==='classic') renderClassic(area);
+    if(typeof _s2Est==='function' && _s2Est(layout)) renderSalle2(area);   // V11.5.94
+    else if(layout==='classic') renderClassic(area);
     else renderIlots(area);
   }
   // V018-v148 — synchroniser les classes liées aux switches popup (.partic-mode notamment)
@@ -48550,14 +48614,15 @@ function printPlanPdf(){
   // (customN) est imprimable s'il est enregistré comme géométrie de la classe,
   // flag pdcUniversel actif. Sinon on retombe sur le périmètre techno d'origine.
   const _pdcCustomOk=!!(S.reglages&&S.reglages.pdcUniversel&&cls&&cls.layouts&&cls.layouts[layout]);
-  if(layout!=='classic'&&layout!=='ilots'&&!_pdcCustomOk){ alert("L'impression PDF nécessite un plan actif : classique, îlots, ou un layout personnalisé enregistré."); return; }
+  if(layout!=='classic'&&layout!=='ilots'&&!_pdcCustomOk&&!(typeof _s2Est==='function'&&_s2Est(layout))){ alert("L'impression PDF nécessite un plan actif : classique, îlots, ou un layout personnalisé enregistré."); return; }
   const nums=_pdfAlphaNums(cls);
   _pdfEnsureStyle();
   let root=document.getElementById('pdf-print-root');
   if(!root){ root=document.createElement('div'); root.id='pdf-print-root'; document.body.appendChild(root); }
   root.innerHTML='';
   let page;
-  if(layout==='ilots') page=_pdfBuildIlots(cls,curCls,nums);
+  if(typeof _s2Est==='function' && _s2Est(layout)) page=_pdfBuildSalle2(cls,curCls,nums);   // V11.5.94
+  else if(layout==='ilots') page=_pdfBuildIlots(cls,curCls,nums);
   else if(layout==='classic') page=_pdfBuildClassic(cls,curCls,nums);
   else page=_pdfBuildCustom(cls,curCls,nums,cls.layouts[layout]);
   root.appendChild(page);
@@ -48689,6 +48754,232 @@ const CANVAS_W=RIGHT_X+FR_W+LABEL_W+10;
 
 const G_ORDER=['EQ4','EQ5','EQ6','EQ7'];
 const D_ORDER=['EQ3','EQ2','EQ1'];
+
+/* ── V11.5.94 — NOUVELLE SALLE (Classique 2, îlots 7 / 8) ─────────────────── */
+function _s2Est(l){ return S2_LAYS.indexOf(l)>=0; }
+function _s2EstIlots(l){ return l==='ilots7' || l==='ilots8'; }
+function _s2Actif(){ return !!(typeof S!=='undefined' && S && S.reglages && S.reglages.salle2); }
+function _s2NbIlots(h){ return (h && h.nbIlots===8) ? 8 : 7; }
+function _s2IlotsDe(h){ return _s2NbIlots(h)===8 ? 'ilots8' : 'ilots7'; }
+/** Places d'une géométrie de la nouvelle salle (créées / complétées à la volée). */
+function _s2Seats(h, l){
+  const n=S2_N[l]||N_SEATS;
+  if(!h) return Array(n).fill(null);
+  if(!h.seatsS2 || typeof h.seatsS2!=='object') h.seatsS2={};
+  let a=h.seatsS2[l];
+  if(!Array.isArray(a)) a=h.seatsS2[l]=Array(n).fill(null);
+  else while(a.length<n) a.push(null);
+  return a;
+}
+function _s2Ecrire(h, l, v){ if(!h) return; if(!h.seatsS2 || typeof h.seatsS2!=='object') h.seatsS2={}; h.seatsS2[l]=v; }
+/** Applique fn à toutes les places de la nouvelle salle (renommage, retrait d'élève…). */
+function _s2Map(h, fn){
+  if(!h || !h.seatsS2 || typeof h.seatsS2!=='object') return;
+  Object.keys(h.seatsS2).forEach(k=>{ if(Array.isArray(h.seatsS2[k])) h.seatsS2[k]=h.seatsS2[k].map(fn); });
+}
+function _s2Copie(h){ const o={}; if(h && h.seatsS2 && typeof h.seatsS2==='object') Object.keys(h.seatsS2).forEach(k=>{ if(Array.isArray(h.seatsS2[k])) o[k]=h.seatsS2[k].slice(); }); return o; }
+/** Layout à afficher : on garde la famille (classique / îlots) et on passe d'une salle à l'autre. Pure. */
+function _s2Normaliser(l, actif, nb){
+  const ilots=(l==='ilots' || l==='ilots7' || l==='ilots8'), cl=(l==='classic' || l==='classic2');
+  if(!ilots && !cl) return l;
+  if(actif) return ilots ? (nb===8 ? 'ilots8' : 'ilots7') : 'classic2';
+  return ilots ? 'ilots' : 'classic';
+}
+function _s2Libelle(l){ return ({classic:'Classique', ilots:'Îlots', classic2:'Classique 2', ilots7:'Îlots 7', ilots8:'Îlots 8'})[l] || l; }
+/** Libellé du bouton de bascule (il annonce la vue d'arrivée). */
+function _s2BoutonLay(){
+  if(layout==='classic2') return '⬡ Îlots';
+  if(_s2EstIlots(layout)) return '⊞ Classique 2';
+  return layout==='classic' ? '⬡ Îlots' : '⊞ Classique';
+}
+/** Unités de placement : tables de 2 (Classique 2) ou îlots ; volantes en unités seules. Pure. */
+function _s2Unites(l, avecVolantes){
+  const G=S2_GEO[l]; if(!G) return [];
+  const U=(G.tables || G.ilots || []).map(x=>x.idx.slice());
+  if(avecVolantes) (G.volantes||[]).forEach(i=>U.push([i]));
+  return U;
+}
+function _s2UniteDe(l, idx){ return _s2Unites(l, true).findIndex(u=>u.indexOf(idx)>=0); }
+/** Positions à l'écran (et pour le PDF). o = {nb, nSt, seats}. Pure (lit les constantes du plan). */
+function _s2Placement(l, Hs, o){
+  o=o||{}; const places=[], cadres=[]; const G=S2_GEO[l]; if(!G) return {w:0, h:0, places, cadres};
+  const occ=(i)=>!!(o.seats && o.seats[i]);
+  if(l==='classic2'){
+    const TW=W, WC=Math.max(90, Math.min(140, Math.floor((CLS_W-4*TW-80)/2))), Pz=Hs+20, top=18, span=5*Pz;
+    const xC=Math.round((CLS_W-2*WC)/2);
+    const xs={L:[0,TW], C:[xC,xC+WC], R:[CLS_W-2*TW, CLS_W-TW], P:[CLS_W-2*WC, CLS_W-WC]};
+    const wOf={L:TW, R:TW, C:WC, P:WC};
+    const yOf=(col,r)=>Math.round(top+(col==='C' ? r*Pz : col==='L' ? r*span/3 : r*span/4));
+    G.tables.forEach(tb=>{
+      const x=xs[tb.col], w=wOf[tb.col], y=yOf(tb.col, tb.r);
+      if(tb.eq && (tb.eq!=='EQ8' || o.nb===8)){
+        const c=IC[tb.eq]||S2_IC8;
+        cadres.push({x:x[0]-4, y:y-4, w:2*w+8, h:Hs+8, bg:c.bg, bd:c.bd, lbl:tb.eq, lx:x[0], ly:y-18, ls:''});
+      }
+      tb.idx.forEach((idx,i)=>places.push({idx, x:x[i], y, w, h:Hs, br:(i===0 ? 'var(--r2) 0 0 var(--r2)' : '0 var(--r2) var(--r2) 0')}));
+    });
+    return {w:CLS_W, h:top+span+Hs+6, places, cadres};
+  }
+  const FH=2*Hs+2*IL_PAD, Gp=26, top=10, nR=(l==='ilots8') ? 4 : 3, Htot=4*FH+3*Gp;
+  const yOf=(col,r)=>Math.round(top+(col==='L' ? r*(FH+Gp) : r*(Htot-FH)/(nR-1)));
+  const BR=['var(--r2) 0 0 0','0 var(--r2) 0 0','0 0 0 var(--r2)','0 0 var(--r2) 0'];
+  G.ilots.forEach(il=>{
+    const fx=(il.col==='L') ? LEFT_X : RIGHT_X, fy=yOf(il.col, il.r), c=IC[il.eq]||S2_IC8;
+    cadres.push({x:fx, y:fy, w:FR_W, h:FH, bg:c.bg, bd:c.bd, lbl:il.eq, ly:fy+FH/2-8,
+      lx:(il.col==='L' ? fx-LABEL_W+2 : fx+FR_W+5), ls:(il.col==='L' ? 'width:'+(LABEL_W-4)+'px;text-align:right;' : '')});
+    il.idx.forEach((idx,i)=>places.push({idx, x:fx+IL_PAD+(i%2)*SW, y:fy+IL_PAD+(i<2 ? 0 : Hs), w:SW, h:Hs, br:BR[i]}));
+  });
+  const V=G.volantes||[];
+  if(V.length && ((o.nSt||0)>28 || V.some(occ))){
+    const WV=Math.min(SW,140);
+    places.push({idx:V[0], x:LEFT_X+FR_W+8, y:yOf('L',0)+Math.round((FH-Hs)/2), w:WV, h:Hs, br:'var(--r2)', volante:true});
+    places.push({idx:V[1], x:RIGHT_X-8-WV, y:yOf('R',nR-1)+Math.round((FH-Hs)/2), w:WV, h:Hs, br:'var(--r2)', volante:true});
+  }
+  return {w:CANVAS_W, h:top+Htot+10, places, cadres};
+}
+function renderSalle2(area){
+  const cls=getCls(), lay=layout, seats=cls.seats||[];
+  let Hs=H_BASE; seats.forEach(n=>{ if(n) Hs=Math.max(Hs, seatHeight(n)); });
+  const P=_s2Placement(lay, Hs, {nb:_s2NbIlots(cls), nSt:(cls.students||[]).length, seats});
+  if(_s2EstIlots(lay)){
+    const bar=document.createElement('div'); bar.className='s2-nb-ilots';
+    bar.style.cssText='display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;font-weight:700;color:var(--tx2)';
+    bar.appendChild(document.createTextNode('Îlots :'));
+    [7,8].forEach(n=>{ const b=document.createElement('button'); b.type='button'; b.id='s2-ilots-'+n;
+      const on=(_s2NbIlots(cls)===n);
+      b.style.cssText='padding:3px 10px;border-radius:6px;font:inherit;font-weight:800;cursor:pointer;border:1.5px solid #111418;'+(on ? 'background:#111418;color:#fff' : 'background:#fff;color:#111418');
+      b.textContent=n+' îlots'; b.onclick=()=>_s2ChoisirNbIlots(n); bar.appendChild(b); });
+    area.appendChild(bar);
+  }
+  const wrap=document.createElement('div'); wrap.className='s2-plan';
+  wrap.style.cssText='position:relative;width:'+P.w+'px;height:'+P.h+'px;flex-shrink:0';
+  P.cadres.forEach(f=>{
+    const fr=document.createElement('div'); fr.className='ilot-frame';
+    fr.style.cssText='top:'+f.y+'px;left:'+f.x+'px;width:'+f.w+'px;height:'+f.h+'px;background:'+f.bg+';border-color:'+f.bd;
+    wrap.appendChild(fr);
+    const tg=document.createElement('div'); tg.className='ilot-tag';
+    tg.style.cssText='top:'+f.ly+'px;left:'+f.lx+'px;'+(f.ls||''); tg.textContent=f.lbl; wrap.appendChild(tg);
+  });
+  P.places.forEach(p=>{
+    const name=seats[p.idx]||null;
+    const s=makeSeat(p.idx, name, p.volante ? 'floating' : '');
+    s.style.cssText='border-radius:'+p.br+';width:'+p.w+'px;height:'+p.h+'px;top:'+p.y+'px;left:'+p.x+'px;';
+    _applyGenderColor(s, name); wrap.appendChild(s);
+  });
+  area.appendChild(wrap);
+  const tab=document.createElement('div'); tab.className='tableau';
+  tab.style.cssText='width:'+P.w+'px;height:32px;margin-top:12px;flex-shrink:0';
+  tab.textContent='Tableau · Enseignant';
+  area.appendChild(tab);
+}
+function _s2ChoisirNbIlots(n){
+  const c=getCls(); if(!c) return;
+  c.nbIlots=(n===8) ? 8 : 7;
+  if(_s2EstIlots(layout)) layout=_s2IlotsDe(c);
+  saveS(); renderApp();
+}
+/** Active / désactive la nouvelle salle (les plans historiques restent intacts). */
+function toggleSalle2(){
+  if(!S.reglages) S.reglages={};
+  S.reglages.salle2=!S.reglages.salle2;
+  layout=_s2Normaliser(layout, S.reglages.salle2, _s2NbIlots(getCls()));
+  saveS(); renderApp();
+  try{ showDropToast(S.reglages.salle2 ? '🏫 Nouvelle salle : Classique 2 et îlots 7 / 8' : '🏫 Ancienne salle : plans historiques'); }catch(e){}
+}
+function _s2PasEncore(quoi){
+  const m=quoi+' n’est pas encore disponible dans la nouvelle salle (Classique 2, îlots 7 / 8).';
+  try{ showDropToast('ℹ️ '+m); }catch(e){ try{ alert(m); }catch(e2){} }
+}
+/** Contraintes dans la nouvelle salle : séparer / associer à l'échelle de la table
+ *  (Classique 2) ou de l'îlot ; devant = premier rang (Classique 2). Pure. */
+function _s2Violations(seats, l, con){
+  con=con||{}; const out=[]; const U=(x)=>_s2UniteDe(l, x);
+  const L=(u)=>{ try{ return getSeatLabel(u); }catch(e){ return u; } };
+  const unite=(l==='classic2') ? 'table' : 'équipe';
+  (con.separer||[]).forEach(p=>{ const a=p&&p[0], b=p&&p[1]; if(!a||!b) return; const pa=seats.indexOf(a), pb=seats.indexOf(b); if(pa<0||pb<0) return;
+    if(U(pa)===U(pb)) out.push({type:'separer', label:'🚫 Séparer', ids:[a,b], msg:L(a)+' ↔ '+L(b)+' à la même '+unite}); });
+  (con.associer||[]).forEach(p=>{ const a=p&&p[0], b=p&&p[1]; if(!a||!b) return; const pa=seats.indexOf(a), pb=seats.indexOf(b); if(pa<0||pb<0) return;
+    if(U(pa)!==U(pb)) out.push({type:'associer', label:'🤝 Associer', ids:[a,b], msg:L(a)+' ↔ '+L(b)+' pas à la même '+unite}); });
+  const D=(S2_GEO[l] && S2_GEO[l].devant) || null;
+  if(D) (con.devant||[]).forEach(id=>{ if(!id) return; const p=seats.indexOf(id); if(p>=0 && D.indexOf(p)<0) out.push({type:'devant', label:'👁 Devant', ids:[id], msg:L(id)+' n\'est pas devant'}); });
+  return out;
+}
+/** Placement aléatoire dans la nouvelle salle : épinglés, devant, associer, puis
+ *  remplissage table par table / îlot par îlot (mixité F/G, groupes). */
+function _s2PlacementAleatoire(eleves, l, con, opts, aleat){
+  opts=opts||{}; con=con||{}; const rnd=aleat||Math.random;
+  const G=S2_GEO[l], N=S2_N[l]||N_SEATS;
+  const vol=(G.volantes||[]);
+  const avecVol=vol.length>0 && eleves.length>N-vol.length;
+  const shuffle=a=>{ for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+  const sexe=opts.sexe||(()=>null), grp=opts.groupeDe||(()=>null);
+  const seats=Array(N).fill(null), reste=new Set(eleves);
+  (opts.epingles||[]).forEach(({uid,slot})=>{ if(reste.has(uid) && slot>=0 && slot<N && !seats[slot]){ seats[slot]=uid; reste.delete(uid); } });
+  const U=shuffle(_s2Unites(l, avecVol));
+  if(G.devant){ const lib=shuffle(G.devant.filter(i=>!seats[i])); (con.devant||[]).forEach(u=>{ if(reste.has(u) && lib.length){ seats[lib.shift()]=u; reste.delete(u); } }); }
+  (con.associer||[]).forEach(p=>{ const a=p&&p[0], b=p&&p[1]; if(!a||!b||!reste.has(a)||!reste.has(b)) return;
+    const u=U.find(x=>x.filter(i=>!seats[i]).length>=2); if(!u) return; const li=u.filter(i=>!seats[i]);
+    seats[li[0]]=a; seats[li[1]]=b; reste.delete(a); reste.delete(b); });
+  let ordre=shuffle([...reste]);
+  if(opts.grpHomo) ordre.sort((a,b)=>(grp(a)===opts.gid1 ? 0 : 1)-(grp(b)===opts.gid1 ? 0 : 1));
+  U.forEach(u=>u.forEach((i,k)=>{
+    if(seats[i] || !ordre.length) return;
+    const prev=u.slice(0,k).map(x=>seats[x]).filter(Boolean); let j=0;
+    if(opts.grpMix){ const n1=prev.filter(x=>grp(x)===opts.gid1).length, n2=prev.length-n1; const v=(n1>n2) ? opts.gid2 : (n1<n2) ? opts.gid1 : null;
+      if(v){ const jj=ordre.findIndex(x=>grp(x)===v); if(jj>=0) j=jj; } }
+    else if(opts.fg){ const nF=prev.filter(x=>sexe(x)==='F').length, nM=prev.filter(x=>sexe(x)==='M').length; const v=(nF>nM) ? 'M' : (nF<nM) ? 'F' : null;
+      if(v){ const jj=ordre.findIndex(x=>sexe(x)===v); if(jj>=0) j=jj; } }
+    seats[i]=ordre.splice(j,1)[0];
+  }));
+  return seats;
+}
+function _doRandomPlaceSalle2(cls, con, mixOptions){
+  mixOptions=mixOptions||{}; const l=layout, N=S2_N[l]||N_SEATS;
+  const eleves=[...getActiveStudents()];
+  const pins=new Set((S.pinned && S.pinned[_scopeBucketKey()]) || []), prior=(cls.seats||[]).slice();
+  const epingles=[]; pins.forEach(uid=>{ const s=prior.indexOf(uid); if(s>=0 && s<N && eleves.indexOf(uid)>=0) epingles.push({uid, slot:s}); });
+  const grp2=(mixOptions.grpMixIlots || mixOptions.grpHomoIlots) && typeof _rpGet2Groupes==='function' ? _rpGet2Groupes() : null;
+  const opts={epingles, fg:!!mixOptions.fgMixTables, sexe:(u)=>{ try{ return _rpGetSexe(u); }catch(e){ return null; } },
+    grpMix:!!(grp2 && mixOptions.grpMixIlots), grpHomo:!!(grp2 && mixOptions.grpHomoIlots),
+    gid1:grp2 ? grp2.gid1 : null, gid2:grp2 ? grp2.gid2 : null, groupeDe:(u)=>{ try{ return _rpGroupOf(u, grp2); }catch(e){ return null; } }};
+  let best=null, bestV=null;
+  for(let k=0;k<200;k++){
+    const s=_s2PlacementAleatoire(eleves, l, con, opts);
+    const v=_s2Violations(s, l, con);
+    if(!best || v.length<bestV.length){ best=s; bestV=v; if(!v.length) break; }
+  }
+  cls.seats=best; saveS(); renderApp();
+  if(bestV && bestV.length && !_tempPlanKey() && typeof _showContrainteViolationsModal==='function')
+    _showContrainteViolationsModal(bestV, 'Placement partiel (meilleure tentative sur 200)');
+}
+/** Impression PDF d'une géométrie de la nouvelle salle. */
+function _pdfBuildSalle2(cls, clsCode, nums){
+  const l=layout, seats=_seatsForLayoutId(l);
+  const P=_s2Placement(l, H_BASE, {nb:_s2NbIlots(cls), nSt:(cls.students||[]).length, seats});
+  const page=document.createElement('div'); page.className='pdfp-page';
+  page.appendChild(_pdfHeader(clsCode, ' · '+_s2Libelle(l)));
+  const body=document.createElement('div'); body.className='pdfp-body';
+  body.style.cssText='position:relative;display:block;flex:1;min-height:0';
+  const pc=(v,tot)=>(100*v/tot).toFixed(3)+'%';
+  P.cadres.forEach(f=>{
+    const fr=document.createElement('div');
+    fr.style.cssText='position:absolute;box-sizing:border-box;border:1.5px solid #000;border-radius:6px;left:'+pc(f.x,P.w)+';top:'+pc(f.y,P.h)+';width:'+pc(f.w,P.w)+';height:'+pc(f.h,P.h);
+    const lb=document.createElement('span'); lb.className='pdfp-eq'; lb.textContent=f.lbl;
+    lb.style.cssText='position:absolute;left:2px;top:-12px;font-size:7pt;font-weight:700';
+    fr.appendChild(lb); body.appendChild(fr);
+  });
+  P.places.forEach(p=>{
+    const cell=_pdfSeatCell(seats[p.idx]||null, clsCode, nums);
+    cell.style.position='absolute'; cell.style.boxSizing='border-box';
+    cell.style.left=pc(p.x,P.w); cell.style.top=pc(p.y,P.h); cell.style.width=pc(p.w,P.w); cell.style.height=pc(p.h,P.h);
+    body.appendChild(cell);
+  });
+  page.appendChild(body);
+  const tb=document.createElement('div'); tb.textContent='TABLEAU';
+  tb.style.cssText='margin-top:6px;text-align:center;font-size:8pt;font-weight:700;letter-spacing:.1em;border:1.5px solid #000;border-radius:4px;padding:2px';
+  page.appendChild(tb);
+  return page;
+}
 
 // Dynamic: compute actual frame height for an ilot given current seats
 function ilotFrameH(cls, eq){
@@ -49151,6 +49442,7 @@ function removeSt(name){
   c.students=c.students.filter(s=>s!==name);
   if(c.seatsClassic) c.seatsClassic=c.seatsClassic.map(s=>s===name?null:s);
   if(c.seatsIlot)    c.seatsIlot=c.seatsIlot.map(s=>s===name?null:s);
+  if(typeof _s2Map==='function') _s2Map(c, s=>s===name?null:s);   // V11.5.94
   if(c.statuts) delete c.statuts[name];
   saveS(); renderApp();
 }
@@ -49422,6 +49714,7 @@ function _pcShowPlanningTabEntryNotice(){
 }
 
 function openRotatePlacesModal(){
+  if(typeof _s2Est==='function' && _s2Est(layout)){ _s2PasEncore('La rotation des équipes'); return; }   // V11.5.94
   const cls=getCls();
   const hasClassic=(cls.seatsClassic||[]).some(Boolean);
   const hasIlot   =(cls.seatsIlot   ||[]).some(Boolean);
@@ -49462,9 +49755,9 @@ function openRotatePlacesModal(){
 
 function clearSeats(){
   if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;   // V11.5.86 — verrou
-  const which=layout==='classic'?'classique':'îlots';
+  const which=(typeof _s2Est==='function' && _s2Est(layout)) ? _s2Libelle(layout) : layout==='classic'?'classique':'îlots';
   showModal('Vider les places ?',`Tous les placements de la vue ${which} pour ${curCls} seront effacés.`,()=>{
-    getCls().seats=Array(N_SEATS).fill(null); saveS(); renderApp();
+    getCls().seats=Array(((getCls().seats||[]).length)||N_SEATS).fill(null); saveS(); renderApp();
   });
 }
 function clearAllStatuts(){
@@ -50022,6 +50315,7 @@ function _getContrainteViolations(seats, lay, opts){
   if(isCustom){
     return _getContrainteViolationsCustom(seats, _scObj.layouts[lay], spacing);
   }
+  if(typeof _s2Est==='function' && _s2Est(lay)) return _s2Violations(seats, lay, (S.contraintes&&S.contraintes[_sc])||{});   // V11.5.94
   const con=(S.contraintes&&S.contraintes[_sc])||{separer:[],associer:[],devant:[],vueLimitee:[],isoler:[],eloigner:[]};
 
   // V030-v181.10.0 — Éloigner : applicable en classic ET ilots (même grille
@@ -50560,6 +50854,7 @@ function _doRandomPlace(cls, con, separerSpacing, mixOptions){
   if(isCustom){
     return _doRandomPlaceCustom(cls, cls.layouts[layout], con, separerSpacing, mixOptions);
   }
+  if(typeof _s2Est==='function' && _s2Est(layout)) return _doRandomPlaceSalle2(cls, con, mixOptions);   // V11.5.94
   // Available seats
   let avail;
   if(layout==='classic'){
@@ -50919,9 +51214,10 @@ function _doRandomPlace(cls, con, separerSpacing, mixOptions){
   }
 }
 function toggleLayout(){
-  layout=layout==='classic'?'ilots':'classic';
+  if(typeof _s2Est==='function' && (_s2Actif() || _s2Est(layout))) layout=_s2EstIlots(layout) ? 'classic2' : _s2IlotsDe(getCls());   // V11.5.94
+  else layout=layout==='classic'?'ilots':'classic';
   const lbl=document.getElementById('btn-lay-lbl');
-  if(lbl) lbl.textContent=layout==='classic'?'Classique':'Îlots';
+  if(lbl) lbl.textContent=(typeof _s2Libelle==='function') ? _s2Libelle(layout) : (layout==='classic'?'Classique':'Îlots');
   renderApp();
 }
 // V020-v181.8.1 — PdC Universel : bascule vers un layout précis (remplace toggleLayout binaire
@@ -54235,6 +54531,7 @@ function openSaveSeance(){
   const ilotsLblEl=document.createElement('span');
   const _vueLbl=(layout==='ilots')?'vue îlots'
               :(layout==='classic')?'vue classique'
+              :(typeof _s2Est==='function' && _s2Est(layout))?'vue '+_s2Libelle(layout)
               :'layout personnalisé';
   ilotsLblEl.textContent='Inclure le plan de classe du jour ('+_vueLbl+') dans la trace-séance, avec mention des absents';
   ilotsLblEl.style.cssText='line-height:1.3';
