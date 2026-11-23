@@ -4873,7 +4873,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.95';
+const APP_VERSION = 'v11.5.96';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -25606,15 +25606,15 @@ function _renderEndOfClassReminderSection(parent){
 
   const desc = document.createElement('div');
   desc.style.cssText = 'font-size:11px;color:var(--tx3);margin-bottom:10px;line-height:1.45';
-  desc.innerHTML = 'Signal 5 minutes avant la fin de chaque cours de l\'EDT. <i>Logique de détection branchée en V031 — la voix peut déjà être testée ci-dessous.</i>';
+  desc.textContent = 'Annonces vocales avant la fin de chaque cours de l’EDT : fin du cours (6 min avant par défaut) et rappel de vérification de la table, du matériel et de l’ordinateur (3 min avant par défaut).';
   sec.appendChild(desc);
 
   // V031-v181.11.0 — Deux modes seulement : voix activée ou désactivée.
   // Le mode "Bip seul" précédent n'a pas été branché (les bips d'avertissement
   // sont volontairement réservés au compte à rebours, cf. décision Nicolas).
   const opts = [
-    {val:'voice', lbl:'Activé',    sub:'Annonce vocale « Fin du cours dans cinq minutes » 5 min avant la fin de chaque cours'},
-    {val:'off',   lbl:'Désactivé', sub:'Aucun rappel sonore de fin de cours'}
+    {val:'voice', lbl:'Activé',    sub:'Annonce vocale « Fin du cours dans … minutes », au moment choisi ci-dessous'},
+    {val:'off',   lbl:'Désactivé', sub:'Pas d’annonce de fin de cours (le rappel de vérification a son propre réglage)'}
   ];
 
   const radioWrap = document.createElement('div');
@@ -25655,9 +25655,44 @@ function _renderEndOfClassReminderSection(parent){
   testBtn.onclick = () => {
     // V030-v181.10.5 — Joue le MP3 embarqué (voix Narakeet) au lieu de la
     // Web Speech API. force=true pour bypasser le mode 'off' lors du test.
-    _playClip('finCours5', {force: true, fallbackText: 'Fin du cours dans cinq minutes'});
+    const a=_eocAnnonces(Object.assign({}, S.reglages, {endOfClassReminderMode:'voice'})).find(x=>x.id==='fin');
+    _eocJouer(a, true);
   };
+
+  // V11.5.96 — Moment de l'annonce de fin, puis rappel de vérification (activé par défaut).
+  const choix=(lbl, valeurs, cle, defaut, id)=>{
+    const row=document.createElement('div'); row.id=id;
+    row.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;font-size:12px;font-weight:600;color:var(--tx2)';
+    row.appendChild(document.createTextNode(lbl));
+    const cur=valeurs.indexOf(+S.reglages[cle])>=0 ? +S.reglages[cle] : defaut;
+    valeurs.forEach(v=>{ const b=document.createElement('button'); b.type='button'; b.textContent=v+' min';
+      const on=(v===cur);
+      b.style.cssText='padding:3px 10px;border-radius:6px;font:inherit;font-weight:800;cursor:pointer;border:1.5px solid #111418;'+(on ? 'background:#111418;color:#fff' : 'background:#fff;color:#111418');
+      b.onclick=()=>{ S.reglages[cle]=v; saveS(); [...row.querySelectorAll('button')].forEach(x=>{ const o=(x===b); x.style.background=o ? '#111418' : '#fff'; x.style.color=o ? '#fff' : '#111418'; }); };
+      row.appendChild(b); });
+    row.appendChild(document.createTextNode('avant la fin'));
+    return row;
+  };
+  sec.appendChild(choix('Annonce de fin :', EOC_FIN_CHOIX, 'eocFinMin', 6, 'eoc-fin-min'));
   sec.appendChild(testBtn);
+
+  const vt=document.createElement('div');
+  vt.style.cssText='font-size:12px;font-weight:800;color:var(--tx);margin:14px 0 6px';
+  vt.textContent='🧹 Rappel de vérification';
+  sec.appendChild(vt);
+  const vl=document.createElement('label');
+  vl.style.cssText='display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1.5px solid var(--brd);border-radius:var(--r1);cursor:pointer;background:var(--sur);margin-bottom:8px';
+  const vc=document.createElement('input'); vc.type='checkbox'; vc.id='eoc-verif'; vc.checked=(S.reglages.eocVerif!==false); vc.style.marginTop='2px';
+  vc.onchange=()=>{ S.reglages.eocVerif=vc.checked; saveS(); };
+  const vx=document.createElement('div');
+  const v1=document.createElement('div'); v1.style.cssText='font-size:13px;font-weight:600;color:var(--tx)'; v1.textContent='Activé';
+  const v2=document.createElement('div'); v2.style.cssText='font-size:11px;color:var(--tx3);margin-top:2px'; v2.textContent='Annonce vocale « '+EOC_VERIF_TEXTE+' »';
+  vx.appendChild(v1); vx.appendChild(v2); vl.appendChild(vc); vl.appendChild(vx); sec.appendChild(vl);
+  sec.appendChild(choix('Rappel de vérification :', EOC_VERIF_CHOIX, 'eocVerifMin', 3, 'eoc-verif-min'));
+  const tv=document.createElement('button'); tv.className='bs'; tv.style.cssText='font-size:12px;padding:6px 14px';
+  tv.textContent='🔊 Tester le rappel de vérification';
+  tv.onclick=()=>_speakNotice(EOC_VERIF_TEXTE, {force:true});
+  sec.appendChild(tv);
 
   parent.appendChild(sec);
 }
@@ -48983,7 +49018,7 @@ function _s2PlacementAleatoire(eleves, l, con, opts, aleat){
   opts=opts||{}; con=con||{}; const rnd=aleat||Math.random;
   const G=S2_GEO[l], N=S2_N[l]||N_SEATS, g=_s2Grille(l), RM=_s2RangMax(l);
   const vol=(G.volantes||[]);
-  const avecVol=vol.length>0 && eleves.length>N-vol.length;
+  const avecVol=vol.length>0 && (eleves.length>N-vol.length || (con.isoler||[]).some(Boolean));   // volantes ouvertes aux élèves à isoler
   const shuffle=a=>{ for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
   const sexe=opts.sexe||(()=>null), grp=opts.groupeDe||(()=>null);
   const seats=Array(N).fill(null), reste=new Set(eleves), reserve=new Set();
@@ -76968,6 +77003,34 @@ function _speakNotice(text, opts){
      - <5:00 sur l'event courant ou pas de cours → 60 s (cherche le suivant)
    ════════════════════════════════════════════════════════════════════ */
 
+/** V11.5.96 — Annonces de fin de cours actives, d'après les réglages. Pure.
+ *  - « fin » : « Fin du cours dans N minutes », N ∈ {7,6,5,4} (6 par défaut) ; MP3 embarqué à 5 min,
+ *    voix de synthèse sinon ; coupée par endOfClassReminderMode === 'off'.
+ *  - « verif » : rappel de vérification (table, matériel, ordinateur), N ∈ {4,3,2} (3 par défaut),
+ *    actif par défaut (eocVerif !== false). */
+const EOC_MOTS={2:'deux',3:'trois',4:'quatre',5:'cinq',6:'six',7:'sept'};
+const EOC_FIN_CHOIX=[7,6,5,4], EOC_VERIF_CHOIX=[4,3,2];
+const EOC_VERIF_TEXTE='Vérification : état de la table, rangement du matériel et de l’ordinateur';
+function _eocAnnonces(r){
+  r=r||{}; const L=[];
+  if((r.endOfClassReminderMode||'voice')!=='off'){
+    const m=EOC_FIN_CHOIX.indexOf(+r.eocFinMin)>=0 ? +r.eocFinMin : 6;
+    L.push({id:'fin', min:m, clip:(m===5 ? 'finCours5' : null), texte:'Fin du cours dans '+EOC_MOTS[m]+' minutes'});
+  }
+  if(r.eocVerif!==false){
+    const m=EOC_VERIF_CHOIX.indexOf(+r.eocVerifMin)>=0 ? +r.eocVerifMin : 3;
+    L.push({id:'verif', min:m, clip:null, texte:EOC_VERIF_TEXTE});
+  }
+  L.sort((a,b)=>b.min-a.min);
+  // Fenêtre de chaque annonce : de N à N−2 minutes restantes, sans empiéter sur la suivante.
+  L.forEach((a,i)=>{ a.bas=Math.max(a.min-2, i+1<L.length ? L[i+1].min : 0); });
+  return L;
+}
+function _eocJouer(a, force){
+  if(a.clip) _playClip(a.clip, {fallbackText:a.texte, force:!!force});
+  else _speakNotice(a.texte, {force:true});
+}
+
 let _endOfClassTimer = null;
 let _eocVisibilityHooked = false; // V035-V11.3.36 — écouteurs posés une seule fois
 const _endOfClassLastTriggered = new Set();
@@ -77084,8 +77147,8 @@ function _eocResolveEndMin(ev){
    de tester un déclenchement T-5 en attendant quelques secondes).
    V031-v181.11.3 — Refonte en minutes-depuis-minuit (cf. _eocFindCurrentEvent). */
 function _endOfClassTick(){
-  const mode = (S.reglages && S.reglages.endOfClassReminderMode) || 'voice';
-  if(mode === 'off') return 60000; // tick lent : surveille si le mode change
+  const A = _eocAnnonces(S.reglages);   // V11.5.96 — annonces réglables (fin + vérification)
+  if(!A.length) return 60000; // tick lent : surveille si les réglages changent
 
   const now = (typeof _appNow === 'function') ? _appNow() : new Date();
   const found = _eocFindCurrentEvent(now);
@@ -77115,37 +77178,34 @@ function _endOfClassTick(){
   // Plancher à 3 min : en dessous, annoncer « dans cinq minutes » serait faux
   // (cas d'un onglet gelé ou d'une machine réveillée de veille) — on saute,
   // comme avant.
-  const EOC_WINDOW_HIGH = 5, EOC_WINDOW_LOW = 3;
-  if(deltaMin <= EOC_WINDOW_HIGH && deltaMin > EOC_WINDOW_LOW){
-    const key = _eocEventKey(dateStr, ev);
-    if(!_endOfClassLastTriggered.has(key)){
-      _endOfClassLastTriggered.add(key);
-      _eocLog('déclenchement à T-'+deltaMin.toFixed(2)+' min — '+key);
-      if(mode === 'voice'){
-        _playClip('finCours5', {fallbackText: 'Fin du cours dans cinq minutes'});
+  // V11.5.96 — Chaque annonce a sa fenêtre (N → N−2 min, cf. _eocAnnonces) et sa clé
+  // d'unicité (la clé historique pour « fin », suffixée pour les autres).
+  for(let i=0;i<A.length;i++){
+    const a=A[i], key=_eocEventKey(dateStr, ev)+(a.id==='fin' ? '' : '|'+a.id);
+    if(deltaMin <= a.min && deltaMin > a.bas){
+      if(!_endOfClassLastTriggered.has(key)){
+        _endOfClassLastTriggered.add(key);
+        _eocLog('déclenchement '+a.id+' à T-'+deltaMin.toFixed(2)+' min — '+key);
+        _eocJouer(a);
       }
+      break;
     }
-  } else if(deltaMin <= EOC_WINDOW_LOW && deltaMin > 0){
-    // Trace du RATÉ : sans elle, une annonce manquée ne laisse aucune trace.
-    const key = _eocEventKey(dateStr, ev);
-    if(!_endOfClassLastTriggered.has(key)){
+    if(deltaMin <= a.bas && deltaMin > 0 && !_endOfClassLastTriggered.has(key)){
+      // Trace du RATÉ : sans elle, une annonce manquée ne laisse aucune trace.
       _endOfClassLastTriggered.add(key);
-      _eocLog('RATÉ (réveil tardif à T-'+deltaMin.toFixed(2)+' min, sous le plancher) — '+key);
+      _eocLog('RATÉ '+a.id+' (réveil tardif à T-'+deltaMin.toFixed(2)+' min, sous le plancher) — '+key);
     }
   }
 
-  // Choix du prochain délai selon la distance à T-5.
-  // V035-V11.3.36 — On ne dort JAMAIS au-delà de T-5:00 : le délai est plafonné
-  // au temps qui reste avant la cible (+0,5 s). Au premier plan, le tick tombe
-  // ainsi juste après T-5 au lieu de dépendre d'une cadence qui peut dériver.
-  const _capMs = (deltaMin > EOC_WINDOW_HIGH)
-    ? Math.max(1000, Math.round((deltaMin - EOC_WINDOW_HIGH) * 60000) + 500)
-    : Infinity;
+  // Prochain tick : jamais au-delà de la prochaine cible (+0,5 s).
+  const cibles = A.map(a=>a.min).filter(m=>m < deltaMin - 1e-9);
+  if(!cibles.length) return 60000;  // tout est passé : on attend la fin
+  const dist = deltaMin - Math.max.apply(null, cibles);
+  const _capMs = Math.max(1000, Math.round(dist * 60000) + 500);
   let _delay;
-  if(deltaMin > 10)          _delay = 60000;  // 60 s
-  else if(deltaMin > 5 + 0.5) _delay = 20000;  // 20 s (jusqu'à T-5:30)
-  else if(deltaMin > 5)       _delay = 3000;   // 3 s (fenêtre critique)
-  else                        _delay = 60000;  // déjà déclenché : on attend la fin
+  if(dist > 5)        _delay = 60000;  // 60 s
+  else if(dist > 0.5) _delay = 20000;  // 20 s
+  else                _delay = 3000;   // 3 s (fenêtre critique)
   return Math.min(_delay, _capMs);
 }
 
