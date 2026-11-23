@@ -4873,7 +4873,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.94';
+const APP_VERSION = 'v11.5.95';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20653,6 +20653,11 @@ const _PAL_OUTILS_COURS = [
    sub:'Classique 2 et îlots 7 / 8, ou les plans historiques (rien n’est effacé)',
    kw:'salle nouvelle ancienne classique 2 ilots 7 8 huit sept disposition techno plan',
    run:()=>{ toggleSalle2(); }},   // V11.5.94
+  {id:'act-salle2-reprendre', icon:'↺', label:'Reprendre le plan de l’ancienne salle',
+   sub:'Classique → Classique 2, îlots → îlots 7 / 8 (l’ancien plan reste intact)',
+   kw:'reprendre copier transferer ancien plan classique 2 ilots salle nouvelle',
+   precond:()=>((typeof _s2Est==='function' && _s2Est(layout) && _palPlanOuvert()) ? {ok:true} : {ok:false, why:'Ouvrez un plan de la nouvelle salle'}),
+   run:()=>{ _s2Reprendre(); }},   // V11.5.95
   {id:'act-horloge', icon:'🕐', label:'Horloge en grand',
    sub:'L’heure en très grand, à projeter (fin du cours affichée)',
    kw:'horloge heure grand projeter pendule montre afficher heure',
@@ -48800,6 +48805,57 @@ function _s2Unites(l, avecVolantes){
   return U;
 }
 function _s2UniteDe(l, idx){ return _s2Unites(l, true).findIndex(u=>u.indexOf(idx)>=0); }
+/** V11.5.95 — Grille virtuelle [rang, colonne] de chaque place (rang 0 = fond, dernier
+ *  rang = devant), pour les distances des contraintes, comme la grille 6×5 du
+ *  classique. Classique 2 : 6 rangs × 6 colonnes ; îlots : 8 rangs × 6 colonnes. Pure. */
+function _s2Grille(l){
+  const G=S2_GEO[l], out={}; if(!G) return out;
+  const cols={L:[0,1], C:[2,3], R:[4,5], P:[4,5]};
+  if(G.tables){ G.tables.forEach(tb=>{ const r=(tb.col==='C') ? tb.r : (tb.col==='L') ? Math.round(tb.r*5/3) : Math.round(tb.r*5/4);
+    tb.idx.forEach((i,k)=>{ out[i]=[r, cols[tb.col][k]]; }); }); return out; }
+  const nR=G.ilots.filter(x=>x.col==='R').length;
+  G.ilots.forEach(il=>{ const base=(il.col==='L' || nR===4) ? 2*il.r : il.r*3;
+    il.idx.forEach((i,k)=>{ out[i]=[base+(k<2 ? 0 : 1), cols[il.col][k%2]]; }); });
+  const V=G.volantes||[]; if(V.length){ out[V[0]]=[0,2]; out[V[1]]=[7,3]; }
+  return out;
+}
+function _s2RangMax(l){ return S2_GEO[l] && S2_GEO[l].tables ? 5 : 7; }
+function _s2Cheb(l, a, b){ const g=_s2Grille(l), A=g[a], B=g[b]; if(!A || !B) return 99; return Math.max(Math.abs(A[0]-B[0]), Math.abs(A[1]-B[1])); }
+/** Voisin de table : l'autre place de la table (Classique 2) ou de la même rangée de l'îlot. */
+function _s2Partenaire(l, idx){
+  const G=S2_GEO[l]; if(!G) return null;
+  for(const u of (G.tables || G.ilots || [])){ const k=u.idx.indexOf(idx); if(k>=0) return u.idx[k^1]; }
+  return null;
+}
+/** Reprise de l'ancienne salle : classique (6×5) → Classique 2 par proximité de position
+ *  (les élèves de devant restent devant) ; îlots → îlots 7 / 8, équipe par équipe. Pure. */
+function _s2Transfert(src, l){
+  src=Array.isArray(src) ? src : []; const N=S2_N[l]||N_SEATS, out=Array(N).fill(null);
+  if(_s2EstIlots(l)){
+    const G=S2_GEO[l];
+    Object.keys(ILOT_MAP).forEach(eq=>{ const il=G.ilots.find(x=>x.eq===eq); if(il) ILOT_MAP[eq].forEach((i,k)=>{ out[il.idx[k]]=src[i]||null; }); });
+    const libres=[]; (G.volantes||[]).forEach(i=>libres.push(i)); const e8=G.ilots.find(x=>x.eq==='EQ8'); if(e8) e8.idx.forEach(i=>libres.push(i));
+    FLOAT_IDX.forEach((i,k)=>{ if(src[i] && libres[k]!=null) out[libres[k]]=src[i]; });
+    return out;
+  }
+  const g=_s2Grille(l), XO=[0,1,2.5,4,5], cand=[];
+  for(let i=0;i<30;i++){ if(!src[i]) continue; const r=Math.floor(i/5), c=i%5;
+    Object.keys(g).forEach(j=>{ const d=Math.hypot(g[j][0]-r, g[j][1]-XO[c]); cand.push([d, Math.abs(g[j][0]-r), i, +j]); }); }
+  cand.sort((a,b)=>a[0]-b[0] || a[1]-b[1] || a[2]-b[2] || a[3]-b[3]);
+  const pris=new Set(), faits=new Set();
+  cand.forEach(([,,i,j])=>{ if(faits.has(i) || pris.has(j)) return; out[j]=src[i]; faits.add(i); pris.add(j); });
+  return out;
+}
+function _s2Reprendre(){
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer()) return;
+  if(!_s2Est(layout)) return;
+  const l=layout, src=_seatsForLayoutId(_s2EstIlots(l) ? 'ilots' : 'classic');
+  if(!src.some(Boolean)){ try{ showDropToast('ℹ️ Le plan '+(_s2EstIlots(l) ? 'îlots' : 'classique')+' de l’ancienne salle est vide'); }catch(e){} return; }
+  const go=()=>{ getCls().seats=_s2Transfert(src, l); saveS(); renderApp();
+    try{ showDropToast('↺ Plan '+(_s2EstIlots(l) ? 'îlots' : 'classique')+' de l’ancienne salle repris en '+_s2Libelle(l)); }catch(e){} };
+  if((getCls().seats||[]).some(Boolean)) showModal('Reprendre l’ancienne salle ?', 'Les places actuelles de la vue '+_s2Libelle(l)+' seront remplacées par celles du plan '+(_s2EstIlots(l) ? 'îlots' : 'classique')+' de l’ancienne salle (qui reste intact).', go);
+  else go();
+}
 /** Positions à l'écran (et pour le PDF). o = {nb, nSt, seats}. Pure (lit les constantes du plan). */
 function _s2Placement(l, Hs, o){
   o=o||{}; const places=[], cadres=[]; const G=S2_GEO[l]; if(!G) return {w:0, h:0, places, cadres};
@@ -48841,16 +48897,21 @@ function renderSalle2(area){
   const cls=getCls(), lay=layout, seats=cls.seats||[];
   let Hs=H_BASE; seats.forEach(n=>{ if(n) Hs=Math.max(Hs, seatHeight(n)); });
   const P=_s2Placement(lay, Hs, {nb:_s2NbIlots(cls), nSt:(cls.students||[]).length, seats});
+  const bar=document.createElement('div'); bar.className='s2-nb-ilots';
+  bar.style.cssText='display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;font-weight:700;color:var(--tx2)';
   if(_s2EstIlots(lay)){
-    const bar=document.createElement('div'); bar.className='s2-nb-ilots';
-    bar.style.cssText='display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;font-weight:700;color:var(--tx2)';
     bar.appendChild(document.createTextNode('Îlots :'));
     [7,8].forEach(n=>{ const b=document.createElement('button'); b.type='button'; b.id='s2-ilots-'+n;
       const on=(_s2NbIlots(cls)===n);
       b.style.cssText='padding:3px 10px;border-radius:6px;font:inherit;font-weight:800;cursor:pointer;border:1.5px solid #111418;'+(on ? 'background:#111418;color:#fff' : 'background:#fff;color:#111418');
       b.textContent=n+' îlots'; b.onclick=()=>_s2ChoisirNbIlots(n); bar.appendChild(b); });
-    area.appendChild(bar);
   }
+  { const rb=document.createElement('button'); rb.type='button'; rb.id='s2-reprendre';   // V11.5.95
+    rb.style.cssText='margin-left:'+(_s2EstIlots(lay) ? '12px' : '0')+';padding:3px 10px;border-radius:6px;font:inherit;font-weight:700;cursor:pointer;border:1.5px solid var(--brd2);background:var(--sur);color:var(--tx)';
+    rb.textContent='↺ Reprendre le plan '+(_s2EstIlots(lay) ? 'îlots' : 'classique')+' de l’ancienne salle';
+    rb.title='Copie les places de l’ancienne salle dans cette vue (l’ancien plan reste intact)';
+    rb.onclick=()=>_s2Reprendre(); bar.appendChild(rb); }
+  area.appendChild(bar);
   const wrap=document.createElement('div'); wrap.className='s2-plan';
   wrap.style.cssText='position:relative;width:'+P.w+'px;height:'+P.h+'px;flex-shrink:0';
   P.cadres.forEach(f=>{
@@ -48890,40 +48951,61 @@ function _s2PasEncore(quoi){
   const m=quoi+' n’est pas encore disponible dans la nouvelle salle (Classique 2, îlots 7 / 8).';
   try{ showDropToast('ℹ️ '+m); }catch(e){ try{ alert(m); }catch(e2){} }
 }
-/** Contraintes dans la nouvelle salle : séparer / associer à l'échelle de la table
- *  (Classique 2) ou de l'îlot ; devant = premier rang (Classique 2). Pure. */
-function _s2Violations(seats, l, con){
-  con=con||{}; const out=[]; const U=(x)=>_s2UniteDe(l, x);
+/** Contraintes dans la nouvelle salle (V11.5.95 : tous les moteurs). Grille virtuelle
+ *  _s2Grille : séparer = distance > écart choisi et jamais à la même table / îlot ;
+ *  associer = même table (Classique 2) ou même îlot ; devant = dernier rang (Classique 2)
+ *  ou îlots de devant ; vue 1-3 = les 3 rangs (Classique 2) / 4 rangs (îlots) de devant ;
+ *  isoler = voisin de table vide ; éloigner = distance adaptative comme en classique. Pure. */
+function _s2Violations(seats, l, con, spacing){
+  con=con||{}; spacing=spacing||1; const out=[]; const U=(x)=>_s2UniteDe(l, x), g=_s2Grille(l), RM=_s2RangMax(l);
   const L=(u)=>{ try{ return getSeatLabel(u); }catch(e){ return u; } };
-  const unite=(l==='classic2') ? 'table' : 'équipe';
+  const unite=(l==='classic2') ? 'table' : 'îlot', rang=(p)=>(g[p] ? g[p][0] : -1);
+  const el=(con.eloigner||[]).filter(id=>id && seats.indexOf(id)>=0);
+  if(el.length>=2){ const cible=Math.ceil(RM/(el.length-1));
+    for(let i=0;i<el.length;i++) for(let j=i+1;j<el.length;j++){ const d=_s2Cheb(l, seats.indexOf(el[i]), seats.indexOf(el[j]));
+      if(d<cible) out.push({type:'eloigner', label:'↔️ Éloigner', ids:[el[i],el[j]], msg:L(el[i])+' ↔ '+L(el[j])+' trop proches (d='+d+', cible '+cible+')'}); } }
   (con.separer||[]).forEach(p=>{ const a=p&&p[0], b=p&&p[1]; if(!a||!b) return; const pa=seats.indexOf(a), pb=seats.indexOf(b); if(pa<0||pb<0) return;
-    if(U(pa)===U(pb)) out.push({type:'separer', label:'🚫 Séparer', ids:[a,b], msg:L(a)+' ↔ '+L(b)+' à la même '+unite}); });
+    if(U(pa)===U(pb) || _s2Cheb(l,pa,pb)<=spacing) out.push({type:'separer', label:'🚫 Séparer', ids:[a,b], msg:L(a)+' ↔ '+L(b)+(U(pa)===U(pb) ? ' à la même '+(l==='classic2' ? 'table' : 'équipe') : ' trop proches')}); });
   (con.associer||[]).forEach(p=>{ const a=p&&p[0], b=p&&p[1]; if(!a||!b) return; const pa=seats.indexOf(a), pb=seats.indexOf(b); if(pa<0||pb<0) return;
-    if(U(pa)!==U(pb)) out.push({type:'associer', label:'🤝 Associer', ids:[a,b], msg:L(a)+' ↔ '+L(b)+' pas à la même '+unite}); });
-  const D=(S2_GEO[l] && S2_GEO[l].devant) || null;
-  if(D) (con.devant||[]).forEach(id=>{ if(!id) return; const p=seats.indexOf(id); if(p>=0 && D.indexOf(p)<0) out.push({type:'devant', label:'👁 Devant', ids:[id], msg:L(id)+' n\'est pas devant'}); });
+    if(U(pa)!==U(pb)) out.push({type:'associer', label:'🤝 Associer', ids:[a,b], msg:L(a)+' ↔ '+L(b)+' pas à la même '+(l==='classic2' ? 'table' : 'équipe')}); });
+  const devMin=(l==='classic2') ? RM : RM-1, vueMin=(l==='classic2') ? RM-2 : RM-3;
+  (con.devant||[]).forEach(id=>{ if(!id) return; const p=seats.indexOf(id); if(p>=0 && rang(p)<devMin) out.push({type:'devant', label:'👁 Devant', ids:[id], msg:L(id)+' n\'est pas devant'}); });
+  (con.vueLimitee||[]).forEach(id=>{ if(!id) return; const p=seats.indexOf(id); if(p>=0 && rang(p)<vueMin) out.push({type:'vueLimitee', label:'👁‍🗨 Vue 1-3', ids:[id], msg:L(id)+' trop loin du tableau'}); });
+  (con.isoler||[]).forEach(id=>{ if(!id) return; const p=seats.indexOf(id); if(p<0) return; const q=_s2Partenaire(l,p);
+    if(q!=null && seats[q]) out.push({type:'isoler', label:'🔒 Isoler', ids:[id], msg:L(id)+' partage sa table'}); });
   return out;
 }
-/** Placement aléatoire dans la nouvelle salle : épinglés, devant, associer, puis
- *  remplissage table par table / îlot par îlot (mixité F/G, groupes). */
+/** Placement aléatoire dans la nouvelle salle : épinglés, devant, vue 1-3, isoler (voisin
+ *  laissé vide s'il reste des places), associer, puis remplissage table par table / îlot
+ *  par îlot (mixité F/G, groupes). Séparer et éloigner : notés par _s2Violations, la
+ *  meilleure des tentatives est gardée. Pure (aleat injectable). */
 function _s2PlacementAleatoire(eleves, l, con, opts, aleat){
   opts=opts||{}; con=con||{}; const rnd=aleat||Math.random;
-  const G=S2_GEO[l], N=S2_N[l]||N_SEATS;
+  const G=S2_GEO[l], N=S2_N[l]||N_SEATS, g=_s2Grille(l), RM=_s2RangMax(l);
   const vol=(G.volantes||[]);
   const avecVol=vol.length>0 && eleves.length>N-vol.length;
   const shuffle=a=>{ for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
   const sexe=opts.sexe||(()=>null), grp=opts.groupeDe||(()=>null);
-  const seats=Array(N).fill(null), reste=new Set(eleves);
-  (opts.epingles||[]).forEach(({uid,slot})=>{ if(reste.has(uid) && slot>=0 && slot<N && !seats[slot]){ seats[slot]=uid; reste.delete(uid); } });
+  const seats=Array(N).fill(null), reste=new Set(eleves), reserve=new Set();
+  const dispo=new Set([].concat(...(_s2Unites(l, avecVol))));
+  const libre=(i)=>dispo.has(i) && !seats[i] && !reserve.has(i);
+  const poser=(u,i)=>{ seats[i]=u; reste.delete(u); };
+  (opts.epingles||[]).forEach(({uid,slot})=>{ if(reste.has(uid) && slot>=0 && slot<N && !seats[slot]) poser(uid, slot); });
+  const rang=(i)=>(g[i] ? g[i][0] : -1);
+  const devMin=(l==='classic2') ? RM : RM-1, vueMin=(l==='classic2') ? RM-2 : RM-3;
+  (con.devant||[]).forEach(u=>{ if(!reste.has(u)) return; const c=shuffle([...dispo].filter(i=>libre(i) && rang(i)>=devMin)); if(c.length) poser(u, c[0]); });
+  (con.vueLimitee||[]).forEach(u=>{ if(!reste.has(u)) return; const c=shuffle([...dispo].filter(i=>libre(i) && rang(i)>=vueMin)); if(c.length) poser(u, c[0]); });
+  let marge=dispo.size-eleves.length;
+  (con.isoler||[]).forEach(u=>{ if(!reste.has(u)) return;
+    const c=shuffle([...dispo].filter(i=>{ const q=_s2Partenaire(l,i); return libre(i) && (q==null || (!seats[q] && !reserve.has(q))); }));
+    if(!c.length) return; const q=_s2Partenaire(l,c[0]); poser(u, c[0]); if(q!=null && marge>0){ reserve.add(q); marge--; } });
   const U=shuffle(_s2Unites(l, avecVol));
-  if(G.devant){ const lib=shuffle(G.devant.filter(i=>!seats[i])); (con.devant||[]).forEach(u=>{ if(reste.has(u) && lib.length){ seats[lib.shift()]=u; reste.delete(u); } }); }
   (con.associer||[]).forEach(p=>{ const a=p&&p[0], b=p&&p[1]; if(!a||!b||!reste.has(a)||!reste.has(b)) return;
-    const u=U.find(x=>x.filter(i=>!seats[i]).length>=2); if(!u) return; const li=u.filter(i=>!seats[i]);
-    seats[li[0]]=a; seats[li[1]]=b; reste.delete(a); reste.delete(b); });
+    const u=U.find(x=>x.filter(libre).length>=2); if(!u) return; const li=u.filter(libre); poser(a, li[0]); poser(b, li[1]); });
   let ordre=shuffle([...reste]);
   if(opts.grpHomo) ordre.sort((a,b)=>(grp(a)===opts.gid1 ? 0 : 1)-(grp(b)===opts.gid1 ? 0 : 1));
   U.forEach(u=>u.forEach((i,k)=>{
-    if(seats[i] || !ordre.length) return;
+    if(!libre(i) || !ordre.length) return;
     const prev=u.slice(0,k).map(x=>seats[x]).filter(Boolean); let j=0;
     if(opts.grpMix){ const n1=prev.filter(x=>grp(x)===opts.gid1).length, n2=prev.length-n1; const v=(n1>n2) ? opts.gid2 : (n1<n2) ? opts.gid1 : null;
       if(v){ const jj=ordre.findIndex(x=>grp(x)===v); if(jj>=0) j=jj; } }
@@ -48931,9 +49013,11 @@ function _s2PlacementAleatoire(eleves, l, con, opts, aleat){
       if(v){ const jj=ordre.findIndex(x=>sexe(x)===v); if(jj>=0) j=jj; } }
     seats[i]=ordre.splice(j,1)[0];
   }));
+  // Dernier recours : places réservées (voisins des isolés) si des élèves restent.
+  [...reserve].forEach(i=>{ if(ordre.length && !seats[i]) seats[i]=ordre.shift(); });
   return seats;
 }
-function _doRandomPlaceSalle2(cls, con, mixOptions){
+function _doRandomPlaceSalle2(cls, con, mixOptions, separerSpacing){
   mixOptions=mixOptions||{}; const l=layout, N=S2_N[l]||N_SEATS;
   const eleves=[...getActiveStudents()];
   const pins=new Set((S.pinned && S.pinned[_scopeBucketKey()]) || []), prior=(cls.seats||[]).slice();
@@ -48943,14 +49027,14 @@ function _doRandomPlaceSalle2(cls, con, mixOptions){
     grpMix:!!(grp2 && mixOptions.grpMixIlots), grpHomo:!!(grp2 && mixOptions.grpHomoIlots),
     gid1:grp2 ? grp2.gid1 : null, gid2:grp2 ? grp2.gid2 : null, groupeDe:(u)=>{ try{ return _rpGroupOf(u, grp2); }catch(e){ return null; } }};
   let best=null, bestV=null;
-  for(let k=0;k<200;k++){
+  for(let k=0;k<400;k++){
     const s=_s2PlacementAleatoire(eleves, l, con, opts);
-    const v=_s2Violations(s, l, con);
+    const v=_s2Violations(s, l, con, separerSpacing||1);
     if(!best || v.length<bestV.length){ best=s; bestV=v; if(!v.length) break; }
   }
   cls.seats=best; saveS(); renderApp();
   if(bestV && bestV.length && !_tempPlanKey() && typeof _showContrainteViolationsModal==='function')
-    _showContrainteViolationsModal(bestV, 'Placement partiel (meilleure tentative sur 200)');
+    _showContrainteViolationsModal(bestV, 'Placement partiel (meilleure tentative sur 400)');
 }
 /** Impression PDF d'une géométrie de la nouvelle salle. */
 function _pdfBuildSalle2(cls, clsCode, nums){
@@ -50283,7 +50367,7 @@ function _askRandomMixOptionsThenContinue(con){
     };
     // Si Séparer existe et mode classique, demander l'espacement (chaîne existante)
     const hasSeparer=(con.separer||[]).some(p=>p&&p[0]&&p[1]);
-    if(layout==='classic' && hasSeparer){
+    if((layout==='classic' || (typeof _s2Est==='function' && _s2Est(layout))) && hasSeparer){   // V11.5.95
       _askSeparerSpacingThenRandomPlace(con, mixOptions);
     } else {
       _doRandomPlace(getCls(), con, 1, mixOptions);
@@ -50315,7 +50399,7 @@ function _getContrainteViolations(seats, lay, opts){
   if(isCustom){
     return _getContrainteViolationsCustom(seats, _scObj.layouts[lay], spacing);
   }
-  if(typeof _s2Est==='function' && _s2Est(lay)) return _s2Violations(seats, lay, (S.contraintes&&S.contraintes[_sc])||{});   // V11.5.94
+  if(typeof _s2Est==='function' && _s2Est(lay)) return _s2Violations(seats, lay, (S.contraintes&&S.contraintes[_sc])||{}, spacing);   // V11.5.94
   const con=(S.contraintes&&S.contraintes[_sc])||{separer:[],associer:[],devant:[],vueLimitee:[],isoler:[],eloigner:[]};
 
   // V030-v181.10.0 — Éloigner : applicable en classic ET ilots (même grille
@@ -50511,7 +50595,7 @@ function checkContraintes(){
   const isCustom = !!(S.reglages && S.reglages.pdcUniversel
     && layout!=='classic' && layout!=='ilots'
     && cls && cls.layouts && cls.layouts[layout]);
-  if(layout!=='classic' && !isCustom){
+  if(layout!=='classic' && !isCustom && !(typeof _s2Est==='function' && _s2Est(layout))){   // V11.5.95 — nouvelle salle : vérifiable
     showDropToast('ℹ️ Vérification non disponible en vue îlots');
     return;
   }
@@ -50854,7 +50938,7 @@ function _doRandomPlace(cls, con, separerSpacing, mixOptions){
   if(isCustom){
     return _doRandomPlaceCustom(cls, cls.layouts[layout], con, separerSpacing, mixOptions);
   }
-  if(typeof _s2Est==='function' && _s2Est(layout)) return _doRandomPlaceSalle2(cls, con, mixOptions);   // V11.5.94
+  if(typeof _s2Est==='function' && _s2Est(layout)) return _doRandomPlaceSalle2(cls, con, mixOptions, separerSpacing);   // V11.5.94
   // Available seats
   let avail;
   if(layout==='classic'){
