@@ -4886,7 +4886,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.108';
+const APP_VERSION = 'v11.5.109';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -60262,6 +60262,13 @@ function _jnlPoint(lettre, taille){ const C=JNL_COUL[lettre]||{bg:'#9CA3AF', bd:
 function _jnlPastille(code, lettre){
   const C=JNL_COUL[lettre]||{fg:'var(--tx)'}, p=_jnlEl('span','display:inline-flex;align-items:center;gap:5px;padding:1px 8px 1px 5px;border:1px solid var(--brd);border-radius:999px;font-size:12.5px;white-space:nowrap'); p.className='jnl-pastille'; p.dataset.niv=lettre||'';
   p.appendChild(_jnlPoint(lettre)); p.appendChild(_jnlEl('b','color:var(--tx)', code)); p.appendChild(_jnlEl('span','font-weight:800;color:'+C.fg, lettre||'')); return p; }
+/** V11.5.109 — Maquette C : un carré de couleur par compétence, puis « code NIV · code NIV » en texte simple. createElement. */
+function _jnlCarres(L){
+  const w=_jnlEl('span','display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap'); w.className='jnl-carres';
+  const c=_jnlEl('span','display:inline-flex;gap:3px;align-items:center'); w.appendChild(c);
+  (L||[]).forEach(x=>{ const C=JNL_COUL[x.lettre]||{bg:'#9CA3AF', bd:''}, q=_jnlEl('span','display:inline-block;width:15px;height:15px;border-radius:4px;background:'+C.bg+(C.bd?';box-shadow:'+C.bd:'')); q.className='jnl-carre'; q.dataset.niv=x.lettre||''; c.appendChild(q); });
+  w.appendChild(_jnlEl('span','color:var(--tx2);font-size:13px', (L||[]).map(x=>x.code+' '+(x.lettre||'')).join(' · ')));
+  return w; }
 /** Bulle de bilan au survol de la ligne : titre, note, chaque compétence (pastille, code, libellé complet, niveau en toutes lettres). */
 function _jnlBulleSur(ligne, titre, note, L, com){
   if(!ligne || !(L||[]).length) return;
@@ -60466,12 +60473,12 @@ function _jnlFicheContenu(box, uid, cls, o){
     } else if(e.genre==='eval'){
       z.appendChild(_jnlPuce('🎯 Compétences','#CCFBF1','#115E59'));
       if(e.source) z.appendChild(_jnlPuce('📊 '+e.source,'#FEF9C3','#854D0E'));   // V11.5.68 — venues d'une évaluation
-      e.comps.forEach(c=>z.appendChild(_jnlPastille(c.cid, c.niv)));   // V11.5.108 — pastilles de couleur
+      z.appendChild(_jnlCarres(e.comps.map(c=>({code:c.cid, lettre:c.niv}))));   // V11.5.108 ; V11.5.109 — carrés de couleur (maquette C)
       _jnlBulleSur(r, e.source || 'Compétences du cours', '', e.comps.map(c=>({code:c.cid, lib:c.lib||c.label, lettre:c.niv})), '');
     } else if(e.genre==='evl' && e.det){   // V11.5.108 — une ligne : titre, note, pastilles ; bilan complet au survol
       const D=e.det, L=D.items.map(x=>({code:x.code, lib:x.lib, lettre:_jnlLettre(x.n, x.nN)}));
       z.appendChild(_jnlPuce(D.ic+' '+D.titre,'#FEF9C3','#854D0E')); if(D.note) z.appendChild(_jnlEl('b','font-size:13.5px;color:var(--tx)', D.note));
-      L.forEach(x=>z.appendChild(_jnlPastille(x.code, x.lettre))); if(D.com) z.appendChild(_jnlEl('span','color:var(--tx2)', '💬 '+D.com));
+      if(L.length) z.appendChild(_jnlCarres(L)); if(D.com) z.appendChild(_jnlEl('span','color:var(--tx2)', '💬 '+D.com));
       _jnlBulleSur(r, D.titre, D.note, L, D.com);
     } else if(e.genre==='evl'){   // V11.5.32
       z.appendChild(_jnlPuce('📊 Évaluation','#FEF9C3','#854D0E')); z.appendChild(_jnlEl('span','color:var(--tx)', e.texte));
