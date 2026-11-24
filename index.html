@@ -4881,7 +4881,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.104';
+const APP_VERSION = 'v11.5.105';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -62702,6 +62702,7 @@ function _evlResultat(ev, grille, uid, gid){
   const r=((ev.res||{})[uid])||{}, G=gid ? (((ev.resG||{})[gid])||{}).niv||{} : {};
   const PQ=_evlParQuestion(ev, grille), CQ=PQ ? _evlCalcQuestions(_evlQuestionsPosees(grille, r.qOff), r.pts) : null;   // V11.5.66 (par question), V11.5.74 (questions posées)
   const niv=Object.assign({}, G, CQ ? CQ.niv : {}, r.niv||{});
+  Object.keys(niv).forEach(k=>{ if(niv[k]==null || Number(niv[k])<0) delete niv[k]; });   // V11.5.105 — -1 = niveau retiré à la main (2e clic)
   const ajuste=(!!gid && Object.keys(r.niv||{}).some(k=>r.niv[k]!==G[k])) || (!!CQ && Object.keys(r.niv||{}).some(k=>CQ.niv[k]!=null && r.niv[k]!==CQ.niv[k]));
   let note=null;
   if(r.code) note=null;
@@ -62776,8 +62777,8 @@ function _evlCopiePour(ev, cls, slotKey, id){
 }
 /** Recopie les réglages communs de src vers les évaluations du même lot (autres classes). Pure : renvoie le nombre modifié. */
 function _evlPropager(src, liste){
-  if(!src || !src.lot) return 0; let n=0;
-  (liste||[]).forEach(e=>{ if(e!==src && e.lot===src.lot){ EVL_COMMUNS.forEach(k=>{ e[k]=src[k]; }); n++; } });
+  if(!src || !src.lot || src.reglPropres) return 0; let n=0;   // V11.5.105 — réglages propres : ni envoyés, ni reçus
+  (liste||[]).forEach(e=>{ if(e!==src && e.lot===src.lot && !e.reglPropres){ EVL_COMMUNS.forEach(k=>{ e[k]=src[k]; }); n++; } });
   return n;
 }
 /** Échelle CSV (séparateur ;). Pure. */
@@ -63145,7 +63146,15 @@ function _evlRendreEvals(corps){
   const f=_evlEl('div'); f.id='evl-reglages';   // V11.5.65 — réglages : panneau repliable (ouvert d'office si rien n'est saisi)
   const maj=()=>{ _evlPropager(ev, _evlListe()); _evlSauver(ev); _evlRendre(); };   // V11.5.34 — réglages communs suivis dans les autres classes
   const inp=(val, fn, css)=>{ const i=_evlEl('input','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px;'+(css||'')); i.value=val==null?'':val; i.onchange=()=>{ fn(i.value); maj(); }; return i; };
-  const t=inp(ev.titre, v=>{ ev.titre=v.trim()||'Évaluation'; }, 'width:100%;box-sizing:border-box;font-size:24px;font-weight:800;border:2px solid transparent;background:transparent;padding:4px 6px'); t.id='evl-titre'; t.title='Titre (commun à toutes les classes)'; fiche.appendChild(t);
+  const t=inp(ev.titre, v=>{ ev.titre=v.trim()||'Évaluation'; }, 'width:100%;box-sizing:border-box;font-size:24px;font-weight:800;border:2px solid transparent;background:transparent;padding:4px 6px'); t.id='evl-titre'; t.title=ev.reglPropres || soeursT.length<2 ? 'Titre' : 'Titre (commun aux classes qui suivent les réglages communs)'; fiche.appendChild(t);
+  if(soeursT.length>1){ const P=!!ev.reglPropres, nC=soeursT.filter(e=>!e.reglPropres).length;   // V11.5.105 — réglages propres à une classe
+    const b=_evlBtn(P ? '✂ Réglages propres à '+String(ev.cls).toUpperCase()+' · revenir aux réglages communs' : '🔗 Réglages communs ('+nC+' classes) · rendre propres à '+String(ev.cls).toUpperCase(),
+      P ? 'border:2px solid #B45309;color:#B45309;background:#FFFBEB' : 'border:2px solid #8A9099', ()=>{
+        if(P){ const s=soeursT.find(e=>e!==ev && !e.reglPropres); delete ev.reglPropres; if(s) EVL_COMMUNS.forEach(k=>{ ev[k]=s[k]; }); try{ showDropToast('🔗 '+String(ev.cls).toUpperCase()+' suit de nouveau les réglages communs'); }catch(x){} }
+        else { ev.reglPropres=true; try{ showDropToast('✂ Réglages de '+String(ev.cls).toUpperCase()+' : modifiables sans toucher aux autres classes'); }catch(x){} }
+        _evlSauver(ev); _evlRendre(); },
+      P ? 'Reprendre titre, type, grille, barème, coefficient… des autres classes' : 'Titre, type, grille, barème, coefficient… changés ici ne toucheront plus les autres classes');
+    b.id='evl-regl-propres'; b.style.margin='0 0 6px'; fiche.appendChild(b); }
   { const gR=_evlGrille(ev.grilleId), qui={classe:'Classe entière', ens:'Groupes', sel:'Quelques élèves'}[(ev.cible||{}).type||'classe'];
     const et=_evlEl('div','display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px;align-items:center'); fiche.appendChild(et);
     const tag=(x, plein)=>{ const s=_evlEl('span','font-size:13px;font-weight:800;padding:'+(plein?'5px 10px':'3px 9px')+';border-radius:6px;'+(plein?'background:#111418;color:#fff':'border:2px solid var(--tx);color:var(--tx)'), x); et.appendChild(s); };
@@ -63279,81 +63288,23 @@ function _evlSeuils(g){
 }
 /** Niveau atteint pour un pourcentage. Pure. */
 function _evlNivPct(pct, seuils){ let k=0; (seuils||[]).forEach(x=>{ if(pct>=x) k++; }); return k; }
-/* ═══ V11.5.103 — SAISIE RAPIDE D'UNE COPIE (demande du 24/11, d'après dev/bilan_competences_compact.html) ═══
-   On ne tape que les points : total, note (= somme des points, au dixième) et niveaux des compétences se
-   calculent. Ouverte par ⚡ sur la ligne de l'élève (Tableau) ou dans « Un élève ». Les niveaux s'ajustent
-   ensuite dans la page de saisie habituelle (ajustement gardé, signalé « ajusté » ici). */
-function _evlBtnRapide(ev, u, grand){
-  const b=_evlBtn(grand ? '⚡ Saisie rapide' : '⚡', grand ? 'background:#111418;border-color:#111418;color:#fff' : 'padding:1px 7px;min-height:24px;margin-left:6px;font-size:12px', (e)=>{ if(e) e.stopPropagation(); _evl.rapide={ev:ev.id, u}; _evlRendre(); }, 'Saisie rapide : les points seulement');
-  b.classList.add('evl-btn-rapide'); b.dataset.u=u; return b;
+/* V11.5.105 — la page ⚡ « saisie rapide » (v11.5.103-104) est retirée : la vue « Un élève » fait la même chose (demande du 24/11). */
+/** V11.5.105 — Clic sur un niveau : le même niveau une 2e fois le retire (-1 s'il était calculé ou hérité du groupe,
+ *  pour ne pas le voir revenir) ; un autre niveau le remplace ; le niveau calculé / hérité efface l'ajustement. Pure (modifie r). */
+function _evlBasculerNiv(r, cid, k, v, base){
+  r.niv=r.niv||{};
+  if(v===k){ if(base!=null) r.niv[cid]=-1; else delete r.niv[cid]; }
+  else if(base===k) delete r.niv[cid];
+  else r.niv[cid]=k;
+  return r.niv[cid];
 }
-function _evlRendreRapide(corps, ev, g, C){
-  const U=C.eleves, i0=Math.max(0, U.indexOf(_evl.rapide.u)), u=U[i0]; if(!u){ _evl.rapide=null; return _evlRendreSaisie(corps); }
-  const r=ev.res[u]=ev.res[u]||{}; r.pts=r.pts||{};
-  const Q=(_evlQuestionsPosees(g, r.qOff).questions||[]), crit=(g.criteres||[]).filter(c=>(g.questions||[]).some(q=>(q.crit||[]).indexOf(c.id)>=0)), N=g.niveaux||EVL_NIV_DEFAUT;
-  const aller=(d)=>{ _evlSauver(ev); const j=i0+d; if(j<0 || j>=U.length){ _evl.rapide=null; } else _evl.rapide={ev:ev.id, u:U[j]}; _evlRendre(); const f=document.querySelector('#evl-rapide input'); if(f){ f.focus(); try{ f.select(); }catch(e){} } };
-  const box=_evlEl('div','max-width:1100px;margin:0 auto;background:var(--sur);border:3px solid #111418;border-radius:16px;overflow:hidden'); box.id='evl-rapide'; box.dataset.u=u; corps.appendChild(box);
-  const hd=_evlEl('div','background:'+EVL_JAUNE+';color:#111418;padding:12px 18px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;border-bottom:3px solid #111418'); box.appendChild(hd);
-  hd.appendChild(_evlEl('div','font-size:26px;font-weight:800', getFullName(u)||u));
-  { const eb=_evlEbepEleve(u, ev.cls); if(eb){ const x=_evlEl('span','font-size:12.5px;font-weight:800;color:#fff;background:#15803D;padding:3px 8px;border-radius:5px', eb); hd.appendChild(x); } }
-  { const mq=_evlMarqueAdapte(ev, g, u, _evlResultat(ev, g, u, '')); if(mq) hd.appendChild(mq); }
-  hd.appendChild(_evlEl('span','flex:1')); hd.appendChild(_evlEl('b','font-size:14px', (i0+1)+' sur '+U.length));
-  hd.appendChild(_evlBtn('✕ Retour à la saisie','border:2px solid #111418', ()=>{ _evlSauver(ev); _evl.rapide=null; _evlRendre(); }));
-  const R0=_evlResultat(ev, g, u, '');
-  if(R0.code){ box.appendChild(_evlEl('div','margin:16px 18px;padding:12px;border-radius:10px;background:#4B5563;color:#fff;font-weight:800', ({Abs:'Absent', Disp:'Dispensé', NR:'Non rendu'})[R0.code]+' : rien à saisir (à changer dans la page de saisie).')); }
-  const w=_evlEl('div','display:grid;grid-template-columns:minmax(0,1.3fr) minmax(320px,1fr);gap:18px;padding:16px 18px'); box.appendChild(w);
-  const g1=_evlEl('div'); w.appendChild(g1);
-  g1.appendChild(_evlEl('div','font-size:13px;font-weight:800;color:var(--tx2);margin-bottom:8px','Points obtenus · Entrée ou → : question suivante · Entrée sur la dernière : élève suivant'));
-  const grid=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px'); g1.appendChild(grid);
-  const tot=_evlEl('div','display:flex;flex-wrap:wrap;gap:16px;align-items:baseline;margin-top:14px'); tot.id='evl-rapide-total'; g1.appendChild(tot);
-  const g2=_evlEl('div'); w.appendChild(g2);
-  g2.appendChild(_evlEl('div','font-size:13px;font-weight:800;color:var(--tx2);margin-bottom:8px','Compétences (calculées ; ajustement dans la page de saisie)'));
-  const T=_evlEl('table','width:100%;border-collapse:collapse;table-layout:fixed;font-size:14px'); T.id='evl-rapide-bilan'; g2.appendChild(T);
-  const hr=_evlEl('tr'); T.appendChild(hr); hr.appendChild(_evlEl('th','text-align:left;padding:6px;border:1px solid #C9CDD3;width:40%;background:var(--sur2)','Compétence'));
-  N.forEach((nl, i)=>{ const c2=EVL_NIV_COUL[i]||EVL_NIV_COUL[0]; const x=_evlEl('th','padding:6px 2px;border:1px solid #C9CDD3;font-size:12px;background:var(--sur2);color:'+c2[0], nl); hr.appendChild(x); });
-  const lignes=crit.map(c=>{ const tr=_evlEl('tr'); tr.dataset.crit=c.id; T.appendChild(tr); const t0=_evlEl('td','padding:6px;border:1px solid #C9CDD3'); tr.appendChild(t0);
-    t0.appendChild(_evlEl('div','font-weight:800', c.l)); if(c.compId) t0.appendChild(_evlEl('div','font-size:11.5px;font-weight:800;color:#0F766E', c.compId));
-    const cells=N.map(()=>{ const x=_evlEl('td','text-align:center;border:1px solid #C9CDD3;font-size:22px;font-weight:900;height:40px'); tr.appendChild(x); return x; }); return {c, cells, t0}; });
-  const majCalc=()=>{ const R=_evlResultat(ev, g, u, ''), pq=R.pq||{total:0, max:0, saisies:0};
-    tot.textContent='';
-    tot.appendChild(_evlEl('span','font-size:24px;font-weight:900', 'Total : '+_evlFmt(Math.round(10*pq.total)/10)+' / '+_evlFmt(pq.max)+(pq.complet ? '' : '  ('+pq.saisies+' / '+Q.length+')')));
-    if(ev.mode!=='crit') tot.appendChild(_evlEl('span','font-size:18px;font-weight:800;padding:4px 10px;border-radius:8px;background:#111418;color:#fff', 'Note : '+_evlFmt(R.note)+' / '+_evlFmt(ev.bareme)+(R.noteForcee ? ' (forcée)' : '')));
-    lignes.forEach(L=>{ const v=R.niv[L.c.id], calc=pq.niv ? pq.niv[L.c.id] : null, aj=r.niv && r.niv[L.c.id]!=null && calc!=null && r.niv[L.c.id]!==calc;
-      L.cells.forEach((x, i)=>{ const on=v===i, c2=EVL_NIV_COUL[i]||EVL_NIV_COUL[0]; x.textContent=on ? '✓' : ''; x.style.background=on ? c2[0] : ''; x.style.color=on ? c2[1] : ''; });
-      L.t0.title=aj ? 'Ajusté à la main (calculé : '+N[calc]+')' : ''; L.t0.style.outline=aj ? '3px dashed #B45309' : ''; });
-    sousQ.forEach(S2=>{ const m=S2.Qs.reduce((a,q)=>a+(Number(q.max)||0),0), V=S2.Qs.map(q=>r.pts[q.id]).filter(v=>v!=null && v!=='');   // V11.5.104 — sous-total
-      S2.st.textContent=(V.length ? _evlFmt(Math.round(10*V.reduce((a,v)=>a+Number(v),0))/10) : '—')+' / '+_evlFmt(Math.round(10*m)/10); }); };
-  const inputs=[], sousQ=[];
-  // V11.5.104 — sous-questions (Q3a, Q3b… ou Q3.1, Q3.2…) : encadrées ensemble sous « Q3 », avec leur sous-total
-  const parQ={}; _evlGroupesSousQ(Q.map(q=>String(q.l||'').split(' · ')[0].trim())).forEach(gr=>{ if(gr.base==null) return;
-    const bx=_evlEl('div','grid-column:span '+gr.idx.length+';border:3px solid #1D4ED8;border-radius:12px;padding:4px 8px 8px;background:#EFF6FF'); bx.className='evl-rapide-sousq'; bx.dataset.q=gr.base;
-    const h=_evlEl('div','display:flex;justify-content:space-between;gap:8px;font-size:13px;font-weight:900;color:#1E3A8A;margin-bottom:4px'); bx.appendChild(h);
-    h.appendChild(_evlEl('span','', gr.base)); const st=_evlEl('span','', ''); h.appendChild(st);
-    const sg=_evlEl('div','display:grid;grid-template-columns:repeat('+gr.idx.length+',minmax(64px,1fr));gap:8px'); bx.appendChild(sg);
-    sousQ.push({Qs:gr.idx.map(i=>Q[i]), st}); gr.idx.forEach((i, k)=>{ parQ[i]={bx, sg, premier:k===0}; }); });
-  Q.forEach((q, qi)=>{ const cell=_evlEl('label','display:flex;flex-direction:column;align-items:center;gap:4px'); const P=parQ[qi]; if(P){ if(P.premier) grid.appendChild(P.bx); P.sg.appendChild(cell); } else grid.appendChild(cell);
-    const k=(g.questions||[]).indexOf(q), court=String(q.l||'').split(' · ')[0].trim(); cell.appendChild(_evlEl('b','font-size:14px', court && court.length<=6 ? court : 'Q'+(k+1))); if(q.l) cell.title=q.l;
-    const i=_evlEl('input','width:100%;height:54px;box-sizing:border-box;text-align:center;font:inherit;font-size:22px;font-weight:800;border:2px solid #111418;border-radius:10px;background:#fff;color:#111418'); i.inputMode='decimal'; i.autocomplete='off'; i.dataset.q=q.id; i.disabled=!!R0.code;
-    i.value=r.pts[q.id]==null ? '' : String(r.pts[q.id]).replace('.',','); cell.appendChild(i);
-    const sm=_evlEl('small','font-size:12px;font-weight:700;color:var(--tx2)', 'sur '+_evlFmt(q.max)); cell.appendChild(sm);
-    const ecrire=()=>{ const s=String(i.value).trim().replace(',','.'); let bad=false;
-      if(s==='') delete r.pts[q.id]; else if(isNaN(Number(s)) || Number(s)<0 || Number(s)>(Number(q.max)||0)) bad=true; else r.pts[q.id]=Number(s);
-      i.style.borderColor=bad ? '#DC2626' : '#111418'; i.style.background=bad ? '#FEF2F2' : '#fff'; sm.textContent=bad ? 'entre 0 et '+_evlFmt(q.max) : 'sur '+_evlFmt(q.max); sm.style.color=bad ? '#DC2626' : '';
-      if(!bad){ delete r.code; _evlSauver(ev); } majCalc(); };
-    i.oninput=ecrire; i.onfocus=()=>{ try{ i.select(); }catch(e){} };
-    i.onkeydown=(e)=>{ if(e.key==='Enter' || e.key==='ArrowRight' || (e.key==='Tab' && !e.shiftKey)){ e.preventDefault(); e.stopPropagation(); const nx=inputs[qi+1]; if(nx){ nx.focus(); } else if(e.key==='Enter') aller(1); }
-      else if(e.key==='ArrowLeft' || (e.key==='Tab' && e.shiftKey)){ e.preventDefault(); e.stopPropagation(); const pv=inputs[qi-1]; if(pv) pv.focus(); }
-      else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); _evlSauver(ev); _evl.rapide=null; _evlRendre(); } };
-    inputs.push(i); });
-  if(!Q.length) g1.appendChild(_evlEl('div','color:var(--tx2);font-weight:700','Aucune question posée à cet élève.'));
-  const pied=_evlEl('div','display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 18px 16px;border-top:2px solid #111418'); box.appendChild(pied);
-  if(i0>0) pied.appendChild(_evlBtn('◀ '+(getFullName(U[i0-1])||''),'border:2px solid #111418', ()=>aller(-1)));
-  pied.appendChild(_evlEl('span','flex:1'));
-  pied.appendChild(_evlBtn(i0<U.length-1 ? (getFullName(U[i0+1])||'')+' ▶ (Entrée)' : 'Terminer ✓','background:#111418;border-color:#111418;color:#fff', ()=>aller(1)));
-  majCalc();
-  setTimeout(()=>{ const f=inputs.find(x=>x.value==='')||inputs[0]; if(f && !document.activeElement.closest('#evl-rapide')){ f.focus(); try{ f.select(); }catch(e){} } }, 0);
+/** V11.5.105 — Flèches ↑ ↓ dans la grille des points : la case de la ligne voisine la plus proche en largeur (DOM). */
+function _evlCaseVerticale(inp, bas){
+  const L=[...document.querySelectorAll('#evl-pts input')], a=inp.getBoundingClientRect(), ax=a.left+a.width/2; let best=null, cle=null;
+  L.forEach(x=>{ if(x===inp) return; const b=x.getBoundingClientRect(), dy=bas ? b.top-a.top : a.top-b.top; if(dy<=5) return;
+    const c=[Math.round(dy), Math.abs(b.left+b.width/2-ax)]; if(!cle || c[0]<cle[0]-5 || (Math.abs(c[0]-cle[0])<=5 && c[1]<cle[1])){ cle=c; best=x; } });
+  return best ? Number(best.dataset.q) : null;
 }
-
 /** V11.5.104 — Sous-questions consécutives d'une même question : « Q3a, Q3b » ou « Q3.1, Q3-2 » → base « Q3 ».
  *  Rend [{base|null, idx:[…]}] dans l'ordre ; base null = question seule. Pure. */
 function _evlGroupesSousQ(L){
@@ -63500,7 +63451,10 @@ function _evlNoteQuestions(CQ, bareme){ return (CQ && CQ.complet && CQ.max) ? Ma
 function _evlBaremeQuestions(ev, g){
   if(!_evlParQuestion(ev, g)) return false;
   const s=Math.round(10*(g.questions||[]).reduce((a,q)=>a+(Number(q.max)||0),0))/10;
-  if(!(s>0) || Number(ev.bareme)===s) return false; ev.bareme=s; return true;
+  if(!(s>0) || Number(ev.bareme)===s) return false;
+  // V11.5.105 — des notes écrites à la main l'ont été sur l'ancien barème : on n'y touche pas
+  if(Object.values(ev.res||{}).some(r=>r && r.note!=null && r.note!=='')) return false;
+  if(ev.baremeAvant==null) ev.baremeAvant=ev.bareme; ev.bareme=s; return true;
 }
 function _evlParQuestion(ev, g){ return !!(ev && ev.parQuestion && ev.mode!=='note' && g && (g.questions||[]).length); }
 /** Vue de saisie : la préférence si elle est possible, sinon note seule → colonnes, par question → un élève, sinon tableau. Pure. */
@@ -63555,7 +63509,6 @@ function _evlRendreSaisie(corps){
   const g=_evlGrille(ev.grilleId), C=_evlCible(ev), crit=(ev.mode!=='note' && g) ? (g.criteres||[]) : [], N=(g && g.niveaux)||EVL_NIV_DEFAUT;
   ev.res=ev.res||{}; ev.resG=ev.resG||{};
   if(_evlBaremeQuestions(ev, g)) _evlSauver(ev);   // V11.5.103 — barème = somme des points
-  if(_evl.rapide && _evl.rapide.ev===ev.id) return _evlRendreRapide(corps, ev, g, C);   // V11.5.103 — saisie rapide d'une copie
   const hd=_evlEl('div','display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px'); corps.appendChild(hd);
   hd.appendChild(_evlBtn('‹ Fiche','', ()=>{ _evl.saisie=false; _evlRendre(); }));
   hd.appendChild(_evlEl('b','font-size:16px', _evlType(ev.type).ic+' '+ev.titre));
@@ -63610,7 +63563,6 @@ function _evlRendreSaisie(corps){
     const n=td('font-weight:700;'+(gid?'padding-left:20px':'')+(ri===cur.r?';font-size:15px;font-weight:800':'')+(etat==='note' && ri!==cur.r?';opacity:.5':'')); n.textContent=(ri===cur.r?'▶ ':'')+(etat==='note'?'✓ ':'')+(getFullName(u)||u); if(R.ajuste){ n.appendChild(_evlEl('span','font-size:10.5px;color:#B45309;font-weight:600',' · ajusté')); }
     { const eb=_evlEbepEleve(u, ev.cls); if(eb){ const x=_evlEl('span','margin-left:7px;font-size:10px;font-weight:600;color:#166534;background:#DCFCE7;border-radius:4px;padding:1px 5px;vertical-align:1px', eb); x.className='evl-ebep'; x.title='Besoins particuliers (fiche EBEP)'; n.appendChild(x); } }   // V11.5.63
     n.appendChild(_evlBtnCom(ev, u, ()=>{ _evl.clavier=true; _evlRendre(); }));   // V11.5.67
-    if(_evlParQuestion(ev, g)) n.appendChild(_evlBtnRapide(ev, u));   // V11.5.103
     tr.appendChild(n);
     const Gn=gid ? (((ev.resG[gid])||{}).niv||{}) : {};
     crit.forEach((c, ci)=>{ const z=td(); tr.appendChild(z); marquer(z, ri, ci);
@@ -63827,35 +63779,60 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
   { const eb=_evlEbepEleve(u, ev.cls); if(eb){ const x=_evlEl('span','font-size:12.5px;font-weight:800;color:#fff;background:#15803D;padding:3px 8px;border-radius:5px', eb); x.className='evl-ebep'; hd.appendChild(x); } }
   if(gid){ const G=C.groupes.find(x=>x.id===gid); hd.appendChild(_evlEl('span','font-size:13px;font-weight:800', '👥 '+((G&&G.nom)||''))); }
   { const mq=_evlMarqueAdapte(ev, g, u, R); if(mq){ mq.style.fontSize='12.5px'; mq.style.padding='3px 8px'; hd.appendChild(mq); } }
-  hd.appendChild(_evlEl('span','flex:1')); if(PQ) hd.appendChild(_evlBtnRapide(ev, u, true)); hd.appendChild(_evlEl('b','font-size:14px', (cur.r+1)+' sur '+n));   // V11.5.103
+  hd.appendChild(_evlEl('span','flex:1')); hd.appendChild(_evlEl('b','font-size:14px', (cur.r+1)+' sur '+n));   // V11.5.103
   const corpsE=_evlEl('div','padding:6px 20px 4px'); main.appendChild(corpsE);
   if(R.code){ corpsE.appendChild(_evlEl('div','margin:14px 0;padding:14px;border-radius:10px;background:'+(R.code==='Abs'?'#B91C1C':'#4B5563')+';color:#fff;font-size:17px;font-weight:800', ({Abs:'Absent : à rattraper', Disp:'Dispensé', NR:'Non rendu'})[R.code]||R.code)); }
   else {
-    if(PQ){ const zq=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;margin:10px 0'); zq.id='evl-pts'; corpsE.appendChild(zq);
+    // V11.5.105 — tout sous les yeux : points (gauche) et compétences en tableau compact (droite)
+    const cols=_evlEl('div','display:grid;grid-template-columns:'+(PQ && crit.length ? 'minmax(0,1.4fr) minmax(330px,1fr)' : 'minmax(0,1fr)')+';gap:18px;align-items:start;margin:10px 0'); cols.id='evl-eleve-cols'; corpsE.appendChild(cols);
+    if(PQ){ const gauche=_evlEl('div','min-width:0'); cols.appendChild(gauche);
+      const zq=_evlEl('div','display:flex;flex-wrap:wrap;gap:8px'); zq.id='evl-pts'; gauche.appendChild(zq);
       r.pts=r.pts||{};
-      Q.forEach((q, qi)=>{ const c=_evlEl('label','display:flex;align-items:center;gap:8px;padding:8px 10px;border:2px solid '+(qi===cur.c?'#111418':'#C9CDD3')+';border-radius:10px;font-weight:700;background:'+(qi===cur.c?'#FFFFFF':'var(--sur)')); zq.appendChild(c);
-        const t=_evlEl('div','flex:1;min-width:0'); t.appendChild(_evlEl('div','font-weight:800', 'Q'+(g.questions.indexOf(q)+1)+(q.l?' · '+q.l:''))); t.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis', (q.crit||[]).map(id=>(crit.find(x=>x.id===id)||{}).l||'').filter(Boolean).join(', '))); c.appendChild(t);
-        const i=_evlEl('input','width:62px;font:inherit;font-size:18px;font-weight:800;text-align:right;padding:4px 6px;border:2px solid #111418;border-radius:8px;background:#fff;color:#111418'); i.inputMode='decimal'; i.dataset.q=qi;
+      const hote={}, sousQ=[];
+      _evlGroupesSousQ(Q.map(q=>String(q.l||'').split(' · ')[0].trim())).forEach(gr=>{ if(gr.base==null) return;   // V11.5.105 — sous-questions rassemblées
+        const bx=_evlEl('div','flex:'+gr.idx.length+' 1 '+(gr.idx.length*185+16)+'px;min-width:0;box-sizing:border-box;border:3px solid #1D4ED8;border-radius:12px;padding:3px 6px 6px;background:#EFF6FF'); bx.className='evl-sousq'; bx.dataset.q=gr.base;
+        const h=_evlEl('div','display:flex;justify-content:space-between;gap:8px;font-size:13px;font-weight:900;color:#1E3A8A;margin:0 4px 3px'); bx.appendChild(h);
+        h.appendChild(_evlEl('span','', gr.base)); const st=_evlEl('span','', ''); h.appendChild(st);
+        const sg=_evlEl('div','display:flex;gap:6px'); bx.appendChild(sg);
+        sousQ.push({Qs:gr.idx.map(k=>Q[k]), st}); gr.idx.forEach((k, m)=>{ hote[k]={bx, sg, premier:m===0}; }); });
+      const nomQ=(q)=>{ const k=g.questions.indexOf(q), court=String(q.l||'').split(' · ')[0].trim(); return /^Q?\d+[a-z]?(?:[.\-]\d+)?\)?$/i.test(court) ? q.l : 'Q'+(k+1)+(q.l ? ' · '+q.l : ''); };
+      Q.forEach((q, qi)=>{ const H=hote[qi], c=_evlEl('label','flex:1 1 175px;min-width:0;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:7px 9px;border:2px solid '+(qi===cur.c?'#111418':'#C9CDD3')+';border-radius:10px;font-weight:700;background:'+(qi===cur.c?'#FFFFFF':'var(--sur)'));
+        if(H){ if(H.premier) zq.appendChild(H.bx); H.sg.appendChild(c); } else zq.appendChild(c);
+        const t=_evlEl('div','flex:1;min-width:0'); t.appendChild(_evlEl('div','font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis', nomQ(q))); t.title=nomQ(q); t.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis', (q.crit||[]).map(id=>(crit.find(x=>x.id===id)||{}).l||'').filter(Boolean).join(', '))); c.appendChild(t);
+        const i=_evlEl('input','width:58px;flex-shrink:0;font:inherit;font-size:18px;font-weight:800;text-align:right;padding:4px 6px;border:2px solid #111418;border-radius:8px;background:#fff;color:#111418'); i.inputMode='decimal'; i.dataset.q=qi;
         i.value=r.pts[q.id]==null ? '' : String(r.pts[q.id]).replace('.',',');
         const ecrire=()=>{ const v=String(i.value).trim().replace(',','.'); if(v==='') delete r.pts[q.id]; else if(!isNaN(Number(v))) r.pts[q.id]=Math.max(0, Math.min(Number(q.max)||0, Number(v))); };
         i.onfocus=()=>{ cur.c=qi; try{ i.select(); }catch(e){} };
         i.onchange=()=>{ ecrire(); refaire(qi); };
         i.onkeydown=(e)=>{ if(/^[adnADN]$/.test(e.key) && !i.value && !Object.keys(r.pts).length){ e.preventDefault(); i.onchange=null; r.code={a:'Abs',d:'Disp',n:'NR'}[e.key.toLowerCase()]; suivant(1); return; }
-          if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); i.onchange=null; ecrire(); if(e.shiftKey){ cur.c=Math.max(0, qi-1); refaire(cur.c); return; } if(qi<Q.length-1){ cur.c=qi+1; refaire(qi+1); } else suivant(1); } };
-        c.appendChild(i); c.appendChild(_evlEl('span','font-weight:800', '/ '+_evlFmt(q.max))); });
-      const tot=_evlEl('div','display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:6px 0 10px;font-size:16px;font-weight:800'); tot.id='evl-total'; corpsE.appendChild(tot);
+          const aller=(k)=>{ e.preventDefault(); e.stopPropagation(); i.onchange=null; ecrire(); cur.c=k; refaire(k); };
+          if(e.key==='Enter' || e.key==='Tab'){ if(e.shiftKey){ aller(Math.max(0, qi-1)); return; } if(qi<Q.length-1) aller(qi+1); else { e.preventDefault(); e.stopPropagation(); i.onchange=null; ecrire(); suivant(1); } return; }
+          if(e.key==='ArrowRight'){ if(qi<Q.length-1) aller(qi+1); else e.preventDefault(); return; }   // V11.5.105 — flèches
+          if(e.key==='ArrowLeft'){ if(qi>0) aller(qi-1); else e.preventDefault(); return; }
+          if(e.key==='ArrowDown' || e.key==='ArrowUp'){ const k=_evlCaseVerticale(i, e.key==='ArrowDown'); if(k!=null) aller(k); else e.preventDefault(); } };
+        c.appendChild(i); c.appendChild(_evlEl('span','font-weight:800;white-space:nowrap', '/ '+_evlFmt(q.max))); });
+      sousQ.forEach(S2=>{ const m=S2.Qs.reduce((a,q)=>a+(Number(q.max)||0),0), V=S2.Qs.map(q=>r.pts[q.id]).filter(v=>v!=null && v!=='');
+        S2.st.textContent=(V.length ? _evlFmt(Math.round(10*V.reduce((a,v)=>a+Number(v),0))/10) : '—')+' / '+_evlFmt(Math.round(10*m)/10); });
+      const tot=_evlEl('div','display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:10px 0 0;font-size:16px;font-weight:800'); tot.id='evl-total'; gauche.appendChild(tot);
       tot.appendChild(_evlEl('span','', 'Total : '+_evlFmt(R.pq.total)+' / '+_evlFmt(R.pq.max)+(R.pq.complet ? '' : ' ('+R.pq.saisies+' / '+Q.length+' questions)')));
-      if(ev.mode==='both') tot.appendChild(_evlEl('span','padding:4px 10px;border-radius:8px;background:#111418;color:#fff', 'Note : '+_evlFmt(R.note)+' / '+ev.bareme+(R.noteForcee?' (forcée)':''))); }
-    const zc=_evlEl('div'); zc.id='evl-criteres'; corpsE.appendChild(zc);
-    if(PQ && crit.length) zc.appendChild(_evlEl('div','font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin:8px 0 2px', 'Niveaux (calculés depuis les points ; un clic pour ajuster)'));
-    const co=['#DC2626','#EA580C','#15803D','#1D4ED8','#7C3AED','#0F766E'], fo=['#B91C1C','#C2410C','#15803D','#1D4ED8','#6D28D9','#0F766E'];
-    crit.forEach((c, ci)=>{ const sel=!PQ && ci===cur.c, calc=PQ ? R.pq.niv[c.id] : null, v=R.niv[c.id], aj=PQ && r.niv && r.niv[c.id]!=null && calc!=null && r.niv[c.id]!==calc;
-      const ln=_evlEl('div','display:grid;grid-template-columns:minmax(170px,1fr) auto;gap:12px;align-items:center;padding:10px 8px;border-bottom:1px solid #C9CDD3;border-radius:8px;'+(sel?'outline:4px solid #111418;outline-offset:-4px;background:#FFFFFF':'')); ln.className='evl-crit'+(sel?' sel':''); zc.appendChild(ln);
-      const t=_evlEl('div'); t.appendChild(_evlEl('div','font-size:17px;font-weight:800', c.l+((c.poids||1)>1?' ×'+c.poids:'')+(aj?' · ajusté':''))); if(c.compId) t.appendChild(_evlEl('div','font-size:12px;font-weight:800;color:#0F766E', '🎯 '+c.compId)); if(v!=null && (c.ind||[])[v]) t.appendChild(_evlEl('div','font-size:13px;color:var(--tx2)', v+' : '+c.ind[v])); ln.appendChild(t);
-      const bt=_evlEl('div','display:flex;flex-wrap:wrap;gap:6px'); ln.appendChild(bt);
-      N.forEach((nl, i)=>{ const on=v===i; const b=_evlEl('button','font:inherit;font-size:14px;font-weight:800;min-width:104px;height:48px;border-radius:10px;cursor:pointer;border:2px solid '+co[i%co.length]+';background:'+(on?co[i%co.length]:'var(--sur)')+';color:'+(on?'#fff':fo[i%fo.length]), i+' '+nl); b.type='button'; b.title=(c.ind||[])[i]||nl;
-        b.onclick=()=>{ cur.c=ci; r.niv=r.niv||{}; if(PQ && calc===i) delete r.niv[c.id]; else if(r.niv[c.id]===i && !PQ) delete r.niv[c.id]; else r.niv[c.id]=i; delete r.code; refaire(); }; bt.appendChild(b); });
-      if(aj){ const re=_evlBtn('↺ calculé : '+calc,'', ()=>{ delete r.niv[c.id]; refaire(); }, 'Revenir au niveau calculé depuis les points'); bt.appendChild(re); } }); }
+      if(ev.mode==='both') tot.appendChild(_evlEl('span','padding:4px 10px;border-radius:8px;background:#111418;color:#fff', 'Note : '+_evlFmt(R.note)+' / '+_evlFmt(ev.bareme)+(R.noteForcee?' (forcée)':''))); }
+    if(crit.length){ const droite=_evlEl('div','min-width:0'); cols.appendChild(droite);
+      const zc=_evlEl('div'); zc.id='evl-criteres'; droite.appendChild(zc);
+      zc.appendChild(_evlEl('div','font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;margin:0 0 4px', PQ ? 'Compétences · calculées ; clic : ajuster, 2e clic : retirer' : 'Niveaux · clic, 2e clic : retirer ; touches 0–'+(N.length-1)));
+      const T=_evlEl('table','width:100%;border-collapse:collapse;table-layout:fixed;font-size:13.5px'); T.id='evl-crit-table'; zc.appendChild(T);
+      const hr=_evlEl('tr'); T.appendChild(hr); hr.appendChild(_evlEl('th','text-align:left;padding:4px 6px;border:1px solid #C9CDD3;background:var(--sur2);width:42%;font-size:12px','Compétence'));
+      N.forEach((nl, k)=>{ const C2=EVL_NIV_COUL[k]||EVL_NIV_COUL[0]; hr.appendChild(_evlEl('th','padding:4px 2px;border:1px solid #C9CDD3;background:var(--sur2);font-size:11px;line-height:1.15;color:'+C2[0], nl)); });
+      const Gn=gid ? ((((ev.resG||{})[gid])||{}).niv||{}) : {};
+      crit.forEach((c, ci)=>{ const sel=!PQ && ci===cur.c, calc=PQ ? R.pq.niv[c.id] : null, v=R.niv[c.id], aj=PQ && r.niv && r.niv[c.id]!=null && calc!=null && r.niv[c.id]!==calc;
+        const tr=_evlEl('tr', sel ? 'outline:3px solid #111418;outline-offset:-3px' : ''); tr.className='evl-crit'+(sel?' sel':''); tr.dataset.crit=c.id; T.appendChild(tr);
+        const t0=_evlEl('td','padding:4px 6px;border:1px solid #C9CDD3'+(aj ? ';background:#FFFBEB' : '')); tr.appendChild(t0);
+        t0.appendChild(_evlEl('div','font-weight:800;line-height:1.2', c.l+((c.poids||1)>1?' ×'+c.poids:'')));
+        const sub=_evlEl('div','display:flex;gap:6px;align-items:center;font-size:11px;font-weight:800;color:#0F766E'); t0.appendChild(sub); if(c.compId) sub.appendChild(_evlEl('span','', c.compId));
+        if(aj){ sub.appendChild(_evlEl('span','color:#B45309', 'ajusté')); const re=_evlBtn('↺','padding:0 6px;min-height:20px;font-size:11px', ()=>{ delete r.niv[c.id]; refaire(); }, 'Revenir au niveau calculé ('+(calc!=null ? N[calc] : '')+')'); sub.appendChild(re); }
+        if(v!=null && (c.ind||[])[v]) t0.title=v+' : '+c.ind[v];
+        N.forEach((nl, k)=>{ const on=v===k, C2=EVL_NIV_COUL[k]||EVL_NIV_COUL[0], x=_evlEl('td','text-align:center;border:1px solid #C9CDD3;height:32px;cursor:pointer;font-size:18px;font-weight:900;'+(on ? 'background:'+C2[0]+';color:'+C2[1] : ''), on ? '✓' : '');
+          x.className='evl-niv-case'; x.dataset.n=k; x.title=nl+((c.ind||[])[k] ? ' : '+c.ind[k] : '')+(on ? ' (2e clic : retirer)' : '');
+          x.onclick=()=>{ cur.c=ci; _evlBasculerNiv(r, c.id, k, v, calc!=null ? calc : Gn[c.id]); delete r.code; refaire(); }; tr.appendChild(x); }); }); } }
   { const zc=_evlEl('label','display:block;margin:10px 0 12px;font-weight:800;font-size:13px'); zc.id='evl-com-eleve'; zc.appendChild(document.createTextNode('💬 Commentaire'));   // V11.5.67
     const ta=_evlEl('textarea','display:block;width:100%;box-sizing:border-box;min-height:54px;margin-top:4px;font:inherit;font-size:14px;font-weight:400;padding:8px;border:2px solid #8A9099;border-radius:8px;background:var(--sur);color:var(--tx);resize:vertical'); ta.value=_evlCom(ev, u); ta.placeholder='Pour cet élève (journal et carnet)';
     ta.onchange=()=>{ _evlComEcrire(ev, u, ta.value); _evlSauver(ev); }; ta.addEventListener('keydown', e=>{ e.stopPropagation(); if(e.key==='Escape'){ ta.blur(); } }); zc.appendChild(ta); corpsE.appendChild(zc);
