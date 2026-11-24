@@ -310,6 +310,11 @@ button,input{font-family:'DM Sans',sans-serif}
 .htile-demo:hover{background:#B91C1C;border-color:#7F1D1D}
 .htile-demo .htile-t{color:#fff}
 .htile-demo .htile-s{color:rgba(255,255,255,.85)}
+/* V11.5.106 — tuile Évaluations en jaune (#FACC15 à 60 % sur blanc) */
+#menu #evl-tile.htile,#evl-tile.htile{background:#FCE073;border-color:#E0B10F}   /* #menu : passe devant les thèmes saisonniers */
+#menu #evl-tile.htile:hover,#evl-tile.htile:hover{background:#FAD54A;border-color:#CA9A06}
+#evl-tile .htile-t{color:#3F3000}
+#evl-tile .htile-s{color:#5C4A00}
 
 /* S28 patch 13 — Mode Prof */
 .mode-toggle-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:14px;border:1.5px solid var(--brd);background:var(--sur2);font-size:11px;font-weight:600;color:var(--tx2);cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap}
@@ -4881,7 +4886,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.105';
+const APP_VERSION = 'v11.5.107';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -49022,6 +49027,32 @@ function _s2Synchro(src, from, to){
   const fait=new Set(); cand.forEach(([,r,j])=>{ if(fait.has(r) || out[j]) return; out[j]=reste[r][0]; fait.add(r); });
   return out;
 }
+/** V11.5.106 — Îlots 7 ↔ îlots 8 (demande du 24/11) : chaque équipe garde son îlot et ses places ; les volantes des
+ *  îlots 7 deviennent les 2 premières places de l'îlot 8 (et inversement) ; qui reste va à la place libre la plus proche. Pure. */
+function _s2Ilots78(src, from, to){
+  src=Array.isArray(src) ? src : []; const Gs=S2_GEO[from], Gt=S2_GEO[to], N=S2_N[to]||N_SEATS, out=Array(N).fill(null);
+  if(!Gs || !Gt || !Gs.ilots || !Gt.ilots) return out;
+  const vus=new Set(), reste=[], prendre=(i)=>{ const u=src[i]; if(!u || vus.has(u)) return null; vus.add(u); return u; };
+  const e8s=Gs.ilots.find(x=>x.eq==='EQ8'), e8t=Gt.ilots.find(x=>x.eq==='EQ8'), Vs=Gs.volantes||[], Vt=Gt.volantes||[];
+  Gs.ilots.forEach(il=>{ const d=Gt.ilots.find(x=>x.eq===il.eq);
+    il.idx.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(d) out[d.idx[k]]=u; else if(il===e8s && k<Vt.length) out[Vt[k]]=u; else reste.push([u,i]); }); });
+  Vs.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(e8t && !out[e8t.idx[k]]) out[e8t.idx[k]]=u; else reste.push([u,i]); });
+  const gs=_s2Grille(from), gt=_s2Grille(to), Rs=_s2RangMax(from), Rt=_s2RangMax(to), V=new Set(Vt), pos=(g, R, i)=>g[i] ? [g[i][0]/R, g[i][1]/5] : null, cand=[];
+  reste.forEach(([u,i],r)=>{ const a=pos(gs, Rs, i); for(let j=0;j<N;j++){ if(out[j]) continue; const b=pos(gt, Rt, j); cand.push([(a && b ? Math.hypot(a[0]-b[0], a[1]-b[1]) : 9)+(V.has(j) ? 10 : 0), r, j]); } });
+  cand.sort((a,b)=>a[0]-b[0] || a[1]-b[1] || a[2]-b[2]);
+  const fait=new Set(); cand.forEach(([,r,j])=>{ if(fait.has(r) || out[j]) return; out[j]=reste[r][0]; fait.add(r); });
+  return out;
+}
+function _s2Reprendre78(){
+  if(!_s2EstIlots(layout)) return;
+  if(typeof _tempBlock==='function' && _tempBlock('la reprise îlots 7 / 8')) return;
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>_s2Reprendre78())) return;
+  const h=_s2PorteurCourant(); if(!h) return; const to=layout, from=to==='ilots8' ? 'ilots7' : 'ilots8', src=_s2Seats(h, from);
+  if(!src.some(Boolean)){ try{ showDropToast('ℹ️ Le plan '+_s2Libelle(from)+' est vide'); }catch(e){} return; }
+  const go=()=>{ _s2Ecrire(h, to, _s2Ilots78(src, from, to)); saveS(); renderApp(); try{ showDropToast('⇄ '+_s2Libelle(from)+' repris en '+_s2Libelle(to)); }catch(e){} };
+  if(_s2Seats(h, to).some(Boolean)) showModal('Reprendre le plan '+_s2Libelle(from)+' ?', 'Les places actuelles de la vue '+_s2Libelle(to)+' seront remplacées par celles du plan '+_s2Libelle(from)+' (qui reste intact). Chaque équipe garde son îlot ; '+(to==='ilots8' ? 'les places volantes forment le début de l’îlot 8.' : 'l’îlot 8 passe sur les places volantes.'), go);
+  else go();
+}
 /** Porteur des places de la nouvelle salle pour le plan affiché (groupe inter-classes, demi-groupe, classe). */
 function _s2PorteurCourant(){
   if(typeof curGrpInter!=='undefined' && curGrpInter && S.groupes && S.groupes[curGrpInter]) return S.groupes[curGrpInter];
@@ -49094,6 +49125,10 @@ function renderSalle2(area){
       const on=(_s2NbIlots(cls)===n);
       b.style.cssText='padding:3px 10px;border-radius:6px;font:inherit;font-weight:800;cursor:pointer;border:1.5px solid #111418;'+(on ? 'background:#111418;color:#fff' : 'background:#fff;color:#111418');
       b.textContent=n+' îlots'; b.onclick=()=>_s2ChoisirNbIlots(n); bar.appendChild(b); });
+    { const autre=lay==='ilots8' ? 7 : 8, b=document.createElement('button'); b.type='button'; b.id='s2-reprendre78';   // V11.5.106
+      b.style.cssText='margin-left:6px;padding:3px 10px;border-radius:6px;font:inherit;font-weight:700;cursor:pointer;border:1.5px solid #1D4ED8;background:var(--sur);color:#1D4ED8';
+      b.textContent='⇄ Reprendre les '+autre+' îlots'; b.title='Copie ici le plan à '+autre+' îlots (chaque équipe garde son îlot ; le plan à '+autre+' îlots reste intact)';
+      b.onclick=()=>_s2Reprendre78(); bar.appendChild(b); }
   }
   { const rb=document.createElement('button'); rb.type='button'; rb.id='s2-reprendre';   // V11.5.95
     rb.style.cssText='margin-left:'+(_s2EstIlots(lay) ? '12px' : '0')+';padding:3px 10px;border-radius:6px;font:inherit;font-weight:700;cursor:pointer;border:1.5px solid var(--brd2);background:var(--sur);color:var(--tx)';
@@ -62657,15 +62692,15 @@ function _evlBlocAdapte(ev, g, u, apres){
   if(ev.mode!=='crit'){ const lb=_evlEl('label','display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;flex-wrap:wrap'); z.appendChild(lb);
     lb.appendChild(document.createTextNode('Note saisie sur'));
     const i=_evlEl('input','width:64px;font:inherit;font-weight:800;padding:3px 6px;border:2px solid #7C3AED;border-radius:7px;background:var(--sur);color:var(--tx)'); i.inputMode='decimal'; i.className='evl-bar';
-    i.value=r.bar ? String(r.bar).replace('.',',') : ''; i.placeholder=String(ev.bareme||20); lb.appendChild(i);
-    lb.appendChild(_evlEl('span','font-weight:600;color:var(--tx2)','au lieu de '+(ev.bareme||20)+' ; ramenée sur '+(ev.bareme||20)+' dans le carnet'));
+    i.value=r.bar ? String(r.bar).replace('.',',') : ''; i.placeholder=_evlFmt(ev.bareme||20); lb.appendChild(i);   // V11.5.105 — virgule
+    lb.appendChild(_evlEl('span','font-weight:600;color:var(--tx2)','au lieu de '+_evlFmt(ev.bareme||20)+' ; ramenée sur '+_evlFmt(ev.bareme||20)+' dans le carnet'));
     i.addEventListener('keydown', e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); i.blur(); } });
     i.onchange=()=>{ _evlAdaptEcrire(ev, u, i.value); maj(); }; }
   if(PQ){ const qz=_evlEl('div','display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:6px'); qz.className='evl-q-posees'; z.appendChild(qz);
     qz.appendChild(_evlEl('span','font-size:13px;font-weight:700','Questions posées :'));
     const off=r.qOff||[];
     (g.questions||[]).forEach((q, qi)=>{ const on=off.indexOf(q.id)<0;
-      const b=_evlEl('button','font:inherit;font-size:12.5px;font-weight:800;padding:3px 8px;border-radius:7px;cursor:pointer;border:2px solid #7C3AED;background:'+(on?'#7C3AED':'transparent')+';color:'+(on?'#fff':'#6D28D9')+';'+(on?'':'text-decoration:line-through'), 'Q'+(qi+1)+' /'+_evlFmt(q.max));
+      const b=_evlEl('button','font:inherit;font-size:12.5px;font-weight:800;padding:3px 8px;border-radius:7px;cursor:pointer;border:2px solid #7C3AED;background:'+(on?'#7C3AED':'transparent')+';color:'+(on?'#fff':'#6D28D9')+';'+(on?'':'text-decoration:line-through'), (/^Q?\d+[a-z]?(?:[.\-]\d+)?\)?$/i.test(String(q.l||'').split(' · ')[0].trim()) ? String(q.l).split(' · ')[0].trim() : 'Q'+(qi+1))+' /'+_evlFmt(q.max));   // V11.5.105 — nom de la question (Q3a…)
       b.type='button'; b.setAttribute('aria-pressed', on?'true':'false'); b.title=on ? 'Posée : clic pour la retirer' : 'Non posée : clic pour la remettre';
       b.onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); const O=((ev.res[u]||{}).qOff||[]).slice(), k=O.indexOf(q.id); if(k>=0) O.splice(k,1); else O.push(q.id); _evlAdaptEcrire(ev, u, undefined, O); maj(); };
       qz.appendChild(b); }); }
@@ -63147,14 +63182,9 @@ function _evlRendreEvals(corps){
   const maj=()=>{ _evlPropager(ev, _evlListe()); _evlSauver(ev); _evlRendre(); };   // V11.5.34 — réglages communs suivis dans les autres classes
   const inp=(val, fn, css)=>{ const i=_evlEl('input','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px;'+(css||'')); i.value=val==null?'':val; i.onchange=()=>{ fn(i.value); maj(); }; return i; };
   const t=inp(ev.titre, v=>{ ev.titre=v.trim()||'Évaluation'; }, 'width:100%;box-sizing:border-box;font-size:24px;font-weight:800;border:2px solid transparent;background:transparent;padding:4px 6px'); t.id='evl-titre'; t.title=ev.reglPropres || soeursT.length<2 ? 'Titre' : 'Titre (commun aux classes qui suivent les réglages communs)'; fiche.appendChild(t);
-  if(soeursT.length>1){ const P=!!ev.reglPropres, nC=soeursT.filter(e=>!e.reglPropres).length;   // V11.5.105 — réglages propres à une classe
-    const b=_evlBtn(P ? '✂ Réglages propres à '+String(ev.cls).toUpperCase()+' · revenir aux réglages communs' : '🔗 Réglages communs ('+nC+' classes) · rendre propres à '+String(ev.cls).toUpperCase(),
-      P ? 'border:2px solid #B45309;color:#B45309;background:#FFFBEB' : 'border:2px solid #8A9099', ()=>{
-        if(P){ const s=soeursT.find(e=>e!==ev && !e.reglPropres); delete ev.reglPropres; if(s) EVL_COMMUNS.forEach(k=>{ ev[k]=s[k]; }); try{ showDropToast('🔗 '+String(ev.cls).toUpperCase()+' suit de nouveau les réglages communs'); }catch(x){} }
-        else { ev.reglPropres=true; try{ showDropToast('✂ Réglages de '+String(ev.cls).toUpperCase()+' : modifiables sans toucher aux autres classes'); }catch(x){} }
-        _evlSauver(ev); _evlRendre(); },
-      P ? 'Reprendre titre, type, grille, barème, coefficient… des autres classes' : 'Titre, type, grille, barème, coefficient… changés ici ne toucheront plus les autres classes');
-    b.id='evl-regl-propres'; b.style.margin='0 0 6px'; fiche.appendChild(b); }
+  const basculerPropres=()=>{ if(ev.reglPropres){ const s=soeursT.find(e=>e!==ev && !e.reglPropres); delete ev.reglPropres; if(s) EVL_COMMUNS.forEach(k=>{ ev[k]=s[k]; }); try{ showDropToast('🔗 '+String(ev.cls).toUpperCase()+' suit de nouveau les réglages communs'); }catch(x){} }
+    else { ev.reglPropres=true; try{ showDropToast('✂ Réglages de '+String(ev.cls).toUpperCase()+' : modifiables sans toucher aux autres classes'); }catch(x){} }
+    _evlSauver(ev); _evlRendre(); };   // V11.5.105 ; V11.5.107 — case dans la zone de la classe
   { const gR=_evlGrille(ev.grilleId), qui={classe:'Classe entière', ens:'Groupes', sel:'Quelques élèves'}[(ev.cible||{}).type||'classe'];
     const et=_evlEl('div','display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px;align-items:center'); fiche.appendChild(et);
     const tag=(x, plein)=>{ const s=_evlEl('span','font-size:13px;font-weight:800;padding:'+(plein?'5px 10px':'3px 9px')+';border-radius:6px;'+(plein?'background:#111418;color:#fff':'border:2px solid var(--tx);color:var(--tx)'), x); et.appendChild(s); };
@@ -63196,64 +63226,93 @@ function _evlRendreEvals(corps){
   const ouvert=_evl.regl || !AV.some(x=>x.A.fait);
   const tg=_evlEl('button','width:100%;text-align:left;font:inherit;font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:10px 14px;border:2px solid #111418;border-radius:'+(ouvert?'12px 12px 0 0':'12px')+';background:var(--sur2);color:var(--tx);cursor:pointer;display:flex;justify-content:space-between;gap:10px');
   tg.type='button'; tg.id='evl-regl-btn'; tg.setAttribute('aria-expanded', ouvert?'true':'false');
-  tg.appendChild(_evlEl('span','', (ouvert?'▾':'▸')+' Réglages'+(soeursT.length>1?' (communs aux '+soeursT.length+' classes ; « Quand » et « Qui » : '+String(ev.cls).toUpperCase()+')':'')));
+  tg.appendChild(_evlEl('span','', (ouvert?'▾':'▸')+' Réglages'+(soeursT.length>1 ? ' · '+soeursT.length+' classes'+(ev.reglPropres ? ' · '+String(ev.cls).toUpperCase()+' à part' : '') : '')));   // V11.5.107
   tg.appendChild(_evlEl('span','text-transform:none;letter-spacing:0;font-weight:700;color:var(--tx2)', ouvert?'replier':'déplier'));
   tg.onclick=()=>{ _evl.regl=!ouvert; _evlRendre(); }; fiche.appendChild(tg);
   if(ouvert){ f.style.cssText='border:2px solid #111418;border-top:none;border-radius:0 0 12px 12px;padding:4px 14px 14px'; fiche.appendChild(f); }
-  f.appendChild(_evlLab('Type')); const ty=_evlEl('div'); f.appendChild(ty);
+  /* ═══ V11.5.107 — Réglages en deux zones (maquette A validée le 24/11) : ce qui vaut pour toutes les classes
+     (vert ; ambre si la classe a ses réglages propres) | ce qui vaut pour la classe choisie (bleu) ; classes en dessous. ═══ */
+  const plusCl=soeursT.length>1, cl=String(ev.cls).toUpperCase(), propres=!!ev.reglPropres;
+  const lab=(x)=>_evlEl('div','font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx2);margin:12px 0 6px', x);
+  const carte=(on, titre, sous, fn, titreAttr)=>{ const b=_evlEl('button','font:inherit;text-align:left;padding:9px 12px;border-radius:12px;cursor:pointer;color:var(--tx);border:'+(on?'3px solid #0F3D24;background:#ECF5EF':'2px solid #8A9099;background:var(--sur)')); b.type='button';
+    b.appendChild(_evlEl('b','font-size:14.5px', titre)); b.appendChild(_evlEl('div','font-size:12.5px;color:var(--tx2);margin-top:2px', sous)); if(fn) b.onclick=fn; if(titreAttr) b.title=titreAttr; b.setAttribute('aria-pressed', on?'true':'false'); return b; };
+  const zone=(id, coul, titre, sousTitre)=>{ const z=_evlEl('section','flex:1 1 300px;min-width:0;border:2px solid '+coul+';border-radius:14px;overflow:hidden;background:var(--sur)'); z.id=id;
+    const h=_evlEl('div','background:'+coul+';color:#fff;padding:9px 14px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap'); z.appendChild(h); h.appendChild(_evlEl('b','font-size:15.5px', titre)); if(sousTitre) h.appendChild(_evlEl('span','font-size:12.5px;opacity:.9', sousTitre));
+    const c=_evlEl('div','padding:2px 14px 14px'); z.appendChild(c); return {z, c}; };
+  f.style.display='flex'; f.style.flexDirection='column'; f.style.gap='12px';
+  const deux=_evlEl('div','display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;margin-top:10px'); deux.id='evl-regl-zones'; f.appendChild(deux);
+  const ZT=zone('evl-zone-toutes', propres ? '#B45309' : '#0F3D24', propres ? '✂ Pour '+cl+' seulement' : (plusCl ? '🔗 Pour les '+soeursT.length+' classes' : 'L’évaluation'),
+    propres ? 'réglages propres : les autres classes ne changent pas' : (plusCl ? soeursT.map(e=>String(e.cls).toUpperCase()).join(' · ') : ''));
+  ZT.z.style.flex='1.55 1 420px'; deux.appendChild(ZT.z); const A=ZT.c;
+  A.appendChild(lab('Ce que c’est')); const ty=_evlEl('div','display:flex;flex-wrap:wrap;gap:4px'); A.appendChild(ty);
   EVL_TYPES.forEach(x=>ty.appendChild(_evlChip(x.ic+' '+x.l, ev.type===x.id, ()=>{ ev.type=x.id; maj(); })));
-  f.appendChild(_evlLab('Quand')); const qd=_evlEl('div','display:flex;gap:6px;flex-wrap:wrap'); f.appendChild(qd);
+  A.appendChild(lab('Ce qu’on obtient')); const md=_evlEl('div','display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px'); md.id='evl-mode'; A.appendChild(md);
+  const sansG=()=>{ try{ showDropToast('Choisis d’abord une grille (compétences)'); }catch(x){} const s=document.getElementById('evl-grille-choix'); if(s){ s.focus(); s.style.outline='3px solid #B91C1C'; } };
+  [['crit','🎯 Des niveaux','Un niveau par compétence, pas de note.'],['note','🔢 Une note','Une note sur un barème, sans compétence.'],['both','🎯 + 🔢 Les deux','Des niveaux et une note.']].forEach(([v,l,s])=>{
+    const b=carte(ev.mode===v, l, s, ()=>{ if(v!=='note' && !ev.grilleId){ sansG(); return; } ev.mode=v; maj(); }); b.dataset.mode=v; md.appendChild(b); });
+  const gq=_evlEl('div','display:flex;flex-wrap:wrap;gap:6px 14px;align-items:flex-start'); A.appendChild(gq);
+  const zg=_evlEl('div','flex:1 1 220px;min-width:0'); gq.appendChild(zg); zg.appendChild(lab(ev.mode==='note' ? 'Grille (facultative)' : 'Avec la grille'));
+  const gs=_evlEl('select','font:inherit;font-weight:700;padding:7px 9px;border:2px solid #8A9099;border-radius:10px;background:var(--sur);color:var(--tx);min-height:36px;max-width:100%;width:100%'); gs.id='evl-grille-choix'; zg.appendChild(gs);
+  gs.appendChild(new Option('— aucune (note seule) —',''));
+  _evlGrilles().filter(g=>g.id===ev.grilleId || (!g.archive && _evlGrilleApplicable(g, ev.cls))).forEach(g=>gs.appendChild(new Option((g.ic||'')+' '+g.titre+(g.archive?' (ancienne version)':'')+' · '+((g.questions||[]).length ? g.questions.length+' questions, ' : '')+(g.criteres||[]).length+' compétences', g.id)));
+  gs.value=ev.grilleId||''; gs.onchange=()=>{ ev.grilleId=gs.value; if(!ev.grilleId) ev.mode='note'; else if(ev.mode==='note') ev.mode='both'; maj(); };
+  const gQ=_evlGrille(ev.grilleId), aQ=!!(gQ && (gQ.questions||[]).length);
+  if(ev.grilleId && ev.mode!=='note'){ const zs=_evlEl('div','flex:1.3 1 280px;min-width:0'); gq.appendChild(zs); zs.appendChild(lab('On saisit'));
+    const sq=_evlEl('div','display:flex;gap:6px;flex-wrap:wrap'); sq.id='evl-par-question'; zs.appendChild(sq);
+    const b1=carte(!ev.parQuestion || !aQ, 'Les niveaux', 'un clic par compétence', aQ ? ()=>{ ev.parQuestion=false; maj(); } : null); b1.style.flex='1 1 130px'; sq.appendChild(b1);
+    const b2=carte(!!ev.parQuestion && aQ, 'Les points', aQ ? 'question par question ('+gQ.questions.length+'), le reste est calculé' : 'la grille n’a pas de questions', aQ ? ()=>{ ev.parQuestion=true; _evlBaremeQuestions(ev, gQ); maj(); } : null, aQ ? '' : 'Ajoute des questions à la grille (Bibliothèque › onglet Questions)'); b2.style.flex='1 1 170px'; if(!aQ) b2.style.opacity='.55'; sq.appendChild(b2); }
+  if(ev.mode!=='crit'){ const nr=_evlEl('div','display:flex;gap:10px 18px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;padding:10px 12px;background:var(--sur2);border-radius:12px'); nr.id='evl-note-bloc'; A.appendChild(nr);
+    const PQ2=_evlParQuestion(ev, gQ), somme=PQ2 ? Math.round(10*gQ.questions.reduce((a2,q)=>a2+(Number(q.max)||0),0))/10 : null;
+    if(ev.mode==='both' && !PQ2){ const z=_evlEl('div'); z.appendChild(_evlEl('div','font-size:12px;font-weight:800;color:var(--tx2);margin-bottom:4px','LA NOTE'));
+      z.appendChild(_evlChip('calculée depuis les niveaux', ev.noteCalc!==false, ()=>{ ev.noteCalc=true; maj(); }, 'Chaque niveau rapporte des points, ramenés sur le barème'));
+      z.appendChild(_evlChip('tapée à la main', ev.noteCalc===false, ()=>{ ev.noteCalc=false; maj(); }, 'Les niveaux ne donnent pas de note')); nr.appendChild(z); }
+    const zb=_evlEl('div'); zb.appendChild(_evlEl('div','font-size:12px;font-weight:800;color:var(--tx2);margin-bottom:4px','NOTE SUR')); nr.appendChild(zb);
+    if(PQ2 && Number(ev.bareme)===somme){ const v=_evlEl('div','font-size:22px;font-weight:800;line-height:1.2', _evlFmt(somme)); v.appendChild(_evlEl('span','font-size:13px;font-weight:500;color:var(--tx2);margin-left:6px','= somme des points')); zb.appendChild(v); }
+    else { const b=inp(ev.bareme, v=>{ ev.bareme=Math.max(1, Number(String(v).replace(',','.'))||20); }, 'width:80px;font-weight:800'); b.type='number'; zb.appendChild(b);
+      if(PQ2) zb.appendChild(_evlEl('div','font-size:12px;color:#B45309;font-weight:700;margin-top:3px','somme des points : '+_evlFmt(somme)+' (gardé à '+_evlFmt(ev.bareme)+' : notes déjà tapées à la main)')); }
+    const zc2=_evlEl('div'); zc2.appendChild(_evlEl('div','font-size:12px;font-weight:800;color:var(--tx2);margin-bottom:4px','COEFFICIENT')); const k=inp(ev.coef, v=>{ ev.coef=Math.max(0, Number(String(v).replace(',','.'))||1); }, 'width:70px;font-weight:800'); k.type='number'; k.step='0.5'; zc2.appendChild(k); nr.appendChild(zc2);
+    nr.appendChild(_evlEl('div','flex:1 1 220px;font-size:12.5px;color:var(--tx2)', PQ2 ? 'La note est la somme des points. Une note tapée à la main remplace le calcul pour l’élève.' : (ev.mode==='both' && ev.noteCalc!==false ? 'Calculée depuis les niveaux ; une note tapée à la main la remplace.' : 'Une note par élève.'))); }
+  const ZC=zone('evl-zone-classe', '#0369A1', plusCl ? 'Pour '+cl+' seulement' : 'Pour '+cl, plusCl ? 'quand, qui' : ''); deux.appendChild(ZC.z); const B=ZC.c;
+  B.appendChild(lab('Quand')); const qd=_evlEl('div','display:flex;gap:6px;flex-wrap:wrap'); B.appendChild(qd);
   const d=inp(ev.date, v=>{ ev.date=v||_appToday(); ev.slotKey=''; }); d.type='date'; qd.appendChild(d);
   const sk=_evlEl('select','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px'); sk.appendChild(new Option('— pas de cours rattaché —',''));
   let sl=[]; try{ sl=(buildYearSlots(ev.cls)||[]).filter(s=>s && s.dateStr===ev.date); }catch(e){}
   sl.forEach(s=>sk.appendChild(new Option('Cours de '+s.debut, s.slotKey))); if(ev.slotKey && !sl.some(s=>s.slotKey===ev.slotKey)) sk.appendChild(new Option(ev.slotKey, ev.slotKey));
   sk.value=ev.slotKey||''; sk.onchange=()=>{ ev.slotKey=sk.value; maj(); }; qd.appendChild(sk);
-  f.appendChild(_evlLab('Qui')); const qu=_evlEl('div'); f.appendChild(qu);
+  B.appendChild(lab('Qui')); const qu=_evlEl('div'); B.appendChild(qu);
   const c=ev.cible=ev.cible||{type:'classe'}, ensL=((S.grpTravail||{})[ev.cls])||[];
-  qu.appendChild(_evlChip('Classe'+(ev.slotKey?' (élèves du cours)':''), c.type==='classe', ()=>{ ev.cible={type:'classe'}; ev.parGroupe=false; maj(); }));
-  qu.appendChild(_evlChip('👥 Groupes', c.type==='ens', ensL.length ? ()=>{ ev.cible={type:'ens', ensId:(c.ensId||ensL[0].id)}; ev.parGroupe=true; maj(); } : null, ensL.length?'':'Aucun ensemble de groupes pour cette classe'));
+  qu.appendChild(_evlChip('Toute la classe'+(ev.slotKey?' (élèves du cours)':''), c.type==='classe', ()=>{ ev.cible={type:'classe'}; ev.parGroupe=false; maj(); }));
+  qu.appendChild(_evlChip('👥 Par groupes', c.type==='ens', ensL.length ? ()=>{ ev.cible={type:'ens', ensId:(c.ensId||ensL[0].id)}; ev.parGroupe=true; maj(); } : null, ensL.length?'':'Aucun ensemble de groupes pour cette classe'));
   qu.appendChild(_evlChip('Quelques élèves', c.type==='sel', ()=>{ ev.cible={type:'sel', uids:c.uids||[]}; ev.parGroupe=false; maj(); }));
   if(c.type==='ens'){ const se=_evlEl('select','font:inherit;padding:5px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);margin:4px 0;min-height:32px'); ensL.forEach(x=>se.appendChild(new Option(x.nom+' ('+(x.grp||[]).length+' groupes)', x.id))); se.value=c.ensId||''; se.onchange=()=>{ c.ensId=se.value; maj(); }; qu.appendChild(se);
     const pg=_evlEl('label','display:flex;align-items:center;gap:6px;font-size:12.5px;margin-top:4px'); const cb=_evlEl('input'); cb.type='checkbox'; cb.checked=ev.parGroupe!==false; cb.onchange=()=>{ ev.parGroupe=cb.checked; maj(); }; pg.appendChild(cb); pg.appendChild(document.createTextNode('Saisie par groupe (chaque membre hérite, ajustable par élève)')); qu.appendChild(pg); }
   if(c.type==='sel'){ const box=_evlEl('div','display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:4px;max-height:150px;overflow:auto;border:1px solid var(--brd);border-radius:8px;padding:6px');
     ((S.cl[ev.cls]||{}).students||[]).slice().sort((a,b)=>String(getSortKey(a)).localeCompare(String(getSortKey(b)),'fr')).forEach(u=>{ const l=_evlEl('label','font-size:12px;display:flex;gap:4px;align-items:center;min-width:150px'); const cb=_evlEl('input'); cb.type='checkbox'; cb.checked=(c.uids||[]).indexOf(u)>=0;
       cb.onchange=()=>{ c.uids=(c.uids||[]).filter(x=>x!==u); if(cb.checked) c.uids.push(u); _evlSauver(ev); }; l.appendChild(cb); l.appendChild(document.createTextNode(getFullName(u)||u)); box.appendChild(l); }); qu.appendChild(box); }
-  f.appendChild(_evlLab('Grille')); const gs=_evlEl('select','font:inherit;padding:6px 8px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur2);color:var(--tx);min-height:32px;max-width:100%'); f.appendChild(gs);
-  gs.appendChild(new Option('— aucune (note seule) —',''));
-  _evlGrilles().filter(g=>g.id===ev.grilleId || (!g.archive && _evlGrilleApplicable(g, ev.cls))).forEach(g=>gs.appendChild(new Option((g.ic||'')+' '+g.titre+(g.archive?' (ancienne version)':'')+' · '+(g.criteres||[]).length+' critères', g.id)));
-  gs.value=ev.grilleId||''; gs.onchange=()=>{ ev.grilleId=gs.value; if(!ev.grilleId) ev.mode='note'; else if(ev.mode==='note') ev.mode='both'; maj(); };
-  if(ev.grilleId){ f.appendChild(_evlLab('Mode')); const md=_evlEl('div'); f.appendChild(md);
-    [['crit','Critères seuls'],['note','Note seule'],['both','Critères + note']].forEach(([v,l])=>md.appendChild(_evlChip(l, ev.mode===v, ()=>{ ev.mode=v; maj(); })));
-    const gQ=_evlGrille(ev.grilleId);   // V11.5.66 — saisie par question (la grille a des questions)
-    if(gQ && (gQ.questions||[]).length && ev.mode!=='note'){ f.appendChild(_evlLab('Saisie')); const sq=_evlEl('div'); sq.id='evl-par-question'; f.appendChild(sq);
-      sq.appendChild(_evlChip('Par critère (niveaux)', !ev.parQuestion, ()=>{ ev.parQuestion=false; maj(); }));
-      sq.appendChild(_evlChip('Par question ('+gQ.questions.length+' questions, points → niveaux'+(ev.mode==='both'?' et note':'')+')', !!ev.parQuestion, ()=>{ ev.parQuestion=true; maj(); })); } }
-  if(ev.mode!=='crit'){ const nr=_evlEl('div','display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end'); f.appendChild(nr);
-    if(ev.mode==='both'){ const z=_evlEl('div'); z.appendChild(_evlLab('Note')); z.appendChild(_evlChip('calculée depuis les critères', ev.noteCalc!==false, ()=>{ ev.noteCalc=true; maj(); })); z.appendChild(_evlChip('saisie libre', ev.noteCalc===false, ()=>{ ev.noteCalc=false; maj(); })); nr.appendChild(z); }
-    const zb=_evlEl('div'); zb.appendChild(_evlLab('Barème')); const b=inp(ev.bareme, v=>{ ev.bareme=Math.max(1, Number(String(v).replace(',','.'))||20); }, 'width:80px'); b.type='number'; zb.appendChild(b); nr.appendChild(zb);
-    const zc=_evlEl('div'); zc.appendChild(_evlLab('Coef.')); const k=inp(ev.coef, v=>{ ev.coef=Math.max(0, Number(String(v).replace(',','.'))||1); }, 'width:70px'); k.type='number'; k.step='0.5'; zc.appendChild(k); nr.appendChild(zc); }
-  // V11.5.34 — 🏫 Classes : la même évaluation dans plusieurs classes (réglages communs partagés, élèves et notes propres)
-  f.appendChild(_evlLab('Classes'));
-  const zc=_evlEl('div','display:flex;flex-wrap:wrap;align-items:center;gap:2px'); f.appendChild(zc);
+  if(plusCl){ const pr=_evlEl('label','display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:10px 12px;border:2px dashed #B45309;border-radius:12px;background:'+(propres?'#FEF3C7':'#FFFBEB')+';cursor:pointer'); pr.id='evl-regl-propres';
+    const cb=_evlEl('input','width:20px;height:20px;margin:2px 0 0;flex-shrink:0'); cb.type='checkbox'; cb.checked=propres; cb.onchange=basculerPropres; pr.appendChild(cb);
+    const tx=_evlEl('span'); tx.appendChild(_evlEl('b','color:#7C2D12', 'Réglages propres à '+cl)); tx.appendChild(_evlEl('div','font-size:12.5px;color:#5C4A00', propres ? 'La zone de gauche ne vaut que pour '+cl+'. Décocher : '+cl+' reprend les réglages des autres classes.' : 'La zone de gauche ne s’appliquera plus à '+cl+' : on la modifie sans toucher aux autres classes.')); pr.appendChild(tx); B.appendChild(pr); }
+  const zcl=_evlEl('div','display:flex;flex-wrap:wrap;align-items:center;gap:4px'); zcl.id='evl-regl-classes'; f.appendChild(zcl);
+  zcl.appendChild(_evlEl('b','font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--tx2);margin-right:6px','Classes'));
   const soeurs=ev.lot ? _evlListe().filter(e=>e.lot===ev.lot).sort((a,b)=>String(a.cls).localeCompare(String(b.cls))) : [ev];
-  soeurs.forEach(e=>zc.appendChild(_evlChip(String(e.cls).toUpperCase(), e===ev, e===ev ? null : ()=>{ _evl.cls=e.cls; _evl.evId=e.id; _evlRendre(); }, e===ev ? 'Classe affichée' : 'Ouvrir dans '+String(e.cls).toUpperCase())));
-  const dispo=_reuClasses().filter(c=>!soeurs.some(e=>e.cls===c));
-  if(dispo.length) zc.appendChild(_evlChip(_evl.ajoutCls ? '✕ Annuler' : '＋ Autres classes…', false, ()=>{ _evl.ajoutCls=!_evl.ajoutCls; _evl.ajoutSel={}; _evlRendre(); }));
-  if(soeurs.length>1) zc.appendChild(_evlEl('span','font-size:11px;color:var(--tx3);margin-left:6px','titre, type, grille, mode, barème et coef. communs ; élèves, date et notes propres à chaque classe'));
-  if(_evl.ajoutCls && dispo.length){ const bx=_evlEl('div','border:1px solid var(--brd);border-radius:10px;padding:8px;margin-top:6px;background:var(--sur2)'); bx.id='evl-ajout-cls'; f.appendChild(bx);
+  soeurs.forEach(e=>{ const on=e===ev, b=_evlChip(String(e.cls).toUpperCase()+(on?' ✓':'')+(e.reglPropres?' ✂':''), on, on ? null : ()=>{ _evl.cls=e.cls; _evl.evId=e.id; _evlRendre(); }, on ? 'Classe affichée (zone bleue)' : 'Afficher '+String(e.cls).toUpperCase()+' dans la zone bleue'+(e.reglPropres?' · réglages propres':'')); if(on){ b.style.background='#0369A1'; b.style.borderColor='#0369A1'; } zcl.appendChild(b); });
+  const dispo=_reuClasses().filter(c2=>!soeurs.some(e=>e.cls===c2));
+  if(dispo.length) zcl.appendChild(_evlChip(_evl.ajoutCls ? '✕ Annuler' : '＋ Ajouter une classe', false, ()=>{ _evl.ajoutCls=!_evl.ajoutCls; _evl.ajoutSel={}; _evlRendre(); }));
+  if(soeurs.length>1) zcl.appendChild(_evlEl('span','font-size:12.5px;color:var(--tx2);margin-left:6px','Clic sur une classe : la zone bleue passe sur elle. ✂ = réglages propres.'));
+  if(_evl.ajoutCls && dispo.length){ const bx=_evlEl('div','border:1px solid var(--brd);border-radius:10px;padding:8px;background:var(--sur2)'); bx.id='evl-ajout-cls'; f.appendChild(bx);
     const niv=String(ev.cls).charAt(0), tri=dispo.slice().sort((a,b)=>((String(a).charAt(0)===niv?0:1)-(String(b).charAt(0)===niv?0:1)) || String(a).localeCompare(String(b)));
     const sel=_evl.ajoutSel=_evl.ajoutSel||{}; const ln=_evlEl('div','display:flex;flex-wrap:wrap;gap:2px'); bx.appendChild(ln);
-    tri.forEach(c=>ln.appendChild(_evlChip(String(c).toUpperCase(), !!sel[c], ()=>{ sel[c]=!sel[c]; _evlRendre(); })));
-    const n=Object.keys(sel).filter(c=>sel[c]).length;
+    tri.forEach(c2=>ln.appendChild(_evlChip(String(c2).toUpperCase(), !!sel[c2], ()=>{ sel[c2]=!sel[c2]; _evlRendre(); })));
+    const n=Object.keys(sel).filter(c2=>sel[c2]).length;
     const bt=_evlEl('div','display:flex;gap:6px;margin-top:6px;align-items:center'); bx.appendChild(bt);
-    bt.appendChild(_evlChip('Toutes les '+niv+'e', false, ()=>{ tri.filter(c=>String(c).charAt(0)===niv).forEach(c=>{ sel[c]=true; }); _evlRendre(); }));
-    bt.appendChild(_evlBtn('Appliquer à '+n+' classe'+(n>1?'s':''), n ? 'background:#166534;border-color:#166534;color:#fff' : 'opacity:.5', ()=>{ if(!n) return;
+    bt.appendChild(_evlChip('Toutes les '+niv+'e', false, ()=>{ tri.filter(c2=>String(c2).charAt(0)===niv).forEach(c2=>{ sel[c2]=true; }); _evlRendre(); }));
+    bt.appendChild(_evlBtn('Ajouter '+n+' classe'+(n>1?'s':''), n ? 'background:#166534;border-color:#166534;color:#fff' : 'opacity:.5', ()=>{ if(!n) return;
       if(!ev.lot) ev.lot=ev.id;
-      Object.keys(sel).filter(c=>sel[c]).forEach((c,i)=>{ let sk=''; try{ const L=(buildYearSlots(c)||[]).filter(s=>s && s.dateStr===ev.date); if(L.length) sk=L[0].slotKey; }catch(e){}
-        _evlListe().push(_evlCopiePour(ev, c, sk, 'ev'+Date.now().toString(36)+i+Math.floor(Math.random()*1e3))); });
+      Object.keys(sel).filter(c2=>sel[c2]).forEach((c2,i)=>{ let sk2=''; try{ const L=(buildYearSlots(c2)||[]).filter(s=>s && s.dateStr===ev.date); if(L.length) sk2=L[0].slotKey; }catch(e){}
+        _evlListe().push(_evlCopiePour(ev, c2, sk2, 'ev'+Date.now().toString(36)+i+Math.floor(Math.random()*1e3))); });
       _evl.ajoutCls=false; _evl.ajoutSel={}; _evlSauver(ev); _evlRendre(); try{ showDropToast('Évaluation ajoutée à '+n+' classe'+(n>1?'s':'')); }catch(e){} })); }
   const g=_evlGrille(ev.grilleId);
-  if(g && ev.mode==='both' && ev.noteCalc!==false){ const N=g.niveaux||EVL_NIV_DEFAUT; f.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:8px', N.map((n,i)=>n+' '+i).join(' · ')+' point(s) par critère'+((g.criteres||[]).some(x=>x.poids>1)?', pondérés ('+g.criteres.filter(x=>x.poids>1).map(x=>x.l+' ×'+x.poids).join(', ')+')':'')+' → ramené sur '+ev.bareme+'.')); }
+  if(g && ev.mode==='both' && ev.noteCalc!==false && !_evlParQuestion(ev, g)){ const N=g.niveaux||EVL_NIV_DEFAUT; f.appendChild(_evlEl('div','font-size:11.5px;color:var(--tx3);margin-top:0', N.map((n,i)=>n+' '+i).join(' · ')+' point(s) par critère'+((g.criteres||[]).some(x=>x.poids>1)?', pondérés ('+g.criteres.filter(x=>x.poids>1).map(x=>x.l+' ×'+x.poids).join(', ')+')':'')+' → ramené sur '+ev.bareme+'.')); }
   const C=_evlCible(ev); const fait=C.eleves.filter(u=>{ const r=_evlResultat(ev, g, u, ev.parGroupe ? _evlGroupeDe(C,u) : ''); return r.code || r.note!=null || Object.keys(r.niv).length; }).length;
   const act=_evlEl('div','display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center'); fiche.appendChild(act);   // V11.5.65 — actions de la classe choisie
   { const b=_evlEl('span','font:inherit;font-weight:800;font-size:13px;color:#fff;background:'+_evlCoulNiv(ev.cls)+';padding:5px 10px;border-radius:6px', String(ev.cls).toUpperCase()); b.className='evl-act-cls'; act.appendChild(b); }
@@ -63772,7 +63831,10 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
     const it=_evlEl('button','display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;font:inherit;font-size:'+(on?'15.5px':'14px')+';font-weight:'+(on?'800':'700')+';padding:'+(on?'10px':'7px')+' 12px;border:none;border-bottom:1px solid #C9CDD3;cursor:pointer;background:'+(on?EVL_JAUNE:(e==='abs'?'#B91C1C':'transparent'))+';color:'+(on?'#111418':(e==='abs'?'#fff':((e==='note'||e==='code')?'#4B5563':'var(--tx)'))));
     it.type='button'; it.className='evl-el'+(on?' evl-ligne-active':''); it.dataset.etat=e;
     it.appendChild(_evlEl('span','', (on?'▶ ':'')+(e==='note'?'✓ ':'')+(getFullName(x)||x))); it.appendChild(_evlEl('b','', Rx.code || _evlFmt(Rx.note==null && e!=='note' ? null : Rx.note)));
-    it.onclick=()=>{ cur.r=i; cur.c=0; refaire(PQ ? 0 : null); }; nav.appendChild(it); });
+    it.onclick=()=>{ cur.r=i; cur.c=0; _evl.focusListe=true; refaire(null); }; nav.appendChild(it); });   // V11.5.106 — clic : la liste garde la main (↑ ↓, Entrée)
+  nav.addEventListener('keydown', (e)=>{ if(!_evl.focusListe) return;
+    if(e.key==='ArrowDown' || e.key==='ArrowUp'){ e.preventDefault(); e.stopPropagation(); const r2=Math.max(0, Math.min(n-1, cur.r+(e.key==='ArrowDown' ? 1 : -1))); if(r2!==cur.r){ cur.r=r2; cur.c=0; refaire(null); } return; }
+    if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); _evl.focusListe=false; cur.c=0; refaire(PQ ? 0 : null); } });
   const main=_evlEl('div','flex:999 1 600px;min-width:0;background:var(--sur);border:3px solid #111418;border-radius:14px;overflow:hidden;outline:none'); main.id='evl-un-eleve'; main.tabIndex=0; box.appendChild(main);
   const hd=_evlEl('div','background:'+EVL_JAUNE+';color:#111418;padding:14px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;border-bottom:3px solid #111418'); main.appendChild(hd);
   hd.appendChild(_evlEl('div','font-size:27px;font-weight:800', getFullName(u)||u));
@@ -63802,7 +63864,7 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
         const i=_evlEl('input','width:58px;flex-shrink:0;font:inherit;font-size:18px;font-weight:800;text-align:right;padding:4px 6px;border:2px solid #111418;border-radius:8px;background:#fff;color:#111418'); i.inputMode='decimal'; i.dataset.q=qi;
         i.value=r.pts[q.id]==null ? '' : String(r.pts[q.id]).replace('.',',');
         const ecrire=()=>{ const v=String(i.value).trim().replace(',','.'); if(v==='') delete r.pts[q.id]; else if(!isNaN(Number(v))) r.pts[q.id]=Math.max(0, Math.min(Number(q.max)||0, Number(v))); };
-        i.onfocus=()=>{ cur.c=qi; try{ i.select(); }catch(e){} };
+        i.onfocus=()=>{ cur.c=qi; _evl.focusListe=false; try{ i.select(); }catch(e){} };
         i.onchange=()=>{ ecrire(); refaire(qi); };
         i.onkeydown=(e)=>{ if(/^[adnADN]$/.test(e.key) && !i.value && !Object.keys(r.pts).length){ e.preventDefault(); i.onchange=null; r.code={a:'Abs',d:'Disp',n:'NR'}[e.key.toLowerCase()]; suivant(1); return; }
           const aller=(k)=>{ e.preventDefault(); e.stopPropagation(); i.onchange=null; ecrire(); cur.c=k; refaire(k); };
@@ -63846,6 +63908,7 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
   pied.appendChild(_evlEl('span','flex:1'));
   if(cur.r>0) pied.appendChild(_evlBtn('◀ '+(getFullName(U[cur.r-1])||''),'border:2px solid #111418', ()=>suivant(-1)));
   if(cur.r<n-1) pied.appendChild(_evlBtn((getFullName(U[cur.r+1])||'')+' ▶ (Entrée)','background:#111418;border-color:#111418;color:#fff', ()=>suivant(1)));
+  main.addEventListener('focusin', ()=>{ _evl.focusListe=false; });   // V11.5.106
   main.addEventListener('keydown', (e)=>{ if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return; const k=e.key, kl=String(k).toLowerCase();
     if(k==='Enter'){ e.preventDefault(); suivant(e.shiftKey ? -1 : 1); return; }
     if(kl==='a' || kl==='d' || kl==='n'){ e.preventDefault(); const c={a:'Abs',d:'Disp',n:'NR'}[kl]; r.code=r.code===c ? '' : c; if(!r.code) delete r.code; else { suivant(1); return; } refaire(); return; }
@@ -63855,6 +63918,7 @@ function _evlRendreSaisieEleve(corps, ev, g, C){
     else if(k==='ArrowRight'){ e.preventDefault(); suivant(1); } else if(k==='ArrowLeft'){ e.preventDefault(); suivant(-1); } });
   if(ev.mode!=='crit') corps.appendChild(_evlBandeDirect(ev, U));   // V11.5.78
   setTimeout(()=>{ const fq=_evl.focusQ; _evl.focusQ=null;
+    if(_evl.focusListe){ const a=document.querySelector('#evl-eleves .evl-ligne-active'); if(a){ try{ a.focus({preventScroll:true}); a.scrollIntoView({block:'nearest'}); }catch(e){} return; } }   // V11.5.106
     const i=PQ && !R.code ? document.querySelector('#evl-pts input[data-q="'+(fq!=null ? fq : cur.c)+'"]') : null;
     if(i){ try{ i.focus(); i.select(); }catch(e){} } else { try{ main.focus({preventScroll:true}); }catch(e){} } }, 0);
 }
