@@ -4881,7 +4881,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.103';
+const APP_VERSION = 'v11.5.104';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -63320,9 +63320,18 @@ function _evlRendreRapide(corps, ev, g, C){
     if(ev.mode!=='crit') tot.appendChild(_evlEl('span','font-size:18px;font-weight:800;padding:4px 10px;border-radius:8px;background:#111418;color:#fff', 'Note : '+_evlFmt(R.note)+' / '+_evlFmt(ev.bareme)+(R.noteForcee ? ' (forcée)' : '')));
     lignes.forEach(L=>{ const v=R.niv[L.c.id], calc=pq.niv ? pq.niv[L.c.id] : null, aj=r.niv && r.niv[L.c.id]!=null && calc!=null && r.niv[L.c.id]!==calc;
       L.cells.forEach((x, i)=>{ const on=v===i, c2=EVL_NIV_COUL[i]||EVL_NIV_COUL[0]; x.textContent=on ? '✓' : ''; x.style.background=on ? c2[0] : ''; x.style.color=on ? c2[1] : ''; });
-      L.t0.title=aj ? 'Ajusté à la main (calculé : '+N[calc]+')' : ''; L.t0.style.outline=aj ? '3px dashed #B45309' : ''; }); };
-  const inputs=[];
-  Q.forEach((q, qi)=>{ const cell=_evlEl('label','display:flex;flex-direction:column;align-items:center;gap:4px'); grid.appendChild(cell);
+      L.t0.title=aj ? 'Ajusté à la main (calculé : '+N[calc]+')' : ''; L.t0.style.outline=aj ? '3px dashed #B45309' : ''; });
+    sousQ.forEach(S2=>{ const m=S2.Qs.reduce((a,q)=>a+(Number(q.max)||0),0), V=S2.Qs.map(q=>r.pts[q.id]).filter(v=>v!=null && v!=='');   // V11.5.104 — sous-total
+      S2.st.textContent=(V.length ? _evlFmt(Math.round(10*V.reduce((a,v)=>a+Number(v),0))/10) : '—')+' / '+_evlFmt(Math.round(10*m)/10); }); };
+  const inputs=[], sousQ=[];
+  // V11.5.104 — sous-questions (Q3a, Q3b… ou Q3.1, Q3.2…) : encadrées ensemble sous « Q3 », avec leur sous-total
+  const parQ={}; _evlGroupesSousQ(Q.map(q=>String(q.l||'').split(' · ')[0].trim())).forEach(gr=>{ if(gr.base==null) return;
+    const bx=_evlEl('div','grid-column:span '+gr.idx.length+';border:3px solid #1D4ED8;border-radius:12px;padding:4px 8px 8px;background:#EFF6FF'); bx.className='evl-rapide-sousq'; bx.dataset.q=gr.base;
+    const h=_evlEl('div','display:flex;justify-content:space-between;gap:8px;font-size:13px;font-weight:900;color:#1E3A8A;margin-bottom:4px'); bx.appendChild(h);
+    h.appendChild(_evlEl('span','', gr.base)); const st=_evlEl('span','', ''); h.appendChild(st);
+    const sg=_evlEl('div','display:grid;grid-template-columns:repeat('+gr.idx.length+',minmax(64px,1fr));gap:8px'); bx.appendChild(sg);
+    sousQ.push({Qs:gr.idx.map(i=>Q[i]), st}); gr.idx.forEach((i, k)=>{ parQ[i]={bx, sg, premier:k===0}; }); });
+  Q.forEach((q, qi)=>{ const cell=_evlEl('label','display:flex;flex-direction:column;align-items:center;gap:4px'); const P=parQ[qi]; if(P){ if(P.premier) grid.appendChild(P.bx); P.sg.appendChild(cell); } else grid.appendChild(cell);
     const k=(g.questions||[]).indexOf(q), court=String(q.l||'').split(' · ')[0].trim(); cell.appendChild(_evlEl('b','font-size:14px', court && court.length<=6 ? court : 'Q'+(k+1))); if(q.l) cell.title=q.l;
     const i=_evlEl('input','width:100%;height:54px;box-sizing:border-box;text-align:center;font:inherit;font-size:22px;font-weight:800;border:2px solid #111418;border-radius:10px;background:#fff;color:#111418'); i.inputMode='decimal'; i.autocomplete='off'; i.dataset.q=q.id; i.disabled=!!R0.code;
     i.value=r.pts[q.id]==null ? '' : String(r.pts[q.id]).replace('.',','); cell.appendChild(i);
@@ -63345,6 +63354,14 @@ function _evlRendreRapide(corps, ev, g, C){
   setTimeout(()=>{ const f=inputs.find(x=>x.value==='')||inputs[0]; if(f && !document.activeElement.closest('#evl-rapide')){ f.focus(); try{ f.select(); }catch(e){} } }, 0);
 }
 
+/** V11.5.104 — Sous-questions consécutives d'une même question : « Q3a, Q3b » ou « Q3.1, Q3-2 » → base « Q3 ».
+ *  Rend [{base|null, idx:[…]}] dans l'ordre ; base null = question seule. Pure. */
+function _evlGroupesSousQ(L){
+  const base=(s)=>{ const m=/^(.+?\d+)(?:[a-z]|[.\-]\d+)\)?$/i.exec(String(s||'').trim()); return m ? m[1] : null; }, out=[];
+  (L||[]).forEach((s, i)=>{ const b=base(s), der=out[out.length-1];
+    if(b!=null && der && der.base===b) der.idx.push(i); else out.push({base:b, idx:[i]}); });
+  return out.map(g=>g.idx.length>1 ? g : {base:null, idx:g.idx});
+}
 /* ═══ V11.5.103 — GRILLE DEPUIS UN TEXTE (copier-coller) ═══
    Évaluation : Chaîne d'information        Niveau : 3e        Seuils : 25 50 80
    Q1   2    SFC 14.1                        (nom, points, compétence(s) séparées par des virgules,
