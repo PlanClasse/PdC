@@ -315,6 +315,10 @@ button,input{font-family:'DM Sans',sans-serif}
 #menu #evl-tile.htile:hover,#evl-tile.htile:hover{background:#FAD54A;border-color:#CA9A06}
 #evl-tile .htile-t{color:#3F3000}
 #evl-tile .htile-s{color:#5C4A00}
+#menu #cah-tile.htile,#cah-tile.htile{background:#E4EDE2;border-color:#2A5224}   /* V11.5.111 — suivi des cahiers (vert fixe : les thèmes redéfinissent --acc) */
+#menu #cah-tile.htile:hover,#cah-tile.htile:hover{background:#D3E3CF;border-color:#1D3A19}
+#cah-tile .htile-t{color:#19170E}
+#cah-tile .htile-s{color:#2A5224}
 
 /* S28 patch 13 — Mode Prof */
 .mode-toggle-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:14px;border:1.5px solid var(--brd);background:var(--sur2);font-size:11px;font-weight:600;color:var(--tx2);cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap}
@@ -4313,6 +4317,7 @@ window._simHandleDisable = _simHandleDisable;
         <button class="tbtn" id="btn-outils" onclick="toggleOutilsMenu(event)" title="Outils classe" style="background:#FDF4FF;color:#7C3AED;border-right:1px solid var(--brd);position:relative"><span class="tbtn-ic">🎲</span><span class="tbtn-lb">Outils</span></button>
         <div id="outils-menu" style="display:none;position:fixed;background:var(--sur);border:1.5px solid var(--brd);border-radius:var(--r2);box-shadow:var(--sh2);min-width:180px;z-index:200;padding:4px 0">
           <button class="pmitem" onclick="openTirageModal();closeOutilsMenu()">🎲 Tirage au sort</button>
+          <button class="pmitem" onclick="openCahiers({cls:(typeof curCls!=='undefined' && curCls) ? curCls : null});closeOutilsMenu()">📓 Suivi des cahiers</button>
           <button class="pmitem" onclick="openTimerModal();closeOutilsMenu()">⏱ Compte à rebours</button>
           <button class="pmitem" onclick="openHorloge();closeOutilsMenu()">🕐 Horloge en grand</button>
           <button class="pmitem" onclick="pdcProjeter();closeOutilsMenu()">📽 Projeter le plan</button>
@@ -4886,7 +4891,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.110';
+const APP_VERSION = 'v11.6.0';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -61883,7 +61888,7 @@ function _bnTuileAccueil(){
   ref.parentNode.appendChild(b);
 }
 const ACCUEIL_ORDRE=['Vue hebdo',"Planning d'affectation",'Progression','#bn-tile','Synthèse','Suivi des cours','Plans de classe','Référentiels',
-  'Suivi RRUPN','Suivi Pix','Bilans & Export','EBEP','#sdc-tile','#imp-tile','#jnl-tile','Paramètres','#reu-tile','#help-faq-tile','#evl-tile'];
+  'Suivi RRUPN','Suivi Pix','Bilans & Export','EBEP','#sdc-tile','#imp-tile','#jnl-tile','Paramètres','#reu-tile','#help-faq-tile','#evl-tile','#cah-tile'];
 /** Range les tuiles (demande du 06/11) ; Mode démo quitte l'accueil (Paramètres › Données). Idempotent. */
 function _accueilOrdonner(){
   try{
@@ -61898,6 +61903,7 @@ function _accueilOrdonner(){
       if(!k){ const v=document.createElement('div'); v.className='htile-vide'; v.setAttribute('aria-hidden','true'); v.style.visibility='hidden'; grille.appendChild(v); return; }
       const x=trouver(k); if(x){ x.style.gridColumn=''; x.style.gridRow=''; grille.appendChild(x); } });
     const demo=document.getElementById('demo-pub-tile'); if(demo) demo.style.display='none';
+    try{ if(typeof _cahTuileMaj==='function') _cahTuileMaj(); }catch(e){}   // V11.5.111 — pastille des cahiers
   }catch(e){ console.warn('[accueil] tuiles', e); }
 }
 
@@ -76091,10 +76097,10 @@ const TIRAGE_CATS=[
    ═══════════════════════════════════════════════════════════════════════════ */
 const TIRAGE_SAISIE_MAX=5;
 const TIRAGE_NIVEAUX=[
-  {id:'I',  label:'Insuffisant', court:'I',  col:'#DC2626'},
-  {id:'P',  label:'Partiel',     court:'P',  col:'#D97706'},
-  {id:'AB', label:'Assez bien',  court:'AB', col:'#2563EB'},
-  {id:'PF', label:'Parfait',     court:'✓',  col:'#16A34A'},
+  {id:'I',  label:'Insuffisant', court:'I',  col:'#DC2626', fg:'#fff',    sh:''},   /* V11.5.111 — couleurs des compétences */
+  {id:'P',  label:'Partiel',     court:'P',  col:'#FACC15', fg:'#854D0E', sh:'inset 0 0 0 1.5px #A16207'},
+  {id:'AB', label:'Assez bien',  court:'AB', col:'#86EFAC', fg:'#166534', sh:'inset 0 0 0 1.5px #16A34A'},
+  {id:'PF', label:'Parfait',     court:'✓',  col:'#15803D', fg:'#fff',    sh:''},
 ];
 const TIRAGE_CAHIER_CRIT_DEF=['Soigné','Complet','Feuilles collées','Sans dessin'];
 
@@ -76167,18 +76173,19 @@ function _tirageTexteNiveaux(prefixe, niveauId, remarque){
 /** Ligne de cahier. Pure. crits = [{nom, niv}] (niv = id de niveau ou vide).
  *  « Cahier : Soigné (Assez bien), Complet (Partiel) » (+ remarque).
  *  Oubli : « Cahier : oublié ». '' si rien n'a été saisi. */
-function _tirageTexteCahier(crits, oubli, remarque){
+function _tirageTexteCahier(crits, oubli, remarque, maj){
   const rq=String(remarque||'').trim();
   if(oubli) return rq ? ('Cahier : oublié\n'+rq) : 'Cahier : oublié';
   const parts=(Array.isArray(crits)?crits:[])
     .map(c=>{ const n=_tirageNiveau(c&&c.niv); return n ? (String(c.nom)+' ('+n.label+')') : ''; })
     .filter(Boolean);
-  if(!parts.length && !rq) return '';
+  if(!parts.length && !rq && !maj) return '';
   // Tous les critères au même niveau → une seule mention, plus lisible
   const nivs=(Array.isArray(crits)?crits:[]).map(c=>c&&c.niv);
   const unique=(nivs.length>1 && nivs.every(v=>v && v===nivs[0])) ? _tirageNiveau(nivs[0]) : null;
-  const tete=unique ? ('Cahier : '+unique.label+' sur tous les critères')
-    : (parts.length ? ('Cahier : '+parts.join(', ')) : 'Cahier vérifié');
+  const tete=(unique ? ('Cahier : '+unique.label+' sur tous les critères')
+    : (parts.length ? ('Cahier : '+parts.join(', ')) : 'Cahier vérifié'))
+    + (maj ? ' — à mettre à jour et à représenter' : '');   /* V11.5.111 — relu par _cahLire */
   return rq ? (tete+'\n'+rq) : tete;
 }
 
@@ -76245,16 +76252,17 @@ function _tirageFicheEntamee(f){
   const e=(f&&f.etat)||{};
   return Object.values(e.niv||{}).some(o=>Object.values(o||{}).some(Boolean))
     || Object.values(e.oubli||{}).some(Boolean)
-    || Object.values(e.rq||{}).some(v=>String(v||'').trim());
+    || Object.values(e.rq||{}).some(v=>String(v||'').trim())
+    || Object.values(e.maj||{}).some(Boolean);
 }
 /** Lignes à écrire pour une fiche : [{uid, texte}] (textes vides exclus). Pure. */
 function _tirageTextesFiche(f, crits){
   if(!f || !Array.isArray(f.eleves)) return [];
-  const e=f.etat||{}, niv=e.niv||{}, ou=e.oubli||{}, rq=e.rq||{};
+  const e=f.etat||{}, niv=e.niv||{}, ou=e.oubli||{}, rq=e.rq||{}, mj=e.maj||{};
   const pref=f.saisie==='interro'?'Interrogé':_tirageNomSansEmoji(f.label);
   return f.eleves.map(s=>{
     const texte = f.saisie==='cahier'
-      ? _tirageTexteCahier((crits||[]).map(nom=>({nom, niv:(niv[s.uid]||{})[nom]||''})), !!ou[s.uid], rq[s.uid])
+      ? _tirageTexteCahier((crits||[]).map(nom=>({nom, niv:(niv[s.uid]||{})[nom]||''})), !!ou[s.uid], rq[s.uid], !!mj[s.uid])
       : _tirageTexteNiveaux(pref, (niv[s.uid]||{})['*']||'', rq[s.uid]);
     return {uid:s.uid, texte};
   }).filter(x=>x.texte);
@@ -76285,7 +76293,7 @@ function _tirageCahierRetourne(n){ return (n|0)>TIRAGE_SAISIE_MAX; }
 function _tirageLargeurFiche(f, nbCrit){
   if(!f || f.saisie!=='cahier') return 620;
   const n=Array.isArray(f.eleves)?f.eleves.length:0;
-  if(_tirageCahierRetourne(n)) return Math.min(1240, 150+(nbCrit|0)*118+86+180);
+  if(_tirageCahierRetourne(n)) return Math.min(1360, 150+(nbCrit|0)*118+86+122+180);   /* V11.5.111 : + colonne « À représenter » */
   return n>2 ? 720 : 560;
 }
 /** « tirée le 26/09 à 10:42 ». Pure. */
@@ -76355,7 +76363,7 @@ function _tirageMajPastille(){
 function _tirageFicheATraiter(f){
   if(!f || !Array.isArray(f.eleves)) return 0;
   const e=f.etat||{}, niv=e.niv||{}, ou=e.oubli||{}, rq=e.rq||{};
-  return f.eleves.filter(s=>s && !(Object.values(niv[s.uid]||{}).some(Boolean) || ou[s.uid] || String(rq[s.uid]||'').trim())).length;
+  return f.eleves.filter(s=>s && !(Object.values(niv[s.uid]||{}).some(Boolean) || ou[s.uid] || String(rq[s.uid]||'').trim() || (e.maj||{})[s.uid])).length;
 }
 /** Fiches par portée : classes dans l'ordre donné (inconnues ensuite), puis
  *  groupes ; la plus ancienne d'abord ; portées vides omises. Pure.
@@ -76433,6 +76441,465 @@ function openFichesACompleter(note){
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   V11.5.111 — SUIVI DES CAHIERS (maquettes du 25/11, validées : « Ça me va »)
+   Sources, sans ressaisie :
+     • vérifications ENREGISTRÉES depuis cette version : S.cahierVerifs (relevé structuré,
+       écrit par « Enregistrer » d'une fiche « Cahier », en plus de la phrase d'observation) ;
+     • vérifications ANTÉRIEURES : relues dans les observations de cours (S.obsCours et
+       S.seances[…].observations), au format fixe de _tirageTexteCahier ;
+     • oublis : statut « cahier » (OC) de S.statutsCours et S.seances[…].statuts, plus les
+       « Cahier : oublié » des fiches ;
+     • « à mettre à jour et à représenter » : case de la fiche, ou ancienne mention //MAJ//
+       en remarque. Active jusqu'à la vérification suivante (hors oubli) qui ne la porte plus.
+   Priorité : à représenter (la plus ancienne demande d'abord), jamais vérifiés (les
+   oublieurs d'abord), puis la vérification la plus ancienne.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const CAH_MAJ_TXT='à mettre à jour et à représenter';
+const CAH_NIV_LBL={'Insuffisant':'I','Partiel':'P','Assez bien':'AB','Parfait':'PF'};
+const CAH_SEUIL_OUBLIS=3;
+const CAH_RE_TETE=/^Cahier(?: :|\s+vérifié)/;
+let _cah={cls:'', per:'', tri:'prio', filtre:'', sel:{}};
+
+/** Relit les lignes « Cahier … » d'une observation. Pure.
+ *  Rend [{crit:{nom:niveauId}, oubli, rq, maj}] — une entrée par ligne « Cahier ». */
+function _cahLire(txt, crits){
+  const L=String(txt||'').split('\n'), out=[];
+  const suf=' — '+CAH_MAJ_TXT;
+  for(let i=0;i<L.length;i++){
+    const l=L[i].trim();
+    if(!CAH_RE_TETE.test(l)) continue;
+    let tete=l, maj=false;
+    if(tete.endsWith(suf)){ maj=true; tete=tete.slice(0, -suf.length).trim(); }
+    let rq='';
+    const nx=(L[i+1]||'').trim();
+    if(nx && !CAH_RE_TETE.test(nx) && !/^[^:]{1,40} : (?:Insuffisant|Partiel|Assez bien|Parfait|—)\s*$/.test(nx)){ rq=nx; i++; }
+    if(/\/\/\s*MAJ\s*\/\//i.test(rq)) maj=true;
+    const r={crit:{}, oubli:false, rq:rq, maj:maj};
+    if(/^Cahier : oublié$/i.test(tete)) r.oubli=true;
+    else {
+      const m=/^Cahier : (.+) sur tous les critères$/.exec(tete);
+      if(m){ const id=CAH_NIV_LBL[m[1]]; if(id) (crits||[]).forEach(c=>{ r.crit[c]=id; }); }
+      else if(/^Cahier : /.test(tete)){
+        tete.slice(9).split(/,\s*(?=[^,()]+\()/).forEach(p=>{
+          const q=/^(.+?)\s*\(([^()]+)\)$/.exec(p.trim());
+          if(q && CAH_NIV_LBL[q[2]]) r.crit[q[1].trim()]=CAH_NIV_LBL[q[2]];
+        });
+      }
+    }
+    out.push(r);
+  }
+  return out;
+}
+
+/** uid → première classe qui le compte. Pure. */
+function _cahUidCls(st){
+  const M={};
+  Object.keys((st&&st.cl)||{}).forEach(c=>(((st.cl[c]||{}).students)||[]).forEach(x=>{
+    const u=(x && typeof x==='object') ? x.uid : x; if(u && !M[u]) M[u]=c; }));
+  return M;
+}
+/** Toutes les vérifications connues. Pure sur st. Le relevé structuré prime ; un même
+ *  (cours, élève) n'est lu qu'une fois (observation vivante d'abord, puis séance). */
+function _cahReleves(st, crits){
+  st=st||S; const M=_cahUidCls(st), out=[], vu=new Set();
+  (Array.isArray(st.cahierVerifs) ? st.cahierVerifs : []).forEach(v=>{
+    if(!v || !v.uid) return;
+    vu.add(String(v.slotKey||'')+'|'+v.uid);
+    out.push({uid:v.uid, cls:v.cls||M[v.uid]||'', slotKey:String(v.slotKey||''), date:v.date||String(v.slotKey||'').slice(0,10),
+      crit:Object.assign({}, v.crit||{}), oubli:!!v.oubli, rq:String(v.rq||''), maj:!!v.maj, src:'fiche'});
+  });
+  const lire=(sk, map)=>{ if(!sk || !map || typeof map!=='object') return;
+    Object.keys(map).forEach(u=>{ const k=sk+'|'+u; if(vu.has(k)) return;
+      const R=_cahLire(map[u], crits); if(!R.length) return; vu.add(k);
+      R.forEach(r=>out.push(Object.assign(r, {uid:u, cls:M[u]||'', slotKey:sk, date:String(sk).slice(0,10), src:'obs'}))); }); };
+  Object.keys(st.obsCours||{}).forEach(k=>lire(k.split('|')[0], st.obsCours[k]));
+  Object.keys(st.seances||{}).forEach(b=>(Array.isArray(st.seances[b]) ? st.seances[b] : []).forEach(se=>{ if(se && se.slotKey) lire(se.slotKey, se.observations); }));
+  return out;
+}
+/** Oublis de cahier (statut OC). Pure sur st. */
+function _cahOublis(st){
+  st=st||S; const M=_cahUidCls(st), out=[], vu=new Set();
+  const lire=(sk, map)=>{ if(!sk || !map || typeof map!=='object') return;
+    Object.keys(map).forEach(u=>{ const L=map[u]; const oc=Array.isArray(L) ? L.indexOf('cahier')>=0 : L==='cahier';
+      const k=sk+'|'+u; if(!oc || vu.has(k)) return; vu.add(k);
+      out.push({uid:u, cls:M[u]||'', slotKey:sk, date:String(sk).slice(0,10)}); }); };
+  Object.keys(st.statutsCours||{}).forEach(k=>lire(k.split('|')[0], st.statutsCours[k]));
+  Object.keys(st.seances||{}).forEach(b=>(Array.isArray(st.seances[b]) ? st.seances[b] : []).forEach(se=>{ if(se && se.slotKey) lire(se.slotKey, se.statuts); }));
+  return out;
+}
+/** Regroupe par élève. Pure. */
+function _cahParEleve(L){ const M={}; (L||[]).forEach(x=>{ (M[x.uid]=M[x.uid]||[]).push(x); }); return M; }
+
+/** État d'un élève. R = ses vérifications, O = ses oublis OC, [du, au] = période (ISO, null = ouvert). Pure.
+ *  La demande « à représenter » se lit sur TOUT l'historique (hors oublis) : elle naît à la première
+ *  vérification qui la porte et tombe à la première vérification suivante qui ne la porte plus. */
+function _cahEtat(uid, R, O, du, au){
+  const dans=d=>(!du || d>=du) && (!au || d<=au);
+  const H=(R||[]).slice().sort((a,b)=>String(a.slotKey).localeCompare(String(b.slotKey)));
+  let majDepuis='';
+  H.forEach(r=>{ if(r.oubli) return; if(r.maj){ if(!majDepuis) majDepuis=r.date; } else majDepuis=''; });
+  const V=H.filter(r=>!r.oubli && dans(r.date));
+  const od=new Set();
+  (O||[]).forEach(o=>{ if(dans(o.date)) od.add(o.date); });
+  H.forEach(r=>{ if(r.oubli && dans(r.date)) od.add(r.date); });
+  return {uid, nb:V.length, der:V.length ? V[V.length-1] : null, jamais:!V.length, maj:!!majDepuis, majDepuis,
+    oublis:[...od].sort(), hist:H};
+}
+/** Ordre de priorité. Pure. */
+function _cahComparer(a, b){
+  const g=e=>e.maj ? 0 : (e.jamais ? 1 : 2);
+  const d=g(a)-g(b); if(d) return d;
+  if(a.maj) return String(a.majDepuis).localeCompare(String(b.majDepuis)) || String(a.nom||'').localeCompare(String(b.nom||''), 'fr');
+  if(a.jamais) return (b.oublis.length-a.oublis.length) || String(a.nom||'').localeCompare(String(b.nom||''), 'fr');
+  return String(a.der.slotKey).localeCompare(String(b.der.slotKey)) || String(a.nom||'').localeCompare(String(b.nom||''), 'fr');
+}
+/** Le niveau le plus fréquent d'une liste de vérifications (égalité : le plus bas). Pure. */
+function _cahNiveauDominant(V){
+  const n={I:0, P:0, AB:0, PF:0};
+  (V||[]).forEach(r=>Object.values(r.crit||{}).forEach(x=>{ if(n[x]!=null) n[x]++; }));
+  let best='', m=0; ['I','P','AB','PF'].forEach(k=>{ if(n[k]>m){ m=n[k]; best=k; } });
+  return best;
+}
+/** Bornes d'une période ('t1'|'t2'|'t3'|'all'|'30j'). */
+function _cahBornes(per){
+  if(per==='30j'){ const d=new Date(); d.setDate(d.getDate()-30); return {du:toDateStr(d), au:null}; }
+  if(per==='all'){ const b=computeVgDateBounds('s1'); return {du:b.dateFrom, au:null}; }
+  const b=computeVgDateBounds(per); return {du:b.dateFrom, au:b.dateTo};
+}
+/** Trimestre du jour (sinon « depuis la rentrée »). */
+function _cahPerDefaut(){
+  const t=(typeof _todayStr==='function') ? _todayStr() : '';
+  for(const p of ['t1','t2','t3']){ const b=computeVgDateBounds(p); if(t && b.dateFrom && t>=b.dateFrom && t<=b.dateTo) return p; }
+  return 'all';
+}
+function _cahNom(uid){ try{ return getSeatLabel(uid); }catch(e){ return uid; } }
+/** Classes affichées. */
+function _cahClasses(){
+  let L=[]; try{ L=_homeListActiveClasses(); }catch(e){ L=Object.keys(S.cl||{}); }
+  return L.filter(c=>S.cl[c] && (S.cl[c].students||[]).length).sort((a,b)=>a.localeCompare(b, 'fr', {numeric:true}));
+}
+/** Tout le calcul d'un rendu : états par classe. */
+function _cahDonnees(per){
+  const crits=_tirageCahierCrit();
+  const rel=_cahReleves(S, crits), oub=_cahOublis(S);
+  const RI=_cahParEleve(rel), OI=_cahParEleve(oub);
+  const {du, au}=_cahBornes(per);
+  const parCls={};
+  _cahClasses().forEach(c=>{
+    parCls[c]=_espUidsClasse(c).map(u=>Object.assign(_cahEtat(u, RI[u], OI[u], du, au), {nom:_cahNom(u)})).sort(_cahComparer);
+  });
+  return {crits, parCls, du, au};
+}
+
+/* ── Couleurs : celles des compétences (journal, Ctrl+K) ── */
+function _cahCarre(niv, taille){
+  const n=_tirageNiveau(niv); const s=document.createElement('span');
+  const t=taille||22;
+  s.style.cssText='display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:'+(t+8)+'px;height:'+t+'px;border-radius:4px;font-size:10.5px;font-weight:800;'
+    +(n ? ('background:'+n.col+';color:'+n.fg+';box-shadow:'+(n.sh||'none')) : 'border:1.5px dashed var(--brd2);color:var(--tx3)');
+  s.textContent=n ? n.court : ''; s.title=n ? n.label : 'non évalué';
+  return s;
+}
+function _cahBadgeMaj(txt){ return _tasEl('span','display:inline-block;padding:2px 7px;border-radius:9px;background:#EDE9FE;color:#5B21B6;font-size:11px;font-weight:800;white-space:nowrap', txt||'↻ À représenter'); }
+function _cahJour(d){ return (typeof _obsDateCourte==='function') ? _obsDateCourte(d) : String(d||''); }
+
+/* ── Page ── */
+function openCahiers(o){
+  o=o||{};
+  if(o.cls && S.cl[o.cls]) _cah.cls=o.cls; else if(o.cls===null || (_cah.cls && !S.cl[_cah.cls])) _cah.cls='';
+  if(!_cah.per) _cah.per=_cahPerDefaut();
+  _cah.sel={};
+  let pg=document.getElementById('cah-page'); if(pg) pg.remove();
+  pg=_tasEl('div','position:fixed;inset:0;z-index:465;background:var(--bg);color:var(--tx);display:flex;flex-direction:column;font-family:"DM Sans",sans-serif'); pg.id='cah-page';
+  document.body.appendChild(pg); _cahRendre();
+}
+function closeCahiers(){ const pg=document.getElementById('cah-page'); if(pg) pg.remove(); try{ _cahTuileMaj(); }catch(e){} }
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape' || !document.getElementById('cah-page')) return;
+  const m=document.getElementById('mbg'); if(m && getComputedStyle(m).display!=='none') return;
+  closeCahiers();
+});
+const CAH_PERIODES=[['t1','Trimestre 1'],['t2','Trimestre 2'],['t3','Trimestre 3'],['all','Depuis la rentrée'],['30j','30 derniers jours']];
+function _cahRendre(){
+  const pg=document.getElementById('cah-page'); if(!pg) return;
+  const y=(document.getElementById('cah-corps')||{}).scrollTop||0; pg.textContent='';
+  const hd=_tasEl('div','display:flex;align-items:center;gap:14px;padding:10px 18px;background:var(--sur);border-bottom:3px solid var(--acc);flex-wrap:wrap'); pg.appendChild(hd);
+  hd.appendChild(_tasEl('span','font-size:22px;font-weight:800;letter-spacing:-.01em','📓 Suivi des cahiers'));
+  if(_cah.cls){ const b=_tasEl('button','font:inherit;font-size:13px;font-weight:700;padding:5px 10px;border:none;background:none;color:var(--acc);cursor:pointer','← Toutes les classes'); b.type='button'; b.id='cah-retour'; b.onclick=()=>{ _cah.cls=''; _cah.sel={}; _cahRendre(); }; hd.appendChild(b); }
+  hd.appendChild(_tasEl('span','flex:1'));
+  const seg=_tasEl('div','display:flex;border:1.5px solid #111418;border-radius:7px;overflow:hidden'); seg.id='cah-per';
+  CAH_PERIODES.forEach(([v,l])=>{ const on=_cah.per===v; const b=_tasEl('button','font:inherit;font-size:12.5px;font-weight:700;padding:5px 11px;border:none;cursor:pointer;'+(on?'background:#111418;color:#fff':'background:#fff;color:#111418'), l);
+    b.type='button'; b.dataset.per=v; b.onclick=()=>{ _cah.per=v; _cahRendre(); }; seg.appendChild(b); });
+  hd.appendChild(seg);
+  const x=_tasEl('button','font:inherit;font-size:15px;font-weight:800;padding:5px 12px;border:1.5px solid var(--brd);border-radius:7px;background:var(--sur);cursor:pointer','✕'); x.type='button'; x.title='Fermer'; x.onclick=closeCahiers; hd.appendChild(x);
+  const corps=_tasEl('div','flex:1;overflow:auto;padding:16px 20px 40px'); corps.id='cah-corps'; pg.appendChild(corps);
+  const D=_cahDonnees(_cah.per);
+  if(_cah.cls && D.parCls[_cah.cls]) _cahRendreClasse(corps, D); else { _cah.cls=''; _cahRendreTout(corps, D); }
+  corps.scrollTop=y;
+}
+function _cahCarte(parent, lib, val, sous, coul){
+  const c=_tasEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:9px;padding:12px 16px;min-width:0');
+  c.appendChild(_tasEl('div','font-size:11.5px;color:var(--tx2);font-weight:700', lib));
+  const v=_tasEl('div','font-size:26px;font-weight:800;margin-top:2px;'+(coul?('color:'+coul):''), val); c.appendChild(v);
+  if(sous) c.appendChild(sous);
+  parent.appendChild(c); return c;
+}
+function _cahBarre(pct){ const b=_tasEl('div','height:9px;background:var(--sur2);border-radius:5px;overflow:hidden;flex:1'); b.appendChild(_tasEl('div','height:100%;background:var(--acc);width:'+Math.round(pct)+'%')); return b; }
+function _cahFichesCls(cls){ return _tirageFiches(cls).filter(f=>f && f.saisie==='cahier'); }
+
+function _cahRendreTout(corps, D){
+  const cls=Object.keys(D.parCls);
+  let tot=0, vus=0, jam=0, maj=0, oub=0, oubliers=0, fi=0;
+  const lignes=cls.map(c=>{
+    const E=D.parCls[c], v=E.filter(e=>!e.jamais).length, j=E.length-v, m=E.filter(e=>e.maj).length;
+    const o=E.reduce((n,e)=>n+e.oublis.length, 0), ders=E.filter(e=>e.der).map(e=>e.der.date).sort();
+    const V=[]; E.forEach(e=>e.hist.forEach(r=>{ if(!r.oubli && (!D.du || r.date>=D.du) && (!D.au || r.date<=D.au)) V.push(r); }));
+    tot+=E.length; vus+=v; jam+=j; maj+=m; oub+=o; oubliers+=E.filter(e=>e.oublis.length>=CAH_SEUIL_OUBLIS).length; fi+=_cahFichesCls(c).length;
+    return {c, n:E.length, v, j, m, o, der:ders.length ? ders[ders.length-1] : '', niv:_cahNiveauDominant(V)};
+  }).sort((a,b)=>(b.m-a.m) || (b.j-a.j) || a.c.localeCompare(b.c, 'fr', {numeric:true}));
+  const cartes=_tasEl('div','display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px'); cartes.id='cah-cartes'; corps.appendChild(cartes);
+  { const s=_tasEl('div','display:flex;margin-top:8px'); s.appendChild(_cahBarre(tot ? vus*100/tot : 0)); _cahCarte(cartes, 'Élèves vérifiés au moins une fois', vus+' / '+tot, s); }
+  _cahCarte(cartes, 'Jamais vérifiés', String(jam), _tasEl('div','font-size:12px;color:var(--tx2);margin-top:4px','priorité du prochain ramassage'), '#B45309');
+  _cahCarte(cartes, 'À représenter', String(maj), _tasEl('div','font-size:12px;color:var(--tx2);margin-top:4px','cahiers à mettre à jour'), '#5B21B6');
+  _cahCarte(cartes, 'Oublis de cahier', String(oub), _tasEl('div','font-size:12px;color:var(--tx2);margin-top:4px', oubliers+' élève'+(oubliers>1?'s':'')+' à '+CAH_SEUIL_OUBLIS+' oublis ou plus'));
+  if(fi){ const c=_cahCarte(cartes, 'Fiches de vérification en attente', String(fi), null); const a=_tasEl('button','font:inherit;font-size:12px;font-weight:700;color:var(--acc);background:none;border:none;padding:4px 0 0;cursor:pointer','Compléter →'); a.type='button'; a.onclick=()=>openFichesACompleter(); c.appendChild(a); }
+
+  const tb=_tasEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:9px;overflow-x:auto'); tb.id='cah-table-tout'; corps.appendChild(tb);
+  const cols='80px minmax(200px,1fr) 110px 120px 110px 150px 80px 180px';
+  const th=_tasEl('div','display:grid;grid-template-columns:'+cols+';gap:8px;padding:9px 14px;background:var(--sur2);font-size:11px;font-weight:800;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em;min-width:1060px');
+  ['Classe','Couverture de la période','Dernière vérif.','Jamais vérifiés','À représenter','Niveau dominant','Oublis',''].forEach(t=>th.appendChild(_tasEl('div','',t))); tb.appendChild(th);
+  const pastille=(n, bg, tx)=>_tasEl('span','display:inline-block;min-width:26px;text-align:center;padding:2px 8px;border-radius:10px;font-weight:800;font-size:12px;background:'+bg+';color:'+tx, String(n));
+  lignes.forEach(L=>{
+    const r=_tasEl('div','display:grid;grid-template-columns:'+cols+';gap:8px;align-items:center;padding:9px 14px;border-top:1px solid var(--sur2);font-size:13px;min-width:1060px'); r.dataset.cls=L.c;
+    r.appendChild(_tasEl('div','font-weight:800', L.c.toUpperCase()));
+    const cv=_tasEl('div','display:flex;align-items:center;gap:10px'); cv.appendChild(_cahBarre(L.n ? L.v*100/L.n : 0)); cv.appendChild(_tasEl('span','font-size:12px;color:var(--tx2);min-width:52px', L.v+' / '+L.n)); r.appendChild(cv);
+    r.appendChild(_tasEl('div','color:var(--tx2)', L.der ? _cahJour(L.der) : '—'));
+    { const d=_tasEl('div',''); d.appendChild(pastille(L.j, L.j ? '#FEF3C7' : '#DCFCE7', L.j ? '#78350F' : '#14532D')); r.appendChild(d); }
+    { const d=_tasEl('div',''); d.appendChild(pastille(L.m, L.m ? '#EDE9FE' : 'var(--sur2)', L.m ? '#5B21B6' : 'var(--tx3)')); r.appendChild(d); }
+    { const d=_tasEl('div','display:flex;align-items:center;gap:6px'); if(L.niv){ d.appendChild(_cahCarre(L.niv, 16)); d.appendChild(_tasEl('span','font-size:12.5px', _tirageNiveau(L.niv).label)); } else d.appendChild(_tasEl('span','color:var(--tx3)','—')); r.appendChild(d); }
+    r.appendChild(_tasEl('div','font-weight:700', String(L.o)));
+    const ac=_tasEl('div','display:flex;gap:6px;justify-content:flex-end');
+    const b1=_tasEl('button','font:inherit;font-size:12px;font-weight:700;padding:5px 10px;border:1.5px solid var(--brd);border-radius:6px;background:var(--sur);cursor:pointer','Ouvrir'); b1.type='button'; b1.onclick=()=>{ _cah.cls=L.c; _cah.sel={}; _cahRendre(); };
+    const b2=_tasEl('button','font:inherit;font-size:12px;font-weight:700;padding:5px 10px;border:none;border-radius:6px;background:var(--acc);color:#fff;cursor:pointer','Ramasser'); b2.type='button'; b2.title='Fiche de vérification pour les 5 élèves prioritaires'; b2.onclick=()=>_cahRamasser(L.c, D);
+    ac.appendChild(b1); ac.appendChild(b2); r.appendChild(ac);
+    tb.appendChild(r);
+  });
+  corps.appendChild(_tasEl('div','font-size:12px;color:var(--tx2);line-height:1.5;margin-top:10px','Tri : les classes avec des cahiers à représenter, puis le plus d’élèves jamais vérifiés. « Niveau dominant » : le niveau le plus fréquent sur la période. Les vérifications viennent des fiches « Cahier » (tirage ou ramassage) ; les oublis, du statut OC.'));
+}
+
+/** Élèves qu'on peut ramasser dans ce cours : sans statut OC ni absence (cours ouvert de cette classe). */
+function _cahEligibles(cls, E){
+  let M={};
+  try{ if(typeof curSlotKey!=='undefined' && curSlotKey && typeof curCls!=='undefined' && curCls===cls && typeof getStatutsMap==='function') M=getStatutsMap()||{}; }catch(e){}
+  return E.filter(e=>{ const k=M[e.uid]; const L=Array.isArray(k) ? k : (k ? [k] : []); return L.indexOf('cahier')<0 && L.indexOf('absent')<0; });
+}
+/** Le cours où rattacher la fiche : le cours ouvert s'il est de CETTE classe, sinon son dernier cours passé. */
+function _cahCible(cls){
+  const sv=curSlotKey;
+  try{ if(!(typeof curCls!=='undefined' && curCls===cls)) curSlotKey=null; return _obsSlotCible(cls); }
+  finally{ curSlotKey=sv; }
+}
+function _cahCreerFiche(cls, E, choix){
+  const cat=_tirageCats().find(c=>c.id==='cahier');
+  if(!cat || !E.length){ showDropToast('⚠️ Aucun élève à vérifier'); return null; }
+  const cible=_cahCible(cls);
+  const f=_tirageFicheCreer(cls, cat, E.map(e=>({uid:e.uid, name:e.nom})), cible, '', '', Date.now(), !!choix);
+  if(!f) return null;
+  if(choix) f.mode='choix';
+  saveS(); try{ _tirageMajPastille(); }catch(e){}
+  _cahOuvrirFiche(cls, f);
+  return f;
+}
+function _cahRamasser(cls, D){
+  D=D||_cahDonnees(_cah.per);
+  const E=_cahEligibles(cls, D.parCls[cls]||[]).slice(0, TIRAGE_SAISIE_MAX);
+  return _cahCreerFiche(cls, E, false);
+}
+function _cahOuvrirFiche(cls, f){
+  showModal('📓 Vérification des cahiers — '+String(cls).toUpperCase(), '', null);
+  const fermer=document.querySelector('#mbg .modal-acts .bs'); if(fermer) fermer.textContent='Fermer';
+  const okb=document.getElementById('mok'); if(okb) okb.style.display='none';
+  _attachModalClickOutsideClose();
+  const modal=document.querySelector('#mbg .modal');
+  if(modal){ modal.style.width=_tirageLargeurFiche(f, _tirageCahierCrit().length)+'px'; modal.style.maxWidth='96vw'; }
+  const mb=document.getElementById('mb'); if(mb) mb.textContent='';
+  const extra=document.getElementById('modal-extra'); extra.innerHTML='';
+  const box=_tasEl('div',''); extra.appendChild(box);
+  _tirageRenderSaisie(box, f, {scope:cls, onFin:(r)=>{
+    try{ closeModal(); }catch(e){}
+    if(r) showDropToast('✓ Noté dans l’observation du cours du '+_cahJour(r.cible.dateStr)+' — '+r.n+' élève'+(r.n>1?'s':''));
+    _cahRendre(); try{ _cahTuileMaj(); }catch(e){}
+  }});
+}
+
+function _cahRendreClasse(corps, D){
+  const cls=_cah.cls, E=D.parCls[cls]||[];
+  const chips=_tasEl('div','display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center'); chips.id='cah-chips';
+  chips.appendChild(_tasEl('span','font-size:20px;font-weight:800;margin-right:8px','Cahiers · '+cls.toUpperCase()));
+  Object.keys(D.parCls).forEach(c=>{ const on=c===cls; const b=_tasEl('button','font:inherit;font-size:12px;font-weight:700;padding:4px 10px;border-radius:14px;cursor:pointer;border:1.5px solid '+(on?'var(--acc)':'var(--brd)')+';background:'+(on?'var(--acc)':'var(--sur)')+';color:'+(on?'#fff':'var(--tx)'), c.toUpperCase());
+    b.type='button'; b.onclick=()=>{ _cah.cls=c; _cah.sel={}; _cahRendre(); }; chips.appendChild(b); });
+  corps.appendChild(chips);
+
+  const vus=E.filter(e=>!e.jamais).length, jam=E.length-vus, maj=E.filter(e=>e.maj).length, oub=E.reduce((n,e)=>n+e.oublis.length,0);
+  const bande=_tasEl('div','display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px');
+  const st=_tasEl('div','flex:1 1 520px;background:var(--sur);border:1px solid var(--brd);border-radius:9px;padding:12px 16px;display:flex;align-items:center;gap:18px;flex-wrap:wrap');
+  const chiffre=(l, v, c)=>{ const d=_tasEl('div',''); d.appendChild(_tasEl('div','font-size:11.5px;color:var(--tx2);font-weight:700', l)); d.appendChild(_tasEl('div','font-size:22px;font-weight:800;'+(c?'color:'+c:''), v)); return d; };
+  st.appendChild(chiffre('Vérifiés', vus+' / '+E.length)); st.appendChild(_cahBarre(E.length ? vus*100/E.length : 0));
+  st.appendChild(chiffre('Jamais', String(jam), '#B45309')); st.appendChild(chiffre('À représenter', String(maj), '#5B21B6')); st.appendChild(chiffre('Oublis', String(oub)));
+  bande.appendChild(st);
+  const ac=_tasEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:9px;padding:12px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap');
+  const bR=_tasEl('button','font:inherit;font-size:13px;font-weight:800;padding:9px 15px;border:none;border-radius:8px;background:var(--acc);color:#fff;cursor:pointer','Ramasser les '+TIRAGE_SAISIE_MAX+' prioritaires'); bR.type='button'; bR.id='cah-ramasser';
+  bR.title='Ouvre la fiche de vérification pour les élèves en tête de la priorité (statut OC ou absent dans le cours ouvert : écartés)';
+  bR.onclick=()=>_cahRamasser(cls, D); ac.appendChild(bR);
+  const nSel=Object.keys(_cah.sel).filter(u=>_cah.sel[u]).length;
+  const bC=_tasEl('button','font:inherit;font-size:13px;font-weight:700;padding:8px 14px;border:1.5px solid var(--brd);border-radius:8px;background:var(--sur);cursor:pointer', nSel ? ('Vérifier la sélection ('+nSel+')') : 'Cochez des élèves…'); bC.type='button'; bC.id='cah-choix';
+  bC.disabled=!nSel; bC.style.opacity=nSel?'1':'.6';
+  bC.onclick=()=>_cahCreerFiche(cls, E.filter(e=>_cah.sel[e.uid]), true); ac.appendChild(bC);
+  const nf=_cahFichesCls(cls).length;
+  if(nf){ const bF=_tasEl('button','font:inherit;font-size:13px;font-weight:700;padding:8px 14px;border:1.5px solid #D97706;color:#92400E;border-radius:8px;background:var(--sur);cursor:pointer', nf+' fiche'+(nf>1?'s':'')+' en attente'); bF.type='button'; bF.onclick=()=>openFichesACompleter(); ac.appendChild(bF); }
+  bande.appendChild(ac); corps.appendChild(bande);
+
+  const lg=_tasEl('div','display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--tx2);margin-bottom:8px');
+  lg.appendChild(_tasEl('span','font-weight:700;color:var(--tx)','Légende'));
+  TIRAGE_NIVEAUX.forEach(n=>{ const s=_tasEl('span','display:inline-flex;align-items:center;gap:5px'); s.appendChild(_cahCarre(n.id, 14)); s.appendChild(document.createTextNode(n.label)); lg.appendChild(s); });
+  { const s=_tasEl('span','display:inline-flex;align-items:center;gap:5px'); s.appendChild(_cahCarre('', 14)); s.appendChild(document.createTextNode('non évalué')); lg.appendChild(s); }
+  { const s=_tasEl('span','display:inline-flex;align-items:center;gap:5px'); s.appendChild(_cahBadgeMaj()); s.appendChild(document.createTextNode('cahier à mettre à jour')); lg.appendChild(s); }
+  lg.appendChild(_tasEl('span','flex:1'));
+  lg.appendChild(_tasEl('span','','Trier :'));
+  const btnTri=(v, l, coul)=>{ const on=(v==='maj') ? _cah.filtre==='maj' : _cah.tri===v; const c=coul||'#111418';
+    const b=_tasEl('button','font:inherit;font-size:12px;font-weight:700;padding:3px 9px;border-radius:6px;cursor:pointer;border:1.5px solid '+c+';'+(on?('background:'+c+';color:#fff'):('background:var(--sur);color:'+c)), l); b.type='button'; b.dataset.tri=v;
+    b.onclick=()=>{ if(v==='maj') _cah.filtre=(_cah.filtre==='maj' ? '' : 'maj'); else _cah.tri=v; _cahRendre(); }; lg.appendChild(b); };
+  btnTri('prio','Priorité'); btnTri('nom','Nom'); btnTri('oublis','Oublis'); btnTri('maj','Seulement « à représenter »','#5B21B6');
+  corps.appendChild(lg);
+
+  let L=E.slice();
+  if(_cah.tri==='nom') L.sort((a,b)=>String(a.nom).localeCompare(String(b.nom), 'fr'));
+  else if(_cah.tri==='oublis') L.sort((a,b)=>(b.oublis.length-a.oublis.length) || _cahComparer(a,b));
+  if(_cah.filtre==='maj') L=L.filter(e=>e.maj);
+
+  const crits=D.crits;
+  const cols='34px 190px 190px repeat('+crits.length+',96px) 70px minmax(220px,1fr)';
+  const mw=34+190+190+crits.length*96+70+220+60;
+  const tb=_tasEl('div','background:var(--sur);border:1px solid var(--brd);border-radius:9px;overflow-x:auto'); tb.id='cah-table'; corps.appendChild(tb);
+  const th=_tasEl('div','display:grid;grid-template-columns:'+cols+';gap:6px;padding:9px 14px;background:var(--sur2);font-size:11px;font-weight:800;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em;align-items:end;min-width:'+mw+'px');
+  th.appendChild(_tasEl('div','')); th.appendChild(_tasEl('div','','Élève')); th.appendChild(_tasEl('div','','Dernière vérif.'));
+  crits.forEach(c=>th.appendChild(_tasEl('div','text-align:center', c))); th.appendChild(_tasEl('div','text-align:center','Vérifs')); th.appendChild(_tasEl('div','','Oublis de cahier (OC)'));
+  tb.appendChild(th);
+  if(!L.length) tb.appendChild(_tasEl('div','padding:16px;color:var(--tx3);font-size:13px;text-align:center', _cah.filtre==='maj' ? 'Aucun cahier à représenter.' : 'Aucun élève.'));
+  L.forEach(e=>{
+    const r=_tasEl('div','display:grid;grid-template-columns:'+cols+';gap:6px;align-items:center;padding:7px 14px;border-top:1px solid var(--sur2);font-size:13px;min-width:'+mw+'px;background:'+(e.maj ? '#F5F3FF' : (e.jamais ? '#FFFBEB' : 'var(--sur)')));
+    r.dataset.uid=e.uid;
+    const cbw=_tasEl('div',''); const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!_cah.sel[e.uid]; cb.setAttribute('aria-label','Sélectionner '+e.nom); cb.style.cssText='width:16px;height:16px;accent-color:var(--acc)';
+    cb.onchange=()=>{ if(cb.checked) _cah.sel[e.uid]=true; else delete _cah.sel[e.uid]; _cahRendre(); }; cbw.appendChild(cb); r.appendChild(cbw);
+    const nm=_tasEl('button','font:inherit;font-size:13px;font-weight:700;text-align:left;border:none;background:none;padding:0;color:var(--tx);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', e.nom); nm.type='button'; nm.title='Historique du cahier';
+    nm.onclick=()=>_cahFicheEleve(cls, e.uid); r.appendChild(nm);
+    const dv=_tasEl('div','display:flex;align-items:center;gap:6px;flex-wrap:wrap');
+    if(e.jamais) dv.appendChild(_tasEl('span','padding:2px 8px;border-radius:10px;background:#FEF3C7;color:#78350F;font-size:11.5px;font-weight:800','Jamais vérifié'));
+    else dv.appendChild(_tasEl('span','color:var(--tx2)', _cahJour(e.der.date)));
+    if(e.maj){ const b=_cahBadgeMaj(); b.title='Cahier à mettre à jour et à représenter, depuis le '+_cahJour(e.majDepuis); dv.appendChild(b); }
+    r.appendChild(dv);
+    crits.forEach(c=>{ const d=_tasEl('div','display:flex;justify-content:center'); d.appendChild(_cahCarre(e.der ? (e.der.crit||{})[c] : '')); r.appendChild(d); });
+    r.appendChild(_tasEl('div','text-align:center;font-weight:700;color:var(--tx2)', String(e.nb)));
+    const oc=_tasEl('div','display:flex;align-items:center;gap:5px;flex-wrap:wrap');
+    e.oublis.forEach(d=>oc.appendChild(_tasEl('span','padding:2px 7px;border-radius:5px;background:#FEE2E2;color:#991B1B;font-size:11px;font-weight:700', _cahJour(d))));
+    if(e.oublis.length>=CAH_SEUIL_OUBLIS) oc.appendChild(_tasEl('span','font-size:11.5px;font-weight:800;color:#991B1B', e.oublis.length+' oublis : à signaler'));
+    r.appendChild(oc);
+    tb.appendChild(r);
+  });
+  corps.appendChild(_tasEl('div','font-size:12px;color:var(--tx2);line-height:1.5;margin-top:10px','« Priorité » : d’abord les cahiers à représenter, puis les jamais vérifiés (les oublieurs en tête), puis la vérification la plus ancienne. C’est l’ordre de « Ramasser les '+TIRAGE_SAISIE_MAX+' prioritaires ». Les carrés montrent la dernière vérification de la période.'));
+}
+
+/** Historique d'un élève (fenêtre). */
+function _cahFicheEleve(cls, uid){
+  const D=_cahDonnees(_cah.per); const e=(D.parCls[cls]||[]).find(x=>x.uid===uid); if(!e) return;
+  showModal('📓 '+e.nom+' · '+String(cls).toUpperCase(), '', null);
+  const fermer=document.querySelector('#mbg .modal-acts .bs'); if(fermer) fermer.textContent='Fermer';
+  const okb=document.getElementById('mok'); if(okb) okb.style.display='none';
+  _attachModalClickOutsideClose();
+  const modal=document.querySelector('#mbg .modal'); if(modal){ modal.style.width='560px'; modal.style.maxWidth='96vw'; }
+  const mb=document.getElementById('mb'); if(mb) mb.textContent='';
+  const ex=document.getElementById('modal-extra'); ex.innerHTML='';
+  const root=_tasEl('div','text-align:left;display:flex;flex-direction:column;gap:12px'); root.id='cah-eleve'; ex.appendChild(root);
+  const verifier=()=>{ try{ closeModal(); }catch(x){} setTimeout(()=>_cahCreerFiche(cls, [e], false), 0); };
+  if(e.maj){
+    const b=_tasEl('div','display:flex;align-items:center;gap:10px;background:#F5F3FF;border:1.5px solid #C4B5FD;border-radius:9px;padding:10px 12px');
+    b.appendChild(_tasEl('span','font-size:18px;font-weight:800;color:#5B21B6','↻'));
+    const t=_tasEl('div','flex:1'); t.appendChild(_tasEl('div','font-size:13px;font-weight:800;color:#5B21B6','Cahier à représenter'));
+    const j=Math.max(0, Math.round((new Date(_todayStr())-new Date(e.majDepuis))/864e5));
+    t.appendChild(_tasEl('div','font-size:12px;color:#4C1D95','Demandé le '+_cahJour(e.majDepuis)+' · '+j+' jour'+(j>1?'s':''))); b.appendChild(t);
+    const bv=_tasEl('button','font:inherit;font-size:12px;font-weight:800;padding:7px 11px;border:none;border-radius:7px;background:#5B21B6;color:#fff;cursor:pointer','Représenté : vérifier'); bv.type='button'; bv.onclick=verifier; b.appendChild(bv);
+    root.appendChild(b);
+  }
+  const g=_tasEl('div','display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px');
+  [['Vérifications (période)', String(e.nb)], ['Oublis (période)', String(e.oublis.length)]].forEach(([l,v])=>{ const c=_tasEl('div','background:var(--bg);border-radius:8px;padding:8px 10px'); c.appendChild(_tasEl('div','font-size:11px;color:var(--tx2);font-weight:700', l)); c.appendChild(_tasEl('div','font-size:18px;font-weight:800', v)); g.appendChild(c); });
+  root.appendChild(g);
+  root.appendChild(_tasEl('div','font-size:11.5px;font-weight:800;color:var(--tx2);text-transform:uppercase;letter-spacing:.05em','Historique'));
+  const H=e.hist.map(r=>({d:r.date, sk:r.slotKey, r})).concat(((_cahParEleve(_cahOublis(S))[uid])||[]).map(o=>({d:o.date, sk:o.slotKey, oc:true})));
+  H.sort((a,b)=>String(b.sk).localeCompare(String(a.sk)));
+  if(!H.length) root.appendChild(_tasEl('div','font-size:13px;color:var(--tx3)','Aucune vérification ni oubli enregistré.'));
+  H.forEach(h=>{
+    const L=_tasEl('div','display:grid;grid-template-columns:70px 1fr;gap:10px;align-items:start');
+    L.appendChild(_tasEl('div','font-size:12.5px;font-weight:700;color:var(--tx2);padding-top:2px', _cahJour(h.d)));
+    const c=_tasEl('div','border-left:3px solid '+(h.oc || (h.r && h.r.oubli) ? '#991B1B' : '#2A5224')+';padding:2px 0 2px 10px;display:flex;flex-direction:column;gap:5px');
+    const t=_tasEl('div','font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap');
+    if(h.oc) t.appendChild(document.createTextNode('Oubli de cahier (statut OC)'));
+    else if(h.r.oubli) t.appendChild(document.createTextNode('Cahier oublié à la vérification'));
+    else { t.appendChild(document.createTextNode('Vérifié')); if(h.r.maj) t.appendChild(_cahBadgeMaj('↻ à mettre à jour et à représenter')); }
+    c.appendChild(t);
+    if(h.r && !h.r.oubli){ const k=_tasEl('div','display:flex;gap:5px;flex-wrap:wrap');
+      Object.keys(h.r.crit||{}).forEach(n=>{ const s=_tasEl('span','display:inline-flex;align-items:center;gap:4px;font-size:11.5px;background:var(--bg);border-radius:5px;padding:2px 7px 2px 3px'); s.appendChild(_cahCarre(h.r.crit[n], 14)); s.appendChild(document.createTextNode(n)); k.appendChild(s); });
+      if(k.children.length) c.appendChild(k); }
+    if(h.r && h.r.rq) c.appendChild(_tasEl('div','font-size:12px;color:var(--tx2);font-style:italic', h.r.rq));
+    L.appendChild(c); root.appendChild(L);
+  });
+  const ft=_tasEl('div','display:flex;gap:8px;border-top:1px solid var(--sur2);padding-top:12px');
+  const bv=_tasEl('button','font:inherit;font-size:12.5px;font-weight:800;padding:8px 14px;border:none;border-radius:8px;background:var(--acc);color:#fff;cursor:pointer','Vérifier maintenant'); bv.type='button'; bv.id='cah-verifier-eleve'; bv.onclick=verifier; ft.appendChild(bv);
+  root.appendChild(ft);
+}
+
+/** « Enregistrer » d'une fiche Cahier : relevé structuré, en plus de la phrase d'observation. */
+function _cahMemoriser(f, cible, crits, uids){
+  if(!f || f.saisie!=='cahier' || !cible) return 0;
+  if(!Array.isArray(S.cahierVerifs)) S.cahierVerifs=[];
+  const E=f.etat||{}, niv=E.niv||{}, ou=E.oubli||{}, rq=E.rq||{}, mj=E.maj||{};
+  const M=_cahUidCls(S), ok=new Set(uids||[]); let n=0;
+  (f.eleves||[]).forEach(s=>{
+    if(!s || !ok.has(s.uid)) return;
+    const crit={}; (crits||[]).forEach(c=>{ const v=(niv[s.uid]||{})[c]; if(v) crit[c]=v; });
+    S.cahierVerifs.push({uid:s.uid, cls:M[s.uid]||'', slotKey:cible.slotKey||'', date:cible.dateStr||String(cible.slotKey||'').slice(0,10),
+      crit, oubli:!!ou[s.uid], rq:String(rq[s.uid]||'').trim(), maj:!ou[s.uid] && !!mj[s.uid], ts:Date.now()});
+    n++;
+  });
+  return n;
+}
+
+/* ── Entrées : tuile d'accueil (pastille = jamais vérifiés sur la période), menu Outils du PdC ── */
+function _cahTuileAccueil(){
+  if(document.getElementById('cah-tile')) return;
+  const ref=document.getElementById('sdc-tile'); if(!ref || !ref.parentNode) return;
+  const b=document.createElement('button'); b.id='cah-tile'; b.className='htile'; b.type='button'; b.style.position='relative';
+  const ic=document.createElement('span'); ic.className='htile-ic'; ic.textContent='📓';
+  const tx=document.createElement('span'); tx.className='htile-tx';
+  const t=document.createElement('span'); t.className='htile-t'; t.textContent='Suivi des cahiers';
+  const s=document.createElement('span'); s.className='htile-s'; s.textContent='Vérifiés, oubliés, à ramasser';
+  tx.appendChild(t); tx.appendChild(s); b.appendChild(ic); b.appendChild(tx);
+  b.onclick=()=>openCahiers({cls:null});
+  ref.parentNode.appendChild(b);
+  _cahTuileMaj();
+}
+function _cahTuileMaj(){
+  const b=document.getElementById('cah-tile'); if(!b) return;
+  let n=0; try{ const D=_cahDonnees(_cahPerDefaut()); Object.values(D.parCls).forEach(E=>{ n+=E.filter(e=>e.jamais).length; }); }catch(e){ n=0; }
+  let p=document.getElementById('cah-pastille');
+  if(!n){ if(p) p.remove(); return; }
+  if(!p){ p=document.createElement('span'); p.id='cah-pastille';
+    p.style.cssText='position:absolute;top:-8px;right:10px;background:#D97706;color:#fff;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:9px;pointer-events:none';
+    b.appendChild(p); }
+  p.textContent=n+' à vérifier'; p.title=n+' élève'+(n>1?'s':'')+' jamais vérifié'+(n>1?'s':'')+' sur la période';
+}
+try{ _cahTuileAccueil(); _accueilOrdonner(); }catch(e){ console.warn('[cahiers] tuile', e); }
+
 /* ── Éléments d'interface (createElement uniquement) ─────────────────────── */
 function _tasEl(tag, css, txt){ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
 
@@ -76450,7 +76917,7 @@ function _tasSegNiveaux(court, onChange){
   const set=(id)=>{
     val=_tirageNiveau(id)?id:'';
     btns.forEach((b,i)=>{ const n=TIRAGE_NIVEAUX[i], on=n.id===val;
-      b.style.background=on?n.col:'transparent'; b.style.color=on?'#fff':'var(--tx2)'; b.style.fontWeight=on?'700':'500'; });
+      b.style.background=on?n.col:'transparent'; b.style.color=on?(n.fg||'#fff'):'var(--tx2)'; b.style.fontWeight=on?'700':'500'; b.style.boxShadow=(on && n.sh)?n.sh:'none'; });
   };
   return {el, get:()=>val, set};
 }
@@ -76463,7 +76930,7 @@ function _tirageRenderSaisie(box, fiche, hooks){
   hooks=hooks||{};
   if(!fiche || !Array.isArray(fiche.eleves) || !fiche.eleves.length || fiche.saisie==='aucune') return;
   if(!fiche.etat) fiche.etat={niv:{}, oubli:{}, rq:{}};
-  ['niv','oubli','rq'].forEach(k=>{ if(!fiche.etat[k]) fiche.etat[k]={}; });
+  ['niv','oubli','rq','maj'].forEach(k=>{ if(!fiche.etat[k]) fiche.etat[k]={}; });
   const E=fiche.etat;
   const els=fiche.mode==='choix' ? fiche.eleves.slice() : fiche.eleves.slice(0,TIRAGE_SAISIE_MAX);   // V11.3.103
   const cahier=fiche.saisie==='cahier';
@@ -76511,16 +76978,24 @@ function _tirageRenderSaisie(box, fiche, hooks){
     const applyCrit=(liste)=>{ S.tirageCahierCrit=liste; persist(); _tirageRenderSaisie(box, fiche, hooks); };
     critOk.onclick=()=>applyCrit(critIn.value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,8));
     critDef.onclick=()=>applyCrit([]);
+    /* V11.5.111 — « Cahier à mettre à jour et à représenter » (remplace la mention //MAJ// en remarque) */
+    const majBtn=(uid)=>{
+      const b=_tasEl('button','height:26px;padding:0 10px;border:1.5px solid var(--brd);border-radius:13px;background:var(--sur);color:var(--tx2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap','↻ À représenter');
+      b.type='button'; b.title='Cahier à mettre à jour et à représenter'; b.className='tas-maj';
+      const peindre=()=>{ const on=!!E.maj[uid]; b.style.background=on?'#EDE9FE':'var(--sur)'; b.style.color=on?'#5B21B6':'var(--tx2)'; b.style.borderColor=on?'#7C3AED':'var(--brd)'; };
+      b.onclick=()=>{ if(E.maj[uid]) delete E.maj[uid]; else E.maj[uid]=true; persist(); peindre(); };
+      peindre(); return b;
+    };
 
     const sc=_tasEl('div','overflow-x:auto;-webkit-overflow-scrolling:touch');
     // V11.3.103 — au-delà de 5 élèves (choix sans plafond), le tableau se RETOURNE :
     // un élève par ligne, critères en colonnes (on le parcourt de haut en bas).
     if(_tirageCahierRetourne(els.length)){
       const nc=crits.length;
-      const grid=_tasEl('div','display:grid;grid-template-columns:minmax(110px,1.2fr) repeat('+nc+',112px) 80px minmax(110px,1fr);column-gap:6px;align-items:stretch;min-width:'+(110+nc*118+86+116)+'px');
+      const grid=_tasEl('div','display:grid;grid-template-columns:minmax(110px,1.2fr) repeat('+nc+',112px) 80px 116px minmax(110px,1fr);column-gap:6px;align-items:stretch;min-width:'+(110+nc*118+86+122+116)+'px');
       sc.appendChild(grid); wrap.appendChild(sc);
       const th=(t)=>_tasEl('div','font-size:11px;font-weight:700;color:var(--tx2);text-align:center;padding-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',t);
-      grid.appendChild(th('')); crits.forEach(n=>grid.appendChild(th(n))); grid.appendChild(th('Oubli')); grid.appendChild(th('Remarque'));
+      grid.appendChild(th('')); crits.forEach(n=>grid.appendChild(th(n))); grid.appendChild(th('Oubli')); grid.appendChild(th('À représenter')); grid.appendChild(th('Remarque'));
       const rc='display:flex;align-items:center;min-height:36px;border-top:1px solid var(--brd)';
       const cells=[]; const cols={};
       els.forEach(s=>{ cols[s.uid]=[]; });
@@ -76536,6 +77011,7 @@ function _tirageRenderSaisie(box, fiche, hooks){
         const peindre=()=>{ const on=!!E.oubli[s.uid]; b.style.background=on?'#D97706':'var(--sur)'; b.style.color=on?'#fff':'var(--tx2)'; b.style.borderColor=on?'#D97706':'var(--brd)'; griser(s.uid); };
         b.onclick=()=>{ if(E.oubli[s.uid]) delete E.oubli[s.uid]; else E.oubli[s.uid]=true; persist(); peindre(); };
         co.appendChild(b); grid.appendChild(co); setTimeout(peindre,0);
+        { const cm=_tasEl('div',rc+';justify-content:center'); cm.appendChild(majBtn(s.uid)); grid.appendChild(cm); }
         const cr=_tasEl('div',rc); cr.appendChild(rqInput(s.uid,'width:100%','…')); grid.appendChild(cr);
       });
       // « Tout remplir » agit sur ces cellules (même mécanisme que la grille d'origine).
@@ -76567,6 +77043,8 @@ function _tirageRenderSaisie(box, fiche, hooks){
       c.appendChild(b); grid.appendChild(c);
       setTimeout(peindre,0);
     });
+    grid.appendChild(_tasEl('div',rowLbl,'À représenter'));
+    els.forEach(s=>{ const c=_tasEl('div',cellCss); c.appendChild(majBtn(s.uid)); grid.appendChild(c); });
     grid.appendChild(_tasEl('div',rowLbl,'Remarque'));
     els.forEach(s=>{ const c=_tasEl('div',cellCss); c.appendChild(rqInput(s.uid,'width:100%','…')); grid.appendChild(c); });
     all._cells=cells;
@@ -76595,6 +77073,7 @@ function _tirageRenderSaisie(box, fiche, hooks){
     if(!entries.length){ msg.style.color='#DC2626'; msg.textContent='Rien à enregistrer.'; return; }
     const r=_tirageEnregistrerObs(entries, fiche, hooks.scope);
     if(!r){ msg.style.color='#DC2626'; msg.textContent='Aucun cours où rattacher l’observation.'; return; }
+    if(cahier){ try{ _cahMemoriser(fiche, r.cible, _tirageCahierCrit(), entries.map(x=>x.uid)); }catch(e){ console.warn('[cahiers] relevé', e); } }   // V11.5.111
     _tirageFicheRetirer(scope, fiche.id); saveS(); _tirageMajPastille();
     box.innerHTML='';
     box.appendChild(_tasEl('div','font-size:12px;color:var(--acc);font-weight:600;text-align:center;margin:2px 0 10px',
