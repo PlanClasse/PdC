@@ -4886,7 +4886,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.5.109';
+const APP_VERSION = 'v11.5.110';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -25638,11 +25638,15 @@ function renderParamsEdt(){
    La logique de détection fin-de-cours sera ajoutée en V031 (cf. §9 mémo V030). */
 function _renderEndOfClassReminderSection(parent){
   if(!S.reglages) S.reglages = {};
-  if(!S.reglages.endOfClassReminderMode) S.reglages.endOfClassReminderMode = 'voice';
-  // V031-v181.11.0 — Migration : ancien mode 'sound' (V030) retiré, on rebascule sur 'voice'
-  if(S.reglages.endOfClassReminderMode === 'sound') S.reglages.endOfClassReminderMode = 'voice';
+  const R = S.reglages;
+  if(!R.endOfClassReminderMode) R.endOfClassReminderMode = 'voice';
+  /* V031-v181.11.0 — Migration : ancien mode 'sound' (V030) retiré, on rebascule sur 'voice' */
+  if(R.endOfClassReminderMode === 'sound') R.endOfClassReminderMode = 'voice';
+  /* V11.5.110 — par annonce : son importé (drapeau, le son reste sur l'appareil), volume, désignation */
+  ['eocSons','eocVolumes','eocNoms'].forEach(k=>{ if(!R[k] || typeof R[k]!=='object') R[k]={}; });
 
   const sec = document.createElement('div');
+  sec.id = 'eoc-section';
   sec.style.cssText = 'margin-top:1.5rem;padding:1rem;border:1px solid var(--brd);border-radius:var(--r2);background:var(--sur2)';
 
   const title = document.createElement('div');
@@ -25652,23 +25656,139 @@ function _renderEndOfClassReminderSection(parent){
 
   const desc = document.createElement('div');
   desc.style.cssText = 'font-size:11px;color:var(--tx3);margin-bottom:10px;line-height:1.45';
-  desc.textContent = 'Annonces vocales avant la fin de chaque cours de l’EDT : fin du cours (6 min avant par défaut) et rappel de vérification de la table, du matériel et de l’ordinateur (3 min avant par défaut).';
+  desc.textContent = 'Annonces avant la fin de chaque cours de l’EDT : fin du cours (6 min avant par défaut), rappel de vérification (3 min avant), et un rappel propre au dernier cours de la journée. Chaque annonce peut recevoir son propre son (MP3), une désignation pour mémoire et son volume. Le son importé reste sur cet appareil : ailleurs, la voix prend le relais.';
   sec.appendChild(desc);
 
-  // V031-v181.11.0 — Deux modes seulement : voix activée ou désactivée.
-  // Le mode "Bip seul" précédent n'a pas été branché (les bips d'avertissement
-  // sont volontairement réservés au compte à rebours, cf. décision Nicolas).
-  const opts = [
-    {val:'voice', lbl:'Activé',    sub:'Annonce vocale « Fin du cours dans … minutes », au moment choisi ci-dessous'},
-    {val:'off',   lbl:'Désactivé', sub:'Pas d’annonce de fin de cours (le rappel de vérification a son propre réglage)'}
-  ];
+  /* Joue une annonce telle qu'elle sonnerait, même si elle est désactivée. */
+  const tester = (id)=>{
+    const r = Object.assign({}, R, {endOfClassReminderMode:'voice', eocVerif:true, eocVerifDernier:true});
+    const a = _eocAnnonces(r, {dernier: id==='verifDernier'}).find(x=>x.id===id);
+    if(a) _eocJouer(a, true);
+  };
 
+  const carte = (txt, id)=>{
+    const c = document.createElement('div'); c.id = id;
+    c.style.cssText = 'margin:0 0 12px;padding:10px 12px;border:1px solid var(--brd);border-radius:var(--r1);background:var(--sur)';
+    const t = document.createElement('div');
+    t.style.cssText = 'font-size:12.5px;font-weight:800;color:var(--tx);margin-bottom:8px';
+    t.textContent = txt; c.appendChild(t);
+    sec.appendChild(c); return c;
+  };
+
+  /* V11.5.96 — Moment de l'annonce (boutons N min) */
+  const choix = (lbl, valeurs, cle, defaut, id)=>{
+    const row = document.createElement('div'); row.id = id;
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;font-size:12px;font-weight:600;color:var(--tx2)';
+    row.appendChild(document.createTextNode(lbl));
+    const cur = valeurs.indexOf(+R[cle])>=0 ? +R[cle] : defaut;
+    valeurs.forEach(v=>{ const b = document.createElement('button'); b.type = 'button'; b.textContent = v+' min';
+      const on = (v===cur);
+      b.style.cssText = 'padding:3px 10px;border-radius:6px;font:inherit;font-weight:800;cursor:pointer;border:1.5px solid #111418;'+(on ? 'background:#111418;color:#fff' : 'background:#fff;color:#111418');
+      b.onclick = ()=>{ R[cle] = v; saveS(); [...row.querySelectorAll('button')].forEach(x=>{ const o = (x===b); x.style.background = o ? '#111418' : '#fff'; x.style.color = o ? '#fff' : '#111418'; }); };
+      row.appendChild(b); });
+    row.appendChild(document.createTextNode('avant la fin'));
+    return row;
+  };
+
+  const caseActive = (id, coche, lbl, sub, onch)=>{
+    const l = document.createElement('label');
+    l.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1.5px solid var(--brd);border-radius:var(--r1);cursor:pointer;background:var(--sur2);margin-bottom:8px';
+    const c = document.createElement('input'); c.type = 'checkbox'; c.id = id; c.checked = coche; c.style.marginTop = '2px';
+    c.onchange = ()=>onch(c.checked);
+    const x = document.createElement('div');
+    const a = document.createElement('div'); a.style.cssText = 'font-size:13px;font-weight:600;color:var(--tx)'; a.textContent = lbl;
+    const b = document.createElement('div'); b.style.cssText = 'font-size:11px;color:var(--tx3);margin-top:2px'; b.textContent = sub;
+    x.appendChild(a); x.appendChild(b); l.appendChild(c); l.appendChild(x);
+    return l;
+  };
+
+  /* V11.5.110 — Le bloc commun à toutes les annonces : désignation, volume, son importé, test. */
+  const blocSon = (id, voixParDefaut)=>{
+    const b = document.createElement('div'); b.id = 'eoc-son-'+id;
+    b.style.cssText = 'border-top:1px dashed var(--brd);padding-top:8px;margin-top:4px;display:flex;flex-direction:column;gap:6px';
+    const ligne = ()=>{ const r = document.createElement('div'); r.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--tx2)'; b.appendChild(r); return r; };
+    const lib = (r, t)=>{ const s = document.createElement('span'); s.style.cssText = 'min-width:150px;font-weight:600'; s.textContent = t; r.appendChild(s); return s; };
+
+    const r1 = ligne(); lib(r1, 'Désignation (pour mémoire)');
+    const nom = document.createElement('input'); nom.type = 'text'; nom.id = 'eoc-nom-'+id; nom.maxLength = 60;
+    nom.placeholder = 'ex. « sonnerie douce du collège »';
+    nom.value = R.eocNoms[id] || '';
+    nom.style.cssText = 'flex:1;min-width:180px;max-width:320px;font:inherit;padding:4px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur)';
+    nom.oninput = ()=>{ R.eocNoms[id] = nom.value; };
+    nom.onchange = ()=>{ R.eocNoms[id] = nom.value.trim(); saveS(); };
+    r1.appendChild(nom);
+
+    const r2 = ligne(); lib(r2, 'Volume');
+    const vol = document.createElement('input'); vol.type = 'range'; vol.id = 'eoc-vol-'+id;
+    vol.min = '10'; vol.max = '200'; vol.step = '10';
+    vol.style.cssText = 'flex:1;max-width:220px;accent-color:var(--acc)';
+    const v0 = R.eocVolumes[id];
+    vol.value = String((typeof v0==='number' && isFinite(v0)) ? Math.min(200, Math.max(10, v0)) : 100);
+    const vl = document.createElement('span'); vl.style.cssText = 'min-width:48px;font-weight:700'; vl.textContent = vol.value+' %';
+    vol.title = '100 % = volume d’origine. Au-delà, un son importé faible est remonté (la voix de synthèse plafonne à son maximum).';
+    vol.oninput = ()=>{ vl.textContent = vol.value+' %'; R.eocVolumes[id] = parseInt(vol.value,10) || 100; saveS(); };
+    vol.onchange = ()=>tester(id);   /* au relâchement seulement */
+    r2.appendChild(vol); r2.appendChild(vl);
+
+    const r3 = ligne(); lib(r3, 'Son');
+    const etat = document.createElement('span'); etat.id = 'eoc-etat-'+id; etat.style.cssText = 'flex:1;min-width:180px;font-size:11.5px;line-height:1.4';
+    r3.appendChild(etat);
+    const btn = (t, ti)=>{ const x = document.createElement('button'); x.type = 'button'; x.className = 'bs'; x.style.cssText = 'font-size:11.5px;padding:5px 10px;white-space:nowrap'; x.textContent = t; if(ti) x.title = ti; r3.appendChild(x); return x; };
+    const bImp = btn('📂 Importer un MP3', 'Remplacer la voix par votre propre son (MP3, WAV, 30 s au plus)');
+    bImp.id = 'eoc-imp-'+id;
+    const bSup = btn('🗑', 'Retirer le son importé (retour à la voix)');
+    const bTest = btn('🔊 Tester', 'Écouter cette annonce'); bTest.id = 'eoc-test-'+id;
+    bTest.onclick = ()=>tester(id);
+    const inp = document.createElement('input'); inp.type = 'file'; inp.style.display = 'none';
+    /* l'étoile est assemblée à l'exécution (cf. _showTmrReglages : la paire barre-étoile trompe le harnais) */
+    inp.accept = '.mp3,audio/mpeg,audio/'+String.fromCharCode(42);
+    r3.appendChild(inp);
+    bImp.onclick = ()=>inp.click();
+
+    const maj = ()=>{
+      if(typeof _tmrLoadClip!=='function'){ etat.textContent = voixParDefaut; return; }
+      _tmrLoadClip(_eocSonCle(id)).then(entry=>{
+        const info = _tmrClipInfo(entry);
+        bSup.style.display = (info.present || info.reimporter) ? '' : 'none';
+        bImp.textContent = info.present ? '📂 Remplacer' : '📂 Importer un MP3';
+        if(info.present){ etat.textContent = '🎵 '+info.texte; etat.style.color = 'var(--tx2)'; }
+        else if(info.reimporter){ etat.textContent = '⚠ '+info.texte; etat.style.color = '#92400E'; }
+        else if(R.eocSons[id]){ etat.textContent = '⚠ Un son est réglé pour cette annonce mais absent de cet appareil : la voix prend le relais. Importez-le ici.'; etat.style.color = '#92400E'; }
+        else { etat.textContent = voixParDefaut; etat.style.color = 'var(--tx3)'; }
+      });
+    };
+    inp.onchange = ()=>{
+      const f = inp.files && inp.files[0]; inp.value = '';
+      if(!f) return;
+      if(f.size > 8*1024*1024){ etat.textContent = 'Fichier trop lourd ('+Math.round(f.size/1024/1024*10)/10+' Mo) — 8 Mo maximum.'; etat.style.color = '#9F1239'; return; }
+      etat.textContent = 'Lecture et conversion du son…'; etat.style.color = 'var(--tx2)';
+      _tmrPreparerClip(f)
+        .then(entry=>_tmrSaveClip(_eocSonCle(id), entry))
+        .then(()=>{
+          R.eocSons[id] = true;
+          if(!String(R.eocNoms[id]||'').trim()){ R.eocNoms[id] = String(f.name||'').replace(/\.[^.]+$/, ''); nom.value = R.eocNoms[id]; }
+          saveS(); maj();
+        })
+        .catch(err=>{ etat.textContent = (err && err.message) || String(err); etat.style.color = '#9F1239'; });
+    };
+    bSup.onclick = ()=>{ _tmrClearClip(_eocSonCle(id)).then(()=>{ delete R.eocSons[id]; saveS(); maj(); }); };
+    maj();
+    return b;
+  };
+
+  /* ── 1. Fin du cours ── */
+  const c1 = carte('⏰ Annonce de fin du cours', 'eoc-carte-fin');
+  /* V031-v181.11.0 — Deux modes seulement : voix activée ou désactivée. */
+  const opts = [
+    {val:'voice', lbl:'Activé',    sub:'« Fin du cours dans … minutes », au moment choisi ci-dessous'},
+    {val:'off',   lbl:'Désactivé', sub:'Pas d’annonce de fin de cours (les rappels de vérification ont leur propre réglage)'}
+  ];
   const radioWrap = document.createElement('div');
   radioWrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-bottom:10px';
   const rows = [];
-  opts.forEach(o => {
+  opts.forEach(o=>{
     const row = document.createElement('label');
-    const isSel = (S.reglages.endOfClassReminderMode === o.val);
+    const isSel = (R.endOfClassReminderMode === o.val);
     row.style.cssText = 'display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1.5px solid '+(isSel?'var(--acc)':'var(--brd)')+';border-radius:var(--r1);cursor:pointer;background:'+(isSel?'#EFF6FF':'var(--sur)');
     const rad = document.createElement('input');
     rad.type = 'radio'; rad.name = 'eor-mode'; rad.value = o.val; rad.checked = isSel;
@@ -25677,12 +25797,11 @@ function _renderEndOfClassReminderSection(parent){
     txt.innerHTML = '<div style="font-size:13px;font-weight:600;color:var(--tx)">'+o.lbl+'</div>'+
                     '<div style="font-size:11px;color:var(--tx3);margin-top:2px">'+o.sub+'</div>';
     row.appendChild(rad); row.appendChild(txt);
-    rad.onchange = () => {
+    rad.onchange = ()=>{
       if(!rad.checked) return;
-      S.reglages.endOfClassReminderMode = o.val;
+      R.endOfClassReminderMode = o.val;
       saveS();
-      // Mise à jour visuelle sans re-render complet
-      rows.forEach((r, i) => {
+      rows.forEach((r, i)=>{
         const sel = (opts[i].val === o.val);
         r.style.borderColor = sel ? 'var(--acc)' : 'var(--brd)';
         r.style.background  = sel ? '#EFF6FF'   : 'var(--sur)';
@@ -25691,54 +25810,32 @@ function _renderEndOfClassReminderSection(parent){
     radioWrap.appendChild(row);
     rows.push(row);
   });
-  sec.appendChild(radioWrap);
+  c1.appendChild(radioWrap);
+  c1.appendChild(choix('Annonce de fin :', EOC_FIN_CHOIX, 'eocFinMin', 6, 'eoc-fin-min'));
+  c1.appendChild(blocSon('fin', 'Voix par défaut (voix enregistrée à 5 min, voix de synthèse sinon).'));
 
-  // Bouton de test (force=true pour contourner les gardes du mode)
-  const testBtn = document.createElement('button');
-  testBtn.className = 'bs';
-  testBtn.style.cssText = 'font-size:12px;padding:6px 14px';
-  testBtn.textContent = '🔊 Tester l\'annonce vocale';
-  testBtn.onclick = () => {
-    // V030-v181.10.5 — Joue le MP3 embarqué (voix Narakeet) au lieu de la
-    // Web Speech API. force=true pour bypasser le mode 'off' lors du test.
-    const a=_eocAnnonces(Object.assign({}, S.reglages, {endOfClassReminderMode:'voice'})).find(x=>x.id==='fin');
-    _eocJouer(a, true);
-  };
+  /* ── 2. Rappel de vérification ── */
+  const c2 = carte('🧹 Rappel de vérification', 'eoc-carte-verif');
+  c2.appendChild(caseActive('eoc-verif', R.eocVerif!==false, 'Activé', 'Annonce « '+EOC_VERIF_TEXTE+' »', v=>{ R.eocVerif = v; saveS(); }));
+  c2.appendChild(choix('Rappel de vérification :', EOC_VERIF_CHOIX, 'eocVerifMin', 3, 'eoc-verif-min'));
+  c2.appendChild(blocSon('verif', 'Voix de synthèse par défaut.'));
 
-  // V11.5.96 — Moment de l'annonce de fin, puis rappel de vérification (activé par défaut).
-  const choix=(lbl, valeurs, cle, defaut, id)=>{
-    const row=document.createElement('div'); row.id=id;
-    row.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;font-size:12px;font-weight:600;color:var(--tx2)';
-    row.appendChild(document.createTextNode(lbl));
-    const cur=valeurs.indexOf(+S.reglages[cle])>=0 ? +S.reglages[cle] : defaut;
-    valeurs.forEach(v=>{ const b=document.createElement('button'); b.type='button'; b.textContent=v+' min';
-      const on=(v===cur);
-      b.style.cssText='padding:3px 10px;border-radius:6px;font:inherit;font-weight:800;cursor:pointer;border:1.5px solid #111418;'+(on ? 'background:#111418;color:#fff' : 'background:#fff;color:#111418');
-      b.onclick=()=>{ S.reglages[cle]=v; saveS(); [...row.querySelectorAll('button')].forEach(x=>{ const o=(x===b); x.style.background=o ? '#111418' : '#fff'; x.style.color=o ? '#fff' : '#111418'; }); };
-      row.appendChild(b); });
-    row.appendChild(document.createTextNode('avant la fin'));
-    return row;
-  };
-  sec.appendChild(choix('Annonce de fin :', EOC_FIN_CHOIX, 'eocFinMin', 6, 'eoc-fin-min'));
-  sec.appendChild(testBtn);
-
-  const vt=document.createElement('div');
-  vt.style.cssText='font-size:12px;font-weight:800;color:var(--tx);margin:14px 0 6px';
-  vt.textContent='🧹 Rappel de vérification';
-  sec.appendChild(vt);
-  const vl=document.createElement('label');
-  vl.style.cssText='display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1.5px solid var(--brd);border-radius:var(--r1);cursor:pointer;background:var(--sur);margin-bottom:8px';
-  const vc=document.createElement('input'); vc.type='checkbox'; vc.id='eoc-verif'; vc.checked=(S.reglages.eocVerif!==false); vc.style.marginTop='2px';
-  vc.onchange=()=>{ S.reglages.eocVerif=vc.checked; saveS(); };
-  const vx=document.createElement('div');
-  const v1=document.createElement('div'); v1.style.cssText='font-size:13px;font-weight:600;color:var(--tx)'; v1.textContent='Activé';
-  const v2=document.createElement('div'); v2.style.cssText='font-size:11px;color:var(--tx3);margin-top:2px'; v2.textContent='Annonce vocale « '+EOC_VERIF_TEXTE+' »';
-  vx.appendChild(v1); vx.appendChild(v2); vl.appendChild(vc); vl.appendChild(vx); sec.appendChild(vl);
-  sec.appendChild(choix('Rappel de vérification :', EOC_VERIF_CHOIX, 'eocVerifMin', 3, 'eoc-verif-min'));
-  const tv=document.createElement('button'); tv.className='bs'; tv.style.cssText='font-size:12px;padding:6px 14px';
-  tv.textContent='🔊 Tester le rappel de vérification';
-  tv.onclick=()=>_speakNotice(EOC_VERIF_TEXTE, {force:true});
-  sec.appendChild(tv);
+  /* ── 3. V11.5.110 — Rappel du dernier cours de la journée ── */
+  const c3 = carte('🌙 Rappel du dernier cours de la journée', 'eoc-carte-verifDernier');
+  c3.appendChild(caseActive('eoc-verif-dernier', R.eocVerifDernier!==false, 'Activé',
+    'Pendant le dernier cours de la journée, remplace le rappel de vérification habituel (fonctionne même si celui-ci est désactivé).',
+    v=>{ R.eocVerifDernier = v; saveS(); }));
+  c3.appendChild(choix('Rappel du dernier cours :', EOC_VERIF_CHOIX, 'eocVerifDernierMin', 3, 'eoc-verif-dernier-min'));
+  { const r = document.createElement('div');
+    r.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--tx2);margin:0 0 10px';
+    const s = document.createElement('span'); s.style.cssText = 'min-width:150px;font-weight:600'; s.textContent = 'Texte annoncé'; r.appendChild(s);
+    const t = document.createElement('input'); t.type = 'text'; t.id = 'eoc-verif-dernier-texte'; t.maxLength = 200;
+    t.placeholder = EOC_VERIF_DERNIER_TEXTE; t.value = R.eocVerifDernierTexte || '';
+    t.title = 'Lu par la voix de synthèse quand aucun son n’est importé. Vide = texte par défaut.';
+    t.style.cssText = 'flex:1;min-width:220px;font:inherit;padding:4px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--sur)';
+    t.onchange = ()=>{ R.eocVerifDernierTexte = t.value.trim(); saveS(); };
+    r.appendChild(t); c3.appendChild(r); }
+  c3.appendChild(blocSon('verifDernier', 'Voix de synthèse par défaut (texte ci-dessus).'));
 
   parent.appendChild(sec);
 }
@@ -77428,7 +77525,7 @@ function _playClip(name, opts){
   }
   try {
     const a = new Audio(src);
-    a.volume = 0.9;
+    a.volume = (typeof opts.volume==='number') ? Math.max(0, Math.min(1, opts.volume)) : 0.9;   // V11.5.110
     const p = a.play();
     // V035-V11.3.36 — Repli sur la voix de synthèse quand la lecture est REFUSÉE.
     // Avant, le rejet était avalé en silence : si Chrome bloquait l'autoplay
@@ -77510,7 +77607,7 @@ function _speakNotice(text, opts){
     u.lang = 'fr-FR';
     u.rate = 0.95;
     u.pitch = 1.0;
-    u.volume = 0.9;
+    u.volume = (typeof opts.volume==='number') ? Math.max(0, Math.min(1, opts.volume)) : 0.9;   // V11.5.110
     const voices = window.speechSynthesis.getVoices() || [];
     const frVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('fr'));
     if(frVoice) u.voice = frVoice;
@@ -77550,26 +77647,50 @@ function _speakNotice(text, opts){
  *    actif par défaut (eocVerif !== false). */
 const EOC_MOTS={2:'deux',3:'trois',4:'quatre',5:'cinq',6:'six',7:'sept'};
 const EOC_FIN_CHOIX=[7,6,5,4], EOC_VERIF_CHOIX=[4,3,2];
-const EOC_VERIF_TEXTE='Vérification : état de la table, rangement du matériel et de l’ordinateur';
-function _eocAnnonces(r){
-  r=r||{}; const L=[];
+const EOC_VERIF_TEXTE='Vérification : état de la table, rangement du matériel et de l’ordinateur', EOC_VERIF_DERNIER_TEXTE='Dernier cours de la journée. Vérification : chaises sur les tables, ordinateurs éteints, fenêtres fermées';
+function _eocAnnonces(r, ctx){
+  /* V11.5.110 — chaque annonce porte aussi : son importé (son), volume (gain 0,1→2 ; vol plafonné à 1 pour
+     la voix), désignation pour mémoire (nom). ctx.dernier : le cours courant est le dernier de la journée →
+     le rappel de dernière heure (« verifDernier ») REMPLACE le rappel de vérification habituel. */
+  r=r||{}; ctx=ctx||{}; const L=[];
+  const sons=r.eocSons||{}, vols=r.eocVolumes||{}, noms=r.eocNoms||{};
+  const habiller=(o)=>{ const v=vols[o.id]; const n=(typeof v==='number' && isFinite(v)) ? v : 100;
+    o.gain=Math.min(200, Math.max(10, n))/100; o.vol=Math.min(1, 0.9*o.gain);
+    o.son=!!sons[o.id]; o.nom=String(noms[o.id]||''); return o; };
   if((r.endOfClassReminderMode||'voice')!=='off'){
     const m=EOC_FIN_CHOIX.indexOf(+r.eocFinMin)>=0 ? +r.eocFinMin : 6;
-    L.push({id:'fin', min:m, clip:(m===5 ? 'finCours5' : null), texte:'Fin du cours dans '+EOC_MOTS[m]+' minutes'});
+    L.push(habiller({id:'fin', min:m, clip:(m===5 ? 'finCours5' : null), texte:'Fin du cours dans '+EOC_MOTS[m]+' minutes'}));
   }
-  if(r.eocVerif!==false){
+  if(ctx.dernier && r.eocVerifDernier!==false){
+    const m=EOC_VERIF_CHOIX.indexOf(+r.eocVerifDernierMin)>=0 ? +r.eocVerifDernierMin : 3;
+    const t=String(r.eocVerifDernierTexte||'').trim();
+    L.push(habiller({id:'verifDernier', min:m, clip:null, texte:(t || EOC_VERIF_DERNIER_TEXTE)}));
+  } else if(r.eocVerif!==false){
     const m=EOC_VERIF_CHOIX.indexOf(+r.eocVerifMin)>=0 ? +r.eocVerifMin : 3;
-    L.push({id:'verif', min:m, clip:null, texte:EOC_VERIF_TEXTE});
+    L.push(habiller({id:'verif', min:m, clip:null, texte:EOC_VERIF_TEXTE}));
   }
   L.sort((a,b)=>b.min-a.min);
-  // Fenêtre de chaque annonce : de N à N−2 minutes restantes, sans empiéter sur la suivante.
+  /* Fenêtre de chaque annonce : de N à N−2 minutes restantes, sans empiéter sur la suivante. */
   L.forEach((a,i)=>{ a.bas=Math.max(a.min-2, i+1<L.length ? L[i+1].min : 0); });
   return L;
 }
+/* V11.5.110 — son importé d'abord (même moteur que le compte à rebours : décodé à l'import, Web Audio,
+   repli sur la voix s'il manque sur cet appareil), sinon MP3 embarqué ou voix de synthèse, au volume réglé. */
 function _eocJouer(a, force){
-  if(a.clip) _playClip(a.clip, {fallbackText:a.texte, force:!!force});
-  else _speakNotice(a.texte, {force:true});
+  if(!a) return;
+  const voix=()=>{
+    if(a.clip) _playClip(a.clip, {fallbackText:a.texte, force:!!force, volume:a.vol});
+    else _speakNotice(a.texte, {force:true, volume:a.vol});
+  };
+  if(a.son && typeof _tmrPlaySon==='function'){
+    const j=(typeof _tmrNouvelleLecture==='function') ? _tmrNouvelleLecture() : 0;
+    _tmrPlaySon(_eocSonCle(a.id), voix, a.gain, j);
+    return;
+  }
+  voix();
 }
+/** Clé du son importé d'une annonce (préfixée pour ne jamais croiser un moment du compte à rebours). PURE. */
+function _eocSonCle(id){ return 'eoc-'+String(id||''); }
 
 let _endOfClassTimer = null;
 let _eocProchain = 0;   // V11.5.102 — heure (ms) du prochain contrôle de fin de cours, relue par le métronome
@@ -77643,11 +77764,14 @@ function _eocFindCurrentEvent(now){
   if(!active.length) return null;
   // Si plusieurs : prendre celui qui finit en premier (en fin recalée)
   active.sort((a,b) => a.resolvedEndMin - b.resolvedEndMin);
+  // V11.5.110 — dernier cours de la journée : aucun cours (non annulé) ne finit plus tard.
+  const finJour = Math.max.apply(null, r.events.filter(ev => !ev.cancelled && ev.start && ev.end).map(ev => _eocResolveEndMin(ev)));
   return {
     event: active[0].ev,
     dateStr,
     resolvedEndMin: active[0].resolvedEndMin,
-    startMin: active[0].startMin
+    startMin: active[0].startMin,
+    dernier: active[0].resolvedEndMin >= finJour - 1e-9
   };
 }
 
@@ -77717,8 +77841,8 @@ function _eocResolveEndMin(ev){
    de tester un déclenchement T-5 en attendant quelques secondes).
    V031-v181.11.3 — Refonte en minutes-depuis-minuit (cf. _eocFindCurrentEvent). */
 function _endOfClassTick(){
-  const A = _eocAnnonces(S.reglages);   // V11.5.96 — annonces réglables (fin + vérification)
-  if(!A.length) return 60000; // tick lent : surveille si les réglages changent
+  let A = _eocAnnonces(S.reglages);   // V11.5.96 — annonces réglables (fin + vérification)
+  if(!A.length && !_eocAnnonces(S.reglages, {dernier:true}).length) return 60000; // tick lent : surveille si les réglages changent
 
   const now = (typeof _appNow === 'function') ? _appNow() : new Date();
   const found = _eocFindCurrentEvent(now);
@@ -77729,6 +77853,8 @@ function _endOfClassTick(){
   }
 
   const {event: ev, dateStr, resolvedEndMin} = found;
+  A = _eocAnnonces(S.reglages, {dernier: !!found.dernier});   // V11.5.110 — rappel de dernière heure
+  if(!A.length) return 60000;
   const nowMin = _eocMinutesOfDay(now);
   const deltaMin = resolvedEndMin - nowMin;
   // V035-V11.3.36 — Fenêtre de déclenchement ÉLARGIE : 5:00 → 3:00 restantes.
