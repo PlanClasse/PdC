@@ -4892,7 +4892,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.6.4';
+const APP_VERSION = 'v11.6.5';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -9515,6 +9515,7 @@ function _importRows(rows){
 
       let importedClasses=0, importedStudents=0;
       const enrichedStudents=[]; // pour récap fin
+      const changesClasse=[];   // V11.6.5 — [uid, ancienne classe, nouvelle]
       Object.entries(byClass).forEach(([cls,students])=>{
         students.sort((a,b)=>{
           const na=a.noms.join(' '), nb=b.noms.join(' ');
@@ -9537,6 +9538,7 @@ function _importRows(rows){
           // Préserver les champs existants éventuels (nickName, etc) tout en mettant à jour noms/prenoms/sexe
           // P0 — dateNaissance : préservée si non fournie par l'import (kNaiss absent ou cellule vide)
           const prev=S.studentData[s.uid]||{};
+          if(prev.cls && prev.cls!==s.cls && S.cl[prev.cls]) changesClasse.push([s.uid, prev.cls, s.cls]);   // V11.6.5
           S.studentData[s.uid]={...prev, noms:s.noms, prenoms:s.prenoms, cls:s.cls, uid:s.uid, sexe:s.sexe||prev.sexe||null, dateNaissance:s.dateNaissance||prev.dateNaissance||null};
           // Fusionner catégories besoins
           if(s.cats && s.cats.length){
@@ -9559,6 +9561,7 @@ function _importRows(rows){
         c.statuts=newStatuts;
         importedClasses++; importedStudents+=students.length;
       });
+      changesClasse.forEach(([u, de, vers])=>{ try{ _chgDeplacer(S, u, de, vers, _todayStr()); }catch(e){ console.warn('[import] changement de classe', e); } });   // V11.6.5
       if(!S._importSnapshot) S._importSnapshot={};
       Object.entries(byClass).forEach(([cls,students])=>{
         S._importSnapshot[cls]=students.map(s=>s.uid);
@@ -9581,6 +9584,7 @@ function _importRows(rows){
       recapHtml+='<div style="font-size:28px;text-align:center;margin-bottom:.5rem">✅</div>';
       recapHtml+='<div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:.3rem">'+importedStudents+' élève(s) importé(s)</div>';
       recapHtml+='<div style="text-align:center;color:var(--tx2);font-size:12px;margin-bottom:1rem">'+importedClasses+' classe(s) mise(s) à jour</div>';
+      if(changesClasse.length) recapHtml+='<div id="import-chg" style="margin:-.4rem 0 .9rem;padding:6px 10px;border-radius:var(--r1);background:#EFF6FF;color:#1E3A8A;font-size:12px;text-align:center">🔀 '+changesClasse.length+' élève'+(changesClasse.length>1?'s ont':' a')+' changé de classe : historique, fiche EBEP et suivi Pix ont suivi.</div>';   // V11.6.5
 
       // ── Bilan par type d'information ────────────────────────────────
       // Construction de lignes pour chaque type, avec attempted/ok/ko.
@@ -20433,6 +20437,9 @@ const _PARAMS_INDEX = [
   {tab:'temps', anchor:'psec-sonnerie', icon:'🔔', title:'Horaires de sonnerie',
    sub:'Créneaux de la journée et horaires de référence',
    kw:'sonnerie horaire heure créneau cloche journée matin après-midi récréation pause'},
+  {tab:'classe', anchor:'chg-section', icon:'🔀', title:'Changer un élève de classe',
+   sub:'L’historique suit ; retrouver l’historique après un réimport de la base',
+   kw:'changer classe changement eleve deplacer transferer mutation historique orphelin fiche retrouver rattacher reimport import base'},   // V11.6.5
   {tab:'temps', anchor:'eoc-section', icon:'🔔', title:'Rappels sonores de fin de cours',
    sub:'Fin du cours, vérification, dernier cours de la journée : moment, son MP3, volume',
    kw:'rappel rappels sonore sonores annonce annonces fin cours verification rangement dernier cours journee mp3 son volume voix designation'},   // V11.6.2
@@ -25942,7 +25949,293 @@ function renderParamsNoms(){
   btn.textContent="✏️ Ouvrir l'éditeur de gestion des élèves";
   btn.onclick=()=>{ _paramsGotoExternal('nick', openNickPage); };
   wrap.appendChild(btn);
+  try{ _chgRendreSection(wrap); }catch(e){ console.warn('[changement de classe]', e); }   // V11.6.5
   pane.appendChild(wrap);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V11.6.5 — CHANGEMENT DE CLASSE D'UN ÉLÈVE ET HISTORIQUE (demande du 26/11)
+   L'identité d'un élève est son uid ; presque tout ce qui le concerne est rangé par
+   cours (« créneau|classe » → uid) et le suit donc tel quel. Trois magasins sont rangés
+   PAR CLASSE et doivent être déplacés : S.besoinsEleves[cls][uid] (EBEP),
+   S.observations['cls|uid'] (profil), S.suiviAcces[cls][uid] (Pix / accès).
+   • _chgDeplacer : change un élève de classe (plans, groupes, contraintes de l'ancienne
+     classe nettoyés ; magasins par classe déplacés ; anciennesClasses noté).
+   • L'import appelle _chgDeplacerDonnees quand il reconnaît un élève dans une autre classe.
+   • Le journal lit toutes les classes où l'élève apparaît (_chgClassesVues).
+   • _chgFusionner : rattache une fiche orpheline (ancien uid) à la fiche actuelle.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Classes où un élève apparaît dans les données de cours (hors groupes inter-classes). Pure. */
+function _chgClassesVues(st, uid){
+  st=st||S; const out=new Set();
+  const parCle=(store)=>Object.keys(store||{}).forEach(k=>{ const m=store[k]; if(!m || typeof m!=='object' || !(uid in m)) return;
+    const c=String(k).split('|')[1]; if(c && c.indexOf('grp:')!==0 && st.cl && st.cl[c]) out.add(c); });
+  parCle(st.obsCours); parCle(st.statutsCours); parCle(st.participations); parCle(st.avtNiveaux);
+  Object.keys(st.seances||{}).forEach(b=>{ if(!st.cl || !st.cl[b]) return;
+    (Array.isArray(st.seances[b]) ? st.seances[b] : []).some(se=>se && ((se.observations && uid in se.observations) || (se.statuts && uid in se.statuts) || (se.evalComps && uid in se.evalComps))) && out.add(b); });
+  (Array.isArray(st.evaluations) ? st.evaluations : Object.values(st.evaluations||{})).forEach(ev=>{ if(ev && ev.res && ev.res[uid] && ev.cls && st.cl && st.cl[ev.cls]) out.add(ev.cls); });
+  return [...out].sort();
+}
+
+/** Retire un uid d'une structure de classe (plans, statuts…) : éléments de tableaux → null, clés → supprimées. Mute. */
+function _chgEffacer(o, uid){
+  if(!o || typeof o!=='object') return o;
+  if(Array.isArray(o)){ for(let i=0;i<o.length;i++){ if(o[i]===uid) o[i]=null; else _chgEffacer(o[i], uid); } return o; }
+  Object.keys(o).forEach(k=>{ if(k===uid) delete o[k]; else _chgEffacer(o[k], uid); });
+  return o;
+}
+
+/** Déplace les trois magasins rangés par classe (EBEP, profil, Pix). Mute st. Rend le nombre d'éléments déplacés. */
+function _chgDeplacerDonnees(st, uid, de, vers){
+  if(!uid || !de || !vers || de===vers) return 0; let n=0;
+  const B=st.besoinsEleves||{};
+  if(B[de] && B[de][uid]){
+    if(!B[vers]) B[vers]={};
+    const a=B[de][uid], b=B[vers][uid];
+    if(!b) B[vers][uid]=a;
+    else {
+      const m=Object.assign({}, a, b);
+      try{ m.categories=[...new Set([].concat(getFicheCategories(a), getFicheCategories(b)))]; }catch(e){}
+      if(Array.isArray(a.journal) || Array.isArray(b.journal)) m.journal=[].concat(b.journal||[], a.journal||[]);
+      if(a.notes && b.notes && a.notes!==b.notes) m.notes=b.notes+'\n'+a.notes;
+      B[vers][uid]=m;
+    }
+    delete B[de][uid]; st.besoinsEleves=B; n++;
+  }
+  const O=st.observations||{}, ka=de+'|'+uid, kb=vers+'|'+uid;
+  if(O[ka]!=null && String(O[ka]).trim()){
+    O[kb]=(O[kb] && String(O[kb]).trim() && O[kb]!==O[ka]) ? (O[kb]+'\n'+O[ka]) : O[ka];
+    delete O[ka]; st.observations=O; n++;
+  }
+  const P=st.suiviAcces||{};
+  if(P[de] && P[de][uid]){
+    if(!P[vers]) P[vers]={};
+    P[vers][uid]=Object.assign({}, P[de][uid], P[vers][uid]||{});
+    delete P[de][uid]; n++;
+  }
+  return n;
+}
+
+/** Change un élève de classe. Mute st. Rend un bilan. Ne sauvegarde pas. */
+function _chgDeplacer(st, uid, de, vers, date){
+  st=st||S;
+  if(!uid || !de || !vers || de===vers || !st.cl || !st.cl[vers]) return null;
+  const A=st.cl[de], Bc=st.cl[vers];
+  if(A){
+    A.students=(A.students||[]).filter(x=>((x && typeof x==='object') ? x.uid : x)!==uid);
+    Object.keys(A).forEach(k=>{ if(k!=='students') _chgEffacer(A[k], uid); });
+  }
+  Object.keys(st.groupes||{}).forEach(g=>{ const G=st.groupes[g]; if(G && G.parentCls===de){
+    if(Array.isArray(G.students)) G.students=G.students.filter(x=>x!==uid);
+    Object.keys(G).forEach(k=>{ if(k!=='students') _chgEffacer(G[k], uid); }); } });
+  if(st.pinned && Array.isArray(st.pinned[de])) st.pinned[de]=st.pinned[de].filter(x=>x!==uid);
+  const C=st.contraintes && st.contraintes[de];
+  if(C && typeof C==='object') Object.keys(C).forEach(k=>{ if(Array.isArray(C[k])) C[k]=C[k].filter(x=>Array.isArray(x) ? x.indexOf(uid)<0 : x!==uid); });
+  const L=(Bc.students=Bc.students||[]);
+  if(!L.some(x=>((x && typeof x==='object') ? x.uid : x)===uid)){
+    L.push(uid);
+    const nom=(u)=>{ const s=(st.studentData||{})[(u && typeof u==='object') ? u.uid : u]||{}; return ((s.noms||[]).join(' ')+' '+(s.prenoms||[]).join(' ')).trim(); };
+    L.sort((a,b)=>nom(a).localeCompare(nom(b), 'fr'));
+  }
+  const sd=(st.studentData||{})[uid];
+  if(sd){ sd.cls=vers; const H=Array.isArray(sd.anciennesClasses) ? sd.anciennesClasses : [];
+    if(!H.some(h=>h && h.cls===de)) H.push({cls:de, jusqua:date||''}); sd.anciennesClasses=H; }
+  if(st._importSnapshot){ if(Array.isArray(st._importSnapshot[de])) st._importSnapshot[de]=st._importSnapshot[de].filter(x=>x!==uid);
+    if(Array.isArray(st._importSnapshot[vers]) && st._importSnapshot[vers].indexOf(uid)<0) st._importSnapshot[vers].push(uid); }
+  const n=_chgDeplacerDonnees(st, uid, de, vers);
+  return {uid, de, vers, donnees:n};
+}
+
+/* ── Fiches orphelines et rattachement ── */
+function _chgNorm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z]+/g,' ').trim(); }
+/** uids actuellement inscrits (classes et groupes). Pure. */
+function _chgInscrits(st){
+  const I=new Set();
+  Object.values(st.cl||{}).forEach(c=>(c && c.students||[]).forEach(x=>I.add((x && typeof x==='object') ? x.uid : x)));
+  Object.values(st.groupes||{}).forEach(g=>(g && Array.isArray(g.students) ? g.students : []).forEach(x=>I.add(x)));
+  return I;
+}
+/** Occurrences d'un uid hors studentData (clés et valeurs exactes), par magasin. Pure. */
+function _chgCompter(st, uid){
+  const re=new RegExp('(^|[^A-Za-z0-9_])'+uid.replace(/[^A-Za-z0-9_]/g,'')+'(?![A-Za-z0-9_])');
+  const out={};
+  const walk=(v)=>{ let n=0;
+    if(typeof v==='string') return v===uid ? 1 : 0;
+    if(Array.isArray(v)){ v.forEach(x=>{ n+=walk(x); }); return n; }
+    if(v && typeof v==='object'){ Object.keys(v).forEach(k=>{ if(k===uid || re.test(k)) n++; n+=walk(v[k]); }); }
+    return n; };
+  Object.keys(st).forEach(k=>{ if(k==='studentData' || k==='_importSnapshot' || k==='syncMeta') return; const n=walk(st[k]); if(n) out[k]=n; });
+  return out;
+}
+/** Fiches orphelines (dans studentData, inscrites nulle part) avec leurs candidats (même nom, date compatible). Pure. */
+function _chgOrphelins(st){
+  st=st||S; const I=_chgInscrits(st), SD=st.studentData||{}, out=[];
+  const cle=(s)=>_chgNorm((s.noms||[]).join(' '))+'|'+_chgNorm((s.prenoms||[])[0]);
+  Object.keys(SD).forEach(u=>{
+    if(u.indexOf('e_')!==0 || I.has(u)) return; const s=SD[u]||{};
+    const nb=_chgCompter(st, u), total=Object.values(nb).reduce((a,b)=>a+b, 0);
+    if(!total) return;
+    const cands=[...I].filter(v=>v!==u && SD[v] && cle(SD[v])===cle(s) && (!s.dateNaissance || !SD[v].dateNaissance || s.dateNaissance===SD[v].dateNaissance));
+    out.push({uid:u, cls:s.cls||'', nb, total, candidats:cands});
+  });
+  return out;
+}
+/** Données restées sous une autre classe pour des élèves inscrits (EBEP, profil, Pix). Pure. */
+function _chgDonneesEgarees(st){
+  st=st||S; const out=[], SD=st.studentData||{};
+  const ici=(u)=>{ const L=[]; Object.keys(st.cl||{}).forEach(c=>{ if((st.cl[c].students||[]).some(x=>((x && typeof x==='object') ? x.uid : x)===u)) L.push(c); }); return L; };
+  const vu={};
+  const noter=(u, c, quoi)=>{ if(!SD[u]) return; const L=ici(u); if(!L.length || L.indexOf(c)>=0) return; const k=u+'|'+c; (vu[k]=vu[k]||{uid:u, de:c, vers:SD[u].cls && L.indexOf(SD[u].cls)>=0 ? SD[u].cls : L[0], quoi:[]}).quoi.push(quoi); };
+  Object.keys(st.besoinsEleves||{}).forEach(c=>Object.keys(st.besoinsEleves[c]||{}).forEach(u=>noter(u, c, 'fiche EBEP')));
+  Object.keys(st.observations||{}).forEach(k=>{ const p=k.split('|'); if(p.length===2 && String(st.observations[k]||'').trim()) noter(p[1], p[0], 'observation de profil'); });
+  Object.keys(st.suiviAcces||{}).forEach(c=>Object.keys(st.suiviAcces[c]||{}).forEach(u=>noter(u, c, 'suivi Pix / accès')));
+  Object.values(vu).forEach(x=>out.push(x));
+  return out;
+}
+
+/** Remplace un uid par un autre partout (clés et valeurs exactes), en fusionnant les collisions. Mute. Rend {magasin: n}. */
+function _chgRemplacer(st, a, b){
+  const re=new RegExp('(^|[^A-Za-z0-9_])'+a.replace(/[^A-Za-z0-9_]/g,'')+'(?![A-Za-z0-9_])', 'g'), cpt={};
+  const fusion=(x, y)=>{
+    if(typeof x==='string' && typeof y==='string') return (!y.trim() || y===x) ? (y.trim() ? y : x) : (x.trim() ? y+'\n'+x : y);
+    if(Array.isArray(x) && Array.isArray(y)) return y.concat(x.filter(v=>y.indexOf(v)<0));
+    if(x && y && typeof x==='object' && typeof y==='object') return Object.assign({}, x, y);
+    return (y!=null && y!=='' && y!==0) ? y : x;
+  };
+  let n=0;
+  const walk=(v)=>{
+    if(typeof v==='string'){ if(v===a){ n++; return b; } return v; }
+    if(Array.isArray(v)){
+      const places=v.indexOf(null)>=0;   // un plan de places (taille fixe, cases vides) : le doublon est vidé ; une liste : il est retiré
+      for(let i=0;i<v.length;i++) v[i]=walk(v[i]);
+      let vu=false;
+      for(let i=0;i<v.length;i++){ if(v[i]===b){ if(vu){ if(places) v[i]=null; else { v.splice(i,1); i--; } } vu=true; } }
+      return v;
+    }
+    if(v && typeof v==='object'){
+      Object.keys(v).forEach(k=>{
+        const nv=walk(v[k]);
+        const nk=(k===a) ? b : (re.test(k) ? k.replace(re, (m, p)=>p+b) : k); re.lastIndex=0;
+        if(nk!==k){ n++; v[nk]=(nk in v) ? fusion(nv, v[nk]) : nv; delete v[k]; } else v[k]=nv;
+      });
+      return v;
+    }
+    return v;
+  };
+  Object.keys(st).forEach(k=>{ if(k==='studentData' || k==='syncMeta') return; n=0; st[k]=walk(st[k]); if(n) cpt[k]=n; });
+  return cpt;
+}
+/** Listes d'élèves (students) : un doublon devenu null est retiré. Mute. */
+function _chgNettoyerListes(st){
+  Object.values(st.cl||{}).forEach(c=>{ if(c && Array.isArray(c.students)) c.students=c.students.filter(x=>x!=null); });
+  Object.values(st.groupes||{}).forEach(g=>{ if(g && Array.isArray(g.students)) g.students=g.students.filter(x=>x!=null); });
+  Object.keys(st._importSnapshot||{}).forEach(c=>{ if(Array.isArray(st._importSnapshot[c])) st._importSnapshot[c]=st._importSnapshot[c].filter(x=>x!=null); });
+}
+/** Rattache la fiche orpheline `ancien` à la fiche `nouveau`. Mute st. Rend le bilan. */
+function _chgFusionner(st, ancien, nouveau, date){
+  st=st||S; const SD=st.studentData||{}; if(!SD[ancien] || !SD[nouveau] || ancien===nouveau) return null;
+  const de=SD[ancien].cls||'', vers=SD[nouveau].cls||'';
+  const cpt=_chgRemplacer(st, ancien, nouveau);
+  _chgNettoyerListes(st);
+  let n=0; if(de && vers && de!==vers) n=_chgDeplacerDonnees(st, nouveau, de, vers);
+  const o=SD[ancien], s=SD[nouveau];
+  if(!s.dateNaissance && o.dateNaissance) s.dateNaissance=o.dateNaissance;
+  if(!s.sexe && o.sexe) s.sexe=o.sexe;
+  const H=[].concat(o.anciennesClasses||[], s.anciennesClasses||[]);
+  if(de && de!==vers && !H.some(h=>h && h.cls===de)) H.push({cls:de, jusqua:date||''});
+  if(H.length) s.anciennesClasses=H;
+  delete SD[ancien];
+  return {ancien, nouveau, de, vers, cpt, donnees:n};
+}
+
+/* ── Journal : toutes les classes de l'élève ── */
+function _jnlEntreesEleve(uid, cls, du, au){
+  const E=_jnlFicheEntrees(_jnlSourcesFiche(cls), uid, cls, du, au);
+  let autres=[]; try{ autres=_chgClassesVues(S, uid).filter(c=>c!==cls); }catch(e){ autres=[]; }
+  autres.forEach(c=>{
+    let L=[]; try{ L=_jnlFicheEntrees(_jnlSourcesFiche(c), uid, c, du, au); }catch(e){ L=[]; }
+    L.filter(e=>e.genre==='cours' || e.genre==='eval' || e.genre==='evl').forEach(e=>{ e.heure=(e.heure ? e.heure+' · ' : '')+String(c).toUpperCase(); e.ancienneClasse=c; E.push(e); });
+  });
+  if(autres.length){ const cle=(e)=>String(e.dateStr||'')+' '+String(e.heure||''); E.sort((a,b)=>cle(b).localeCompare(cle(a))); }
+  return E;
+}
+
+/* ── Interface : Paramètres › Classe › Gestion des informations élève ── */
+function _chgNomDe(u){ const s=(S.studentData||{})[u]; if(!s) return u; return ((s.noms||[]).join(' ').toUpperCase()+' '+(s.prenoms||[]).join(' ')).trim(); }
+function _chgEl(tag, css, txt){ const e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
+function _chgRendreSection(wrap){
+  const sec=_chgEl('div','display:flex;flex-direction:column;gap:10px;margin-top:6px'); sec.id='chg-section'; wrap.appendChild(sec);
+  /* 1. Changer de classe */
+  const b1=_chgEl('div','padding:12px 14px;border:1px solid var(--brd);border-radius:var(--r2);background:var(--sur)'); sec.appendChild(b1);
+  b1.appendChild(_chgEl('div','font-size:13px;font-weight:800;margin-bottom:4px','🔀 Changer un élève de classe'));
+  b1.appendChild(_chgEl('div','font-size:11.5px;color:var(--tx2);line-height:1.45;margin-bottom:8px','L’élève garde sa fiche : tout son historique (observations, statuts, notes, journal) le suit. Il quitte les plans et les groupes de l’ancienne classe ; sa fiche EBEP, son observation de profil et son suivi Pix passent dans la nouvelle.'));
+  const ligne=_chgEl('div','display:flex;gap:8px;align-items:center;flex-wrap:wrap'); b1.appendChild(ligne);
+  const sel=(id)=>{ const s=_chgEl('select','font:inherit;font-size:12.5px;padding:5px 8px;border:1.5px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--tx)'); s.id=id; return s; };
+  const sDe=sel('chg-de'), sEl=sel('chg-eleve'), sVers=sel('chg-vers');
+  const CL=Object.keys(S.cl||{}).filter(c=>(S.cl[c].students||[]).length).sort((a,b)=>a.localeCompare(b, 'fr', {numeric:true}));
+  const ALL=Object.keys(S.cl||{}).sort((a,b)=>a.localeCompare(b, 'fr', {numeric:true}));
+  const opt=(s, v, l)=>{ const o=document.createElement('option'); o.value=v; o.textContent=l; s.appendChild(o); };
+  opt(sDe, '', 'Classe actuelle…'); CL.forEach(c=>opt(sDe, c, c.toUpperCase()));
+  const majEleves=()=>{ sEl.textContent=''; opt(sEl, '', 'Élève…');
+    ((S.cl[sDe.value]||{}).students||[]).map(x=>(x && typeof x==='object') ? x.uid : x).filter(Boolean).sort((a,b)=>_chgNomDe(a).localeCompare(_chgNomDe(b), 'fr')).forEach(u=>opt(sEl, u, _chgNomDe(u)));
+    sVers.textContent=''; opt(sVers, '', 'Nouvelle classe…'); ALL.filter(c=>c!==sDe.value).forEach(c=>opt(sVers, c, c.toUpperCase())); majBtn(); };
+  sDe.onchange=majEleves;
+  ligne.appendChild(sDe); ligne.appendChild(sEl); ligne.appendChild(_chgEl('span','font-weight:800;color:var(--tx2)','→')); ligne.appendChild(sVers);
+  const go=_chgEl('button','font-size:12.5px;padding:6px 14px','Changer de classe'); go.className='bp'; go.type='button'; go.id='chg-go'; ligne.appendChild(go);
+  const majBtn=()=>{ const ok=!!(sDe.value && sEl.value && sVers.value); go.disabled=!ok; go.style.opacity=ok?'1':'.5'; };
+  sEl.onchange=majBtn; sVers.onchange=majBtn; majEleves();
+  const msg=_chgEl('div','font-size:12px;margin-top:6px;color:var(--acc);font-weight:600'); msg.id='chg-msg'; b1.appendChild(msg);
+  go.onclick=()=>{
+    const u=sEl.value, de=sDe.value, vers=sVers.value; if(!u || !de || !vers) return;
+    if(!confirm(_chgNomDe(u)+' : '+de.toUpperCase()+' → '+vers.toUpperCase()+'\n\nL’élève garde tout son historique. Il quitte les plans et les groupes de la '+de.toUpperCase()+'. Continuer ?')) return;
+    const r=_chgDeplacer(S, u, de, vers, _todayStr()); if(!r) return;
+    saveS(); try{ renderMenu(); }catch(e){}
+    msg.textContent='✓ '+_chgNomDe(u)+' est maintenant en '+vers.toUpperCase()+(r.donnees ? ' ('+r.donnees+' fiche'+(r.donnees>1?'s':'')+' par classe déplacée'+(r.donnees>1?'s':'')+')' : '')+'.';
+    sDe.value=''; majEleves(); _chgRendreHistorique(b2);
+  };
+  /* 2. Retrouver l'historique */
+  const b2=_chgEl('div','padding:12px 14px;border:1px solid var(--brd);border-radius:var(--r2);background:var(--sur)'); b2.id='chg-histo'; sec.appendChild(b2);
+  _chgRendreHistorique(b2);
+}
+const CHG_LIB={obsCours:'observations de cours', statutsCours:'statuts', participations:'participations', seances:'séances enregistrées', evaluations:'notes et évaluations', besoinsEleves:'fiche EBEP',
+  observations:'observation de profil', suiviAcces:'suivi Pix / accès', journalEleves:'notes du journal', tafCoches:'travail à faire', avtNiveaux:'avertissements', cahierVerifs:'vérifications de cahier', ficheSuivi:'fiche de suivi', nickNames:'nom d’usage'};
+function _chgRendreHistorique(b2){
+  b2.textContent='';
+  b2.appendChild(_chgEl('div','font-size:13px;font-weight:800;margin-bottom:4px','🧩 Retrouver l’historique d’un élève'));
+  b2.appendChild(_chgEl('div','font-size:11.5px;color:var(--tx2);line-height:1.45;margin-bottom:8px','Après un changement de classe par réimport de la base : données restées sous l’ancienne classe, ou ancienne fiche devenue orpheline (élève recréé). Le journal de l’élève montre déjà les cours de ses anciennes classes.'));
+  const E=_chgDonneesEgarees(S), O=_chgOrphelins(S);
+  if(!E.length && !O.length){ b2.appendChild(_chgEl('div','font-size:12.5px;color:var(--acc);font-weight:600','✓ Rien à retrouver : chaque élève a ses données dans sa classe.')); return; }
+  E.forEach(x=>{
+    const r=_chgEl('div','display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--sur2);font-size:12.5px'); r.className='chg-egaree';
+    r.appendChild(_chgEl('span','flex:1;min-width:220px', _chgNomDe(x.uid)+' ('+String(x.vers).toUpperCase()+') : '+x.quoi.join(', ')+' restée'+(x.quoi.length>1?'s':'')+' en '+String(x.de).toUpperCase()));
+    const b=_chgEl('button','font-size:12px;padding:5px 12px','Ramener en '+String(x.vers).toUpperCase()); b.className='bp'; b.type='button';
+    b.onclick=()=>{ const n=_chgDeplacerDonnees(S, x.uid, x.de, x.vers); const sd=S.studentData[x.uid]; if(sd){ const H=sd.anciennesClasses||[]; if(!H.some(h=>h && h.cls===x.de)) H.push({cls:x.de, jusqua:_todayStr()}); sd.anciennesClasses=H; }
+      saveS(); try{ showDropToast('✓ '+n+' élément'+(n>1?'s':'')+' ramené'+(n>1?'s':'')+' en '+String(x.vers).toUpperCase()); }catch(e){} _chgRendreHistorique(b2); };
+    r.appendChild(b); b2.appendChild(r);
+  });
+  O.forEach(x=>{
+    const r=_chgEl('div','display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--sur2);font-size:12.5px'); r.className='chg-orphelin';
+    const det=Object.keys(x.nb).map(k=>(CHG_LIB[k]||k)+' '+x.nb[k]).join(', ');
+    r.appendChild(_chgEl('span','flex:1;min-width:220px', 'Ancienne fiche de '+_chgNomDe(x.uid)+(x.cls ? ' ('+x.cls.toUpperCase()+')' : '')+' : '+det));
+    if(!x.candidats.length){ r.appendChild(_chgEl('span','font-size:11.5px;color:var(--tx3)','aucun élève du même nom inscrit')); b2.appendChild(r); return; }
+    x.candidats.forEach(v=>{
+      const b=_chgEl('button','font-size:12px;padding:5px 12px','Rattacher à '+_chgNomDe(v)+' ('+String((S.studentData[v]||{}).cls||'').toUpperCase()+')…'); b.className='bp'; b.type='button';
+      b.onclick=()=>_chgApercuFusion(x, v, b2); r.appendChild(b);
+    });
+    b2.appendChild(r);
+  });
+}
+function _chgApercuFusion(x, v, b2){
+  const copie=JSON.parse(JSON.stringify(S)); const r=_chgFusionner(copie, x.uid, v, _todayStr());
+  const det=r ? Object.keys(r.cpt).map(k=>'• '+(CHG_LIB[k]||k)+' : '+r.cpt[k]).join('\n') : '';
+  const txt='Rattacher l’ancienne fiche de '+_chgNomDe(x.uid)+(x.cls ? ' ('+x.cls.toUpperCase()+')' : '')+' à '+_chgNomDe(v)+' ('+String((S.studentData[v]||{}).cls||'').toUpperCase()+') ?\n\nCe qui sera rattaché :\n'+(det||'• (rien)')
+    +(r && r.donnees ? '\n• fiches rangées par classe déplacées : '+r.donnees : '')+'\n\nL’ancienne fiche est ensuite supprimée. Pensez à exporter une sauvegarde avant (Paramètres › Données).';
+  if(!confirm(txt)) return;
+  const res=_chgFusionner(S, x.uid, v, _todayStr()); if(!res) return;
+  saveS(); try{ renderMenu(); }catch(e){}
+  try{ showDropToast('✓ Historique rattaché à '+_chgNomDe(v)); }catch(e){}
+  _chgRendreHistorique(b2);
 }
 
 /* ---- Params: Contraintes de placement ---- */
@@ -60566,7 +60859,7 @@ function _jnlFicheContenu(box, uid, cls, o){
   try{ const bl=_jnlBlocEbep(uid, cls); if(bl) box.appendChild(bl); }catch(e){ console.warn('[journal] EBEP', e); }   // V11.5.64 — fiche EBEP détaillée
   const note=String(((S.observations||{})[cls+'|'+uid])||'').trim();
   const {dateFrom, dateTo}=computeVgDateBounds(obsSuivi.periode, obsSuivi.du, obsSuivi.au);
-  const tout=_jnlFicheEntrees(_jnlSourcesFiche(cls), uid, cls, dateFrom, dateTo);
+  const tout=_jnlEntreesEleve(uid, cls, dateFrom, dateTo);   // V11.6.5 — anciennes classes comprises
   { let la='Absent'; try{ const st=getStatuts().find(x=>x.key==='absent'); if(st && st.label) la=st.label; }catch(e){}   // V11.5.90 — totaux rapides
     const T=_jnlTotaux(tout, la), per=({all:'année',s1:'semestre 1',s2:'semestre 2',t1:'trimestre 1',t2:'trimestre 2',t3:'trimestre 3',custom:'dates choisies'}[obsSuivi.periode]||'année');
     const tz=_jnlEl('div','display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center'); tz.id='jnl-totaux'; gauche.appendChild(tz);
@@ -60929,7 +61222,7 @@ function _reuResumeEleve(uid, cls){
   const out=[];
   try{
     if(_fsActive(S.ficheSuivi, uid)) out.push(['FS','#E0E7FF','#3730A3']);
-    const E=_jnlFicheEntrees(_jnlSourcesFiche(cls), uid, cls, '', '');
+    const E=_jnlEntreesEleve(uid, cls, '', '');   // V11.6.5
     const nb={}; E.filter(e=>e.genre==='cours').forEach(e=>e.statuts.forEach(s=>{ nb[s]=(nb[s]||0)+1; }));
     Object.keys(nb).sort((a,b)=>nb[b]-nb[a]).slice(0,2).forEach(s=>out.push([nb[s]+' × '+s,'#FEF3C7','#92400E']));
     const ev=E.find(e=>e.genre==='eval'); if(ev) out.push([ev.comps.slice(0,2).map(c=>String(c.cid)+' '+c.niv).join(' · '),'#CCFBF1','#115E59']);
