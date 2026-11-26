@@ -4892,7 +4892,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.6.6';
+const APP_VERSION = 'v11.6.7';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20440,6 +20440,9 @@ const _PARAMS_INDEX = [
   {tab:'classe', anchor:'chg-section', icon:'🔀', title:'Changer un élève de classe',
    sub:'L’historique suit ; retrouver l’historique après un réimport de la base',
    kw:'changer classe changement eleve deplacer transferer mutation historique orphelin fiche retrouver rattacher reimport import base'},   // V11.6.5
+  {tab:'temps', anchor:'psec-decoupage', icon:'📆', title:'Découpage de l’année (trimestres ou semestres)',
+   sub:'Périodes proposées : suivi des cahiers, Suivi, bilans, recherche',
+   kw:'decoupage annee trimestre trimestres semestre semestres periode periodes bulletin conseil de classe'},   // V11.6.7
   {tab:'temps', anchor:'eoc-section', icon:'🔔', title:'Rappels sonores de fin de cours',
    sub:'Fin du cours, vérification, dernier cours de la journée : moment, son MP3, volume',
    kw:'rappel rappels sonore sonores annonce annonces fin cours verification rangement dernier cours journee mp3 son volume voix designation'},   // V11.6.2
@@ -21842,6 +21845,7 @@ function renderParamsTemps(){
   // de départ dans l'historique pour le bouton ←.
   const goEdt=(sub)=>()=>{ _paramsGotoEdt(sub); };
   pane.appendChild(_paramsChips([
+    {id:'psec-decoupage',label:'📆 Découpage'},   // V11.6.7
     {id:'psec-sonnerie',label:'🔔 Sonnerie'},
     {label:'📆 Périodes & ICS', action:goEdt('periodes')},
     {label:'🗓 Grille hebdo', action:goEdt('grille')},
@@ -21849,6 +21853,7 @@ function renderParamsTemps(){
     {label:'🏖 Vacances', action:goEdt('vacances')},
     {label:'✏️ Modifs', action:goEdt('overrides')}
   ]));
+  try{ _renderParamsDecoupage(pane); }catch(e){ console.warn('[découpage]', e); }   // V11.6.7
   pane.appendChild(_paramsSection('params-pane-sonnerie', renderParamsSonnerie, '🔔', 'Horaires de sonnerie', 'Créneaux de la journée et horaires de référence.', 'psec-sonnerie', 'sonnerie'));
   pane.appendChild(_paramsSection('params-pane-edt', renderParamsEdt, '📅', 'Emploi du temps', 'Semaines A/B, vacances, créneaux et import (ICS ou grille hebdo).', 'psec-edt', 'edt'));
 }
@@ -60261,7 +60266,8 @@ function openSuivi(){
   // Construire boutons de vue
   const vg=document.getElementById('suivi-view-grp');
   if(vg&&!vg.children.length){
-    SUIVI_VIEWS.forEach(v=>{
+    if(suiviView===(_anneeDecoupage()==='semestres' ? 'trimestre' : 'semestre')) suiviView='mois';   // V11.6.7
+    SUIVI_VIEWS.filter(v=>v.id!==(_anneeDecoupage()==='semestres' ? 'trimestre' : 'semestre')).forEach(v=>{
       const b=document.createElement('button'); b.className='suivi-view-btn'+(suiviView===v.id?' act':'');
       b.textContent=v.label; b.dataset.view=v.id;
       b.onclick=()=>{ suiviView=v.id; suiviPeriod=0; vg.querySelectorAll('.suivi-view-btn').forEach(x=>x.classList.toggle('act',x.dataset.view===v.id)); renderSuiviTable(); };
@@ -60562,7 +60568,8 @@ function renderObsSuivi(){
   });
   bar.appendChild(el('span','width:1px;height:18px;background:var(--brd);margin:0 4px'));
   bar.appendChild(el('span','font-size:11px;font-weight:600;color:var(--tx3)','Période :'));
-  [{v:'all',l:'Année'},{v:'s1',l:'Sem. 1'},{v:'s2',l:'Sem. 2'},{v:'t1',l:'Trim. 1'},{v:'t2',l:'Trim. 2'},{v:'t3',l:'Trim. 3'},{v:'custom',l:'Dates…'}].forEach(x=>{
+  if(!_periodeAnneeEstAffichee(obsSuivi.periode)) obsSuivi.periode='all';   // V11.6.7
+  [{v:'all',l:'Année'}].concat(_periodesAnnee(true), [{v:'custom',l:'Dates…'}]).forEach(x=>{
     const b=el('button',null,x.l); b.className='fp-tab'+(obsSuivi.periode===x.v?' act':'');
     b.onclick=()=>{ obsSuivi.periode=x.v; renderObsSuivi(); };
     bar.appendChild(b);
@@ -65289,7 +65296,8 @@ function _rchRendre(focus){
   sc.appendChild(new Option('Toutes','')); _reuClasses().forEach(c=>sc.appendChild(new Option(String(c).toUpperCase(), c))); sc.value=_rch.cls;
   sc.onchange=()=>{ _rch.cls=sc.value; _rchRendre(); }; b2.appendChild(sc);
   b2.appendChild(el('span','font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin-left:10px','Période'));
-  [{v:'all',l:'Année'},{v:'t1',l:'Trim. 1'},{v:'t2',l:'Trim. 2'},{v:'t3',l:'Trim. 3'}].forEach(x=>{ const b=el('button',null,x.l); b.type='button'; b.className='fp-tab'+(_rch.periode===x.v?' act':''); b.onclick=()=>{ _rch.periode=x.v; _rchRendre(); }; b2.appendChild(b); });
+  if(!_periodeAnneeEstAffichee(_rch.periode)) _rch.periode='all';   // V11.6.7
+  [{v:'all',l:'Année'}].concat(_periodesAnnee(true)).forEach(x=>{ const b=el('button',null,x.l); b.type='button'; b.className='fp-tab'+(_rch.periode===x.v?' act':''); b.onclick=()=>{ _rch.periode=x.v; _rchRendre(); }; b2.appendChild(b); });
   const corps=el('div','flex:1;overflow:auto;padding:8px 18px 18px;display:grid;gap:12px;align-content:start'); pg.appendChild(corps);
   const dessiner=()=>{
     pills.textContent=''; corps.textContent='';
@@ -74719,7 +74727,8 @@ function renderVueGlobale(){
     {v:'t3',       l:'Trimestre 3'},
     {v:'custom',   l:'Dates…'},
   ];
-  PERIODS_DEF.forEach(p=>{
+  if(!_periodeAnneeEstAffichee(vgState.semester)) vgState.semester='all';   // V11.6.7
+  PERIODS_DEF.filter(p=>_periodeAnneeEstAffichee(p.v)).forEach(p=>{
     const b = document.createElement('button');
     b.className = 'fp-tab'+(vgState.semester===p.v?' act':'');
     b.textContent = p.l;
@@ -74943,6 +74952,42 @@ function computeVgDateBounds(semester, customFrom, customTo){
   };
   const [from,to] = bounds[semester]||[null,null];
   return {dateFrom:from, dateTo:to};
+}
+/* V11.6.7 — Découpage de l'année (Paramètres › Temps) : trimestres (par défaut) ou semestres.
+   Les listes de périodes de l'appli ne proposent que celles du découpage choisi. */
+function _anneeDecoupage(){ return (typeof S!=='undefined' && S && S.reglages && S.reglages.decoupageAnnee==='semestres') ? 'semestres' : 'trimestres'; }
+function _periodesAnnee(court){
+  return _anneeDecoupage()==='semestres'
+    ? [{v:'s1', l:court ? 'Sem. 1' : 'Semestre 1'}, {v:'s2', l:court ? 'Sem. 2' : 'Semestre 2'}]
+    : [{v:'t1', l:court ? 'Trim. 1' : 'Trimestre 1'}, {v:'t2', l:court ? 'Trim. 2' : 'Trimestre 2'}, {v:'t3', l:court ? 'Trim. 3' : 'Trimestre 3'}];
+}
+/** Une période est-elle proposée ? (année, dates, 30 jours… : toujours). */
+function _periodeAnneeEstAffichee(v){ return ['s1','s2','t1','t2','t3'].indexOf(v)<0 || _periodesAnnee().some(p=>p.v===v); }
+/** La période du découpage qui contient aujourd'hui (sinon ''). */
+function _periodeAnneeDuJour(){
+  const t=(typeof _todayStr==='function') ? _todayStr() : '';
+  for(const p of _periodesAnnee()){ const b=computeVgDateBounds(p.v); if(t && b.dateFrom && t>=b.dateFrom && t<=b.dateTo) return p.v; }
+  return '';
+}
+/** Bloc des Paramètres › Temps. createElement. */
+function _renderParamsDecoupage(pane){
+  if(!S.reglages) S.reglages={};
+  const w=document.createElement('div'); w.id='psec-decoupage';
+  w.style.cssText='padding:1rem;border:1px solid var(--brd);border-radius:var(--r2);background:var(--sur2)';
+  const t=document.createElement('div'); t.style.cssText='font-size:13px;font-weight:800;color:var(--tx);margin-bottom:4px'; t.textContent='📆 Découpage de l’année'; w.appendChild(t);
+  const d=document.createElement('div'); d.style.cssText='font-size:11.5px;color:var(--tx3);margin-bottom:10px;line-height:1.45';
+  d.textContent='Périodes proposées dans le suivi des cahiers, le Suivi, les bilans et la recherche.'; w.appendChild(d);
+  const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px;flex-wrap:wrap'; w.appendChild(row);
+  const dates=document.createElement('div'); dates.style.cssText='font-size:12px;color:var(--tx2);margin-top:8px'; w.appendChild(dates);
+  const jj=(s)=>{ const p=String(s||'').split('-'); return p.length===3 ? p[2]+'/'+p[1] : ''; };
+  const maj=()=>{ dates.textContent=_periodesAnnee().map(p=>{ const b=computeVgDateBounds(p.v); return p.l+' : '+jj(b.dateFrom)+' → '+jj(b.dateTo); }).join('   ·   ');
+    [...row.children].forEach(b=>{ const on=(b.dataset.v===_anneeDecoupage()); b.style.background=on ? '#111418' : '#fff'; b.style.color=on ? '#fff' : '#111418'; }); };
+  [['trimestres','Trimestres (3)'],['semestres','Semestres (2)']].forEach(([v,l])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.v=v; b.id='decoupage-'+v; b.textContent=l;
+    b.style.cssText='padding:5px 14px;border-radius:7px;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer;border:1.5px solid #111418';
+    b.onclick=()=>{ S.reglages.decoupageAnnee=v; saveS(); maj(); try{ if(typeof _cahTuileMaj==='function') _cahTuileMaj(); }catch(e){} };
+    row.appendChild(b); });
+  maj(); pane.appendChild(w);
 }
 
 
@@ -77021,11 +77066,7 @@ function _cahBornes(per){
   const b=computeVgDateBounds(per); return {du:b.dateFrom, au:b.dateTo};
 }
 /** Trimestre du jour (sinon « depuis la rentrée »). */
-function _cahPerDefaut(){
-  const t=(typeof _todayStr==='function') ? _todayStr() : '';
-  for(const p of ['t1','t2','t3']){ const b=computeVgDateBounds(p); if(t && b.dateFrom && t>=b.dateFrom && t<=b.dateTo) return p; }
-  return 'all';
-}
+function _cahPerDefaut(){ return _periodeAnneeDuJour() || 'all'; }   // V11.6.7 — trimestre ou semestre du jour
 function _cahNom(uid){ try{ return getSeatLabel(uid); }catch(e){ return uid; } }
 /** Classes affichées. */
 function _cahClasses(){
@@ -77061,7 +77102,7 @@ function _cahJour(d){ return (typeof _obsDateCourte==='function') ? _obsDateCour
 function openCahiers(o){
   o=o||{};
   if(o.cls && S.cl[o.cls]) _cah.cls=o.cls; else if(o.cls===null || (_cah.cls && !S.cl[_cah.cls])) _cah.cls='';
-  if(!_cah.per) _cah.per=_cahPerDefaut();
+  if(!_cah.per || !_periodeAnneeEstAffichee(_cah.per)) _cah.per=_cahPerDefaut();   // V11.6.7
   _cah.sel={};
   let pg=document.getElementById('cah-page'); if(pg) pg.remove();
   pg=_tasEl('div','position:fixed;inset:0;z-index:465;background:var(--bg);color:var(--tx);display:flex;flex-direction:column;font-family:"DM Sans",sans-serif'); pg.id='cah-page';
@@ -77073,7 +77114,7 @@ document.addEventListener('keydown', e=>{
   const m=document.getElementById('mbg'); if(m && getComputedStyle(m).display!=='none') return;
   closeCahiers();
 });
-const CAH_PERIODES=[['t1','Trimestre 1'],['t2','Trimestre 2'],['t3','Trimestre 3'],['all','Depuis la rentrée'],['30j','30 derniers jours']];
+function _cahPeriodes(){ return _periodesAnnee().map(p=>[p.v, p.l]).concat([['all','Depuis la rentrée'],['30j','30 derniers jours']]); }   // V11.6.7 — selon le découpage
 function _cahRendre(){
   const pg=document.getElementById('cah-page'); if(!pg) return;
   const y=(document.getElementById('cah-corps')||{}).scrollTop||0; pg.textContent='';
@@ -77082,7 +77123,7 @@ function _cahRendre(){
   if(_cah.cls){ const b=_tasEl('button','font:inherit;font-size:13px;font-weight:700;padding:5px 10px;border:none;background:none;color:var(--acc);cursor:pointer','← Toutes les classes'); b.type='button'; b.id='cah-retour'; b.onclick=()=>{ _cah.cls=''; _cah.sel={}; _cahRendre(); }; hd.appendChild(b); }
   hd.appendChild(_tasEl('span','flex:1'));
   const seg=_tasEl('div','display:flex;border:1.5px solid #111418;border-radius:7px;overflow:hidden'); seg.id='cah-per';
-  CAH_PERIODES.forEach(([v,l])=>{ const on=_cah.per===v; const b=_tasEl('button','font:inherit;font-size:12.5px;font-weight:700;padding:5px 11px;border:none;cursor:pointer;'+(on?'background:#111418;color:#fff':'background:#fff;color:#111418'), l);
+  _cahPeriodes().forEach(([v,l])=>{ const on=_cah.per===v; const b=_tasEl('button','font:inherit;font-size:12.5px;font-weight:700;padding:5px 11px;border:none;cursor:pointer;'+(on?'background:#111418;color:#fff':'background:#fff;color:#111418'), l);
     b.type='button'; b.dataset.per=v; b.onclick=()=>{ _cah.per=v; _cahRendre(); }; seg.appendChild(b); });
   hd.appendChild(seg);
   const x=_tasEl('button','font:inherit;font-size:15px;font-weight:800;padding:5px 12px;border:1.5px solid var(--brd);border-radius:7px;background:var(--sur);cursor:pointer','✕'); x.type='button'; x.title='Fermer'; x.onclick=closeCahiers; hd.appendChild(x);
