@@ -318,6 +318,7 @@ button,input{font-family:'DM Sans',sans-serif}
 #menu #cah-tile.htile,#cah-tile.htile{background:#E4EDE2;border-color:#2A5224}   /* V11.5.111 — suivi des cahiers (vert fixe : les thèmes redéfinissent --acc) */
 #menu #cah-tile.htile:hover,#cah-tile.htile:hover{background:#D3E3CF;border-color:#1D3A19}
 #cah-tile .htile-t{color:#19170E}
+.seat.s2-allee{outline:1.5px dashed #6B7280;outline-offset:2px}   /* V11.6.4 — tables individuelles de l'allée (îlots 7 / 8) */
 #cah-tile .htile-s{color:#2A5224}
 
 /* S28 patch 13 — Mode Prof */
@@ -4891,7 +4892,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.6.3';
+const APP_VERSION = 'v11.6.4';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -4918,7 +4919,7 @@ const FLOAT_DEFAULT=['EQ1','EQ4'];
 // EQ3, petite table, EQ2, EQ8, EQ1 (20-29). Îlots 7 = EQ4..EQ7, EQ3, EQ2, EQ1
 // (0-27) + 2 volantes (28, 29). Îlots 8 = EQ4..EQ7, EQ3, EQ2, EQ8, EQ1 (0-31).
 const S2_LAYS=['classic2','ilots7','ilots8'];
-const S2_N={classic2:30, ilots7:30, ilots8:32};
+const S2_N={classic2:30, ilots7:33, ilots8:35};   // V11.6.4 — + 3 tables individuelles dans l'allée (centre)
 const S2_IC8={bg:'#C2410C',bd:'#9A3412',tx:'#fff'};
 const S2_GEO={
   classic2:{tables:[
@@ -4927,9 +4928,9 @@ const S2_GEO={
     {eq:'EQ3',idx:[20,21],col:'R',r:0},{lbl:'Petite table',idx:[22,23],col:'P',r:1},{eq:'EQ2',idx:[24,25],col:'R',r:2},{eq:'EQ8',idx:[26,27],col:'R',r:3},{eq:'EQ1',idx:[28,29],col:'R',r:4}],
     devant:[6,7,18,19,28,29]},
   ilots7:{ilots:[{eq:'EQ4',idx:[0,1,2,3],col:'L',r:0},{eq:'EQ5',idx:[4,5,6,7],col:'L',r:1},{eq:'EQ6',idx:[8,9,10,11],col:'L',r:2},{eq:'EQ7',idx:[12,13,14,15],col:'L',r:3},
-    {eq:'EQ3',idx:[16,17,18,19],col:'R',r:0},{eq:'EQ2',idx:[20,21,22,23],col:'R',r:1},{eq:'EQ1',idx:[24,25,26,27],col:'R',r:2}], volantes:[28,29]},
+    {eq:'EQ3',idx:[16,17,18,19],col:'R',r:0},{eq:'EQ2',idx:[20,21,22,23],col:'R',r:1},{eq:'EQ1',idx:[24,25,26,27],col:'R',r:2}], volantes:[28,29], centre:[30,31,32]},
   ilots8:{ilots:[{eq:'EQ4',idx:[0,1,2,3],col:'L',r:0},{eq:'EQ5',idx:[4,5,6,7],col:'L',r:1},{eq:'EQ6',idx:[8,9,10,11],col:'L',r:2},{eq:'EQ7',idx:[12,13,14,15],col:'L',r:3},
-    {eq:'EQ3',idx:[16,17,18,19],col:'R',r:0},{eq:'EQ2',idx:[20,21,22,23],col:'R',r:1},{eq:'EQ8',idx:[24,25,26,27],col:'R',r:2},{eq:'EQ1',idx:[28,29,30,31],col:'R',r:3}], volantes:[]}
+    {eq:'EQ3',idx:[16,17,18,19],col:'R',r:0},{eq:'EQ2',idx:[20,21,22,23],col:'R',r:1},{eq:'EQ8',idx:[24,25,26,27],col:'R',r:2},{eq:'EQ1',idx:[28,29,30,31],col:'R',r:3}], volantes:[], centre:[32,33,34]}
 };
 
 // V020-v181.8.0 — PdC Universel : registre des layouts disponibles.
@@ -30797,7 +30798,7 @@ function _scprecBuildPlanNode(seance){
   } else if(typeof _s2Est==='function' && _s2Est(P.layoutId)){
     // V11.5.94 — Nouvelle salle : une boîte par table d'équipe / îlot, le reste groupé.
     body.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
-    const G=S2_GEO[P.layoutId], U=(G.tables||G.ilots||[]).concat((G.volantes||[]).map(i=>({lbl:'Volante', idx:[i]})));
+    const G=S2_GEO[P.layoutId], U=(G.tables||G.ilots||[]).concat((G.volantes||[]).map(i=>({lbl:'Volante', idx:[i]})), (G.centre||[]).length ? [{lbl:'Allée', idx:G.centre.slice()}] : []);   // V11.6.4
     U.forEach(u=>{ if(u.idx.every(i=>!P.seats[i])) return;
       const box=document.createElement('div');
       box.style.cssText='border:1px solid var(--brd);border-radius:6px;padding:3px;background:var(--bg);flex:1 1 30%;min-width:0';
@@ -49048,6 +49049,7 @@ function _s2Grille(l){
   G.ilots.forEach(il=>{ const base=(il.col==='L' || nR===4) ? 2*il.r : il.r*3;
     il.idx.forEach((i,k)=>{ out[i]=[base+(k<2 ? 0 : 1), cols[il.col][k%2]]; }); });
   const V=G.volantes||[]; if(V.length){ out[V[0]]=[0,2]; out[V[1]]=[7,3]; }
+  const Ce=G.centre||[]; if(Ce.length===3){ out[Ce[0]]=[0,3]; out[Ce[1]]=[1,3]; out[Ce[2]]=[7,2]; }   // V11.6.4 — allée (cases distinctes des volantes)
   return out;
 }
 function _s2RangMax(l){ return S2_GEO[l] && S2_GEO[l].tables ? 5 : 7; }
@@ -49146,8 +49148,8 @@ function _s2Synchro(src, from, to){
   P.forEach(([a,b])=>{ const u=src[a]; if(!u || vus.has(u) || out[b]) return; out[b]=u; vus.add(u); });
   src.forEach((u,i)=>{ if(u && !vus.has(u)){ vus.add(u); reste.push([u,i]); } });
   const gs=_s2Grille(from), gt=_s2Grille(to), Rs=_s2RangMax(from), Rt=_s2RangMax(to);
-  const V=new Set(Gt.volantes||[]), pos=(g, R, i)=>g[i] ? [g[i][0]/R, g[i][1]/5] : null, cand=[];
-  reste.forEach(([u,i],r)=>{ const a=pos(gs, Rs, i); for(let j=0;j<N;j++){ if(out[j]) continue; const b=pos(gt, Rt, j); cand.push([(a && b ? Math.hypot(a[0]-b[0], a[1]-b[1]) : 9)+(V.has(j) ? 10 : 0), r, j]); } });
+  const V=new Set(Gt.volantes||[]), Ce=new Set(Gt.centre||[]), pos=(g, R, i)=>g[i] ? [g[i][0]/R, g[i][1]/5] : null, cand=[];
+  reste.forEach(([u,i],r)=>{ const a=pos(gs, Rs, i); for(let j=0;j<N;j++){ if(out[j] || Ce.has(j)) continue; const b=pos(gt, Rt, j); cand.push([(a && b ? Math.hypot(a[0]-b[0], a[1]-b[1]) : 9)+(V.has(j) ? 10 : 0), r, j]); } });   // V11.6.4 — allée exclue
   cand.sort((a,b)=>a[0]-b[0] || a[1]-b[1] || a[2]-b[2]);
   const fait=new Set(); cand.forEach(([,r,j])=>{ if(fait.has(r) || out[j]) return; out[j]=reste[r][0]; fait.add(r); });
   return out;
@@ -49162,8 +49164,10 @@ function _s2Ilots78(src, from, to){
   Gs.ilots.forEach(il=>{ const d=Gt.ilots.find(x=>x.eq===il.eq);
     il.idx.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(d) out[d.idx[k]]=u; else if(il===e8s && k<Vt.length) out[Vt[k]]=u; else reste.push([u,i]); }); });
   Vs.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(e8t && !out[e8t.idx[k]]) out[e8t.idx[k]]=u; else reste.push([u,i]); });
+  const Cs=Gs.centre||[], Ct=Gt.centre||[], Ce=new Set(Ct);   // V11.6.4 — allée → allée, à la même place
+  Cs.forEach((i,k)=>{ const u=prendre(i); if(!u) return; if(Ct[k]!=null) out[Ct[k]]=u; else reste.push([u,i]); });
   const gs=_s2Grille(from), gt=_s2Grille(to), Rs=_s2RangMax(from), Rt=_s2RangMax(to), V=new Set(Vt), pos=(g, R, i)=>g[i] ? [g[i][0]/R, g[i][1]/5] : null, cand=[];
-  reste.forEach(([u,i],r)=>{ const a=pos(gs, Rs, i); for(let j=0;j<N;j++){ if(out[j]) continue; const b=pos(gt, Rt, j); cand.push([(a && b ? Math.hypot(a[0]-b[0], a[1]-b[1]) : 9)+(V.has(j) ? 10 : 0), r, j]); } });
+  reste.forEach(([u,i],r)=>{ const a=pos(gs, Rs, i); for(let j=0;j<N;j++){ if(out[j] || Ce.has(j)) continue; const b=pos(gt, Rt, j); cand.push([(a && b ? Math.hypot(a[0]-b[0], a[1]-b[1]) : 9)+(V.has(j) ? 10 : 0), r, j]); } });
   cand.sort((a,b)=>a[0]-b[0] || a[1]-b[1] || a[2]-b[2]);
   const fait=new Set(); cand.forEach(([,r,j])=>{ if(fait.has(r) || out[j]) return; out[j]=reste[r][0]; fait.add(r); });
   return out;
@@ -49231,8 +49235,13 @@ function _s2Placement(l, Hs, o){
     il.idx.forEach((idx,i)=>places.push({idx, x:fx+IL_PAD+(i%2)*SW, y:fy+IL_PAD+(i<2 ? 0 : Hs), w:SW, h:Hs, br:BR[i]}));
   });
   const V=G.volantes||[];
+  /* V11.6.4 — largeur commune aux volantes et à l'allée : trois colonnes doivent tenir dans le couloir (iPad compris) */
+  const WV=Math.min(SW, 140, Math.floor((CORRIDOR-32)/3));
+  (G.centre||[]).forEach((idx,k)=>{
+    const pas=(Htot-Hs)/5, r=[0,1,5][k];
+    places.push({idx, x:Math.round(LEFT_X+FR_W+(CORRIDOR-WV)/2), y:Math.round(top+r*pas), w:WV, h:Hs, br:'var(--r2)', allee:true});
+  });
   if(V.length && ((o.nSt||0)>28 || V.some(occ))){
-    const WV=Math.min(SW,140);
     places.push({idx:V[0], x:LEFT_X+FR_W+8, y:yOf('L',0)+Math.round((FH-Hs)/2), w:WV, h:Hs, br:'var(--r2)', volante:true});
     places.push({idx:V[1], x:RIGHT_X-8-WV, y:yOf('R',nR-1)+Math.round((FH-Hs)/2), w:WV, h:Hs, br:'var(--r2)', volante:true});
   }
@@ -49274,6 +49283,7 @@ function renderSalle2(area){
     const name=seats[p.idx]||null;
     const s=makeSeat(p.idx, name, p.volante ? 'floating' : '');
     s.style.cssText='border-radius:'+p.br+';width:'+p.w+'px;height:'+p.h+'px;top:'+p.y+'px;left:'+p.x+'px;';
+    if(p.allee){ s.classList.add('s2-allee'); s.title='Table individuelle (allée) : placement manuel seulement'; }   // V11.6.4
     _applyGenderColor(s, name); wrap.appendChild(s);
   });
   area.appendChild(wrap);
@@ -49332,7 +49342,7 @@ function _s2PlacementAleatoire(eleves, l, con, opts, aleat){
   opts=opts||{}; con=con||{}; const rnd=aleat||Math.random;
   const G=S2_GEO[l], N=S2_N[l]||N_SEATS, g=_s2Grille(l), RM=_s2RangMax(l);
   const vol=(G.volantes||[]);
-  const avecVol=vol.length>0 && (eleves.length>N-vol.length || (con.isoler||[]).some(Boolean));   // volantes ouvertes aux élèves à isoler
+  const avecVol=vol.length>0 && (eleves.length>N-vol.length-(G.centre||[]).length || (con.isoler||[]).some(Boolean));   // volantes ouvertes aux élèves à isoler ; V11.6.4 : l'allée ne compte pas
   const shuffle=a=>{ for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
   const sexe=opts.sexe||(()=>null), grp=opts.groupeDe||(()=>null);
   const seats=Array(N).fill(null), reste=new Set(eleves), reserve=new Set();
