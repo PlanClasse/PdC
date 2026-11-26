@@ -4892,7 +4892,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.6.5';
+const APP_VERSION = 'v11.6.6';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -20740,6 +20740,11 @@ const _PAL_OUTILS_COURS = [
    kw:'ilots 7 8 sept huit reprendre transferer copier plan nouvelle salle equipes',
    precond:()=>((typeof _s2EstIlots==='function' && _s2EstIlots(layout) && _palPlanOuvert()) ? {ok:true} : {ok:false, why:'Ouvrez un plan en îlots de la nouvelle salle'}),
    run:()=>{ _s2Reprendre78(); }},   // V11.6.2
+  {id:'act-uni-reprendre', icon:'⇄', label:'Reprendre les places d’une autre disposition',
+   sub:'Plan universel : selon la position dans la salle, pas les numéros de place',
+   kw:'reprendre transferer copier places disposition layout universel plan autre implantation',
+   precond:()=>((S.reglages && S.reglages.pdcUniversel && _palPlanOuvert()) ? {ok:true} : {ok:false, why:'Ouvrez un plan de classe en mode universel'}),
+   run:()=>{ openUniReprendre(); }},   // V11.6.6
   {id:'act-horloge', icon:'🕐', label:'Horloge en grand',
    sub:'L’heure en très grand, à projeter (fin du cours affichée)',
    kw:'horloge heure grand projeter pendule montre afficher heure',
@@ -26048,7 +26053,7 @@ function _chgDeplacer(st, uid, de, vers, date){
 }
 
 /* ── Fiches orphelines et rattachement ── */
-function _chgNorm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z]+/g,' ').trim(); }
+function _chgNorm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim(); }   /* V11.6.5 — chiffres gardés (homonymes « ELEVE031 » / « ELEVE436 ») */
 /** uids actuellement inscrits (classes et groupes). Pure. */
 function _chgInscrits(st){
   const I=new Set();
@@ -52020,7 +52025,118 @@ function renderLayoutSegmented(){
       +'<span>'+escLbl+'</span>'
       +'</span>';
   });
+  // V11.6.6 — « ⇄ » : reprendre les places d'une autre disposition (par l'implantation)
+  if(typeof _uniSources==='function' && _uniSources().length)
+    parts.push('<span class="lay-seg-item" id="uni-reprendre-btn" onclick="event.stopPropagation();openUniReprendre()" title="Reprendre les places d’une autre disposition (selon la position dans la salle)"><span class="lay-seg-item-ic">⇄</span></span>');
   btn.innerHTML='<span class="lay-seg">'+parts.join('')+'</span>';
+}
+/* ═══ V11.6.6 — PLAN UNIVERSEL : REPRENDRE LES PLACES D'UNE AUTRE DISPOSITION (demande du 26/11) ═══
+   Comme « Reprendre » de la salle techno, mais pour n'importe quelle disposition : la reprise
+   se fait par l'IMPLANTATION (et non par les numéros de place, qui dépendent de l'ordre de
+   création). Chaque place reçoit une position normalisée {d, x} : d = distance au tableau
+   (0 = devant, 1 = fond), x = de gauche à droite vu du bureau (0 → 1). On tient compte du
+   côté du tableau (haut / bas) et seule la zone occupée par des places compte. Puis chaque
+   élève va à la place libre la plus proche (la profondeur pèse un peu plus : ceux de devant
+   restent devant) ; s'il manque des places, les derniers restent non placés. */
+const UNI_POIDS_D=1.3;
+
+/** Positions {d, x} des places d'une disposition. c = données de la classe. Pure (hors S2_*). */
+function _uniPositions(c, lid){
+  if(lid==='classic') return {n:N_SEATS, pos:Array.from({length:N_SEATS}, (_,i)=>({d:1-Math.floor(i/5)/5, x:(i%5)/4}))};
+  if(lid==='ilots'){
+    const pos=Array(N_SEATS).fill(null);
+    G_ORDER.forEach((eq,gi)=>(ILOT_MAP[eq]||[]).forEach((idx,k)=>{ pos[idx]={d:1-(2*gi+(k<2 ? 0 : 1))/7, x:(k%2)*0.17}; }));
+    D_ORDER.forEach((eq,di)=>(ILOT_MAP[eq]||[]).forEach((idx,k)=>{ pos[idx]={d:1-(3*di+(k<2 ? 0 : 1))/7, x:0.83+(k%2)*0.17}; }));
+    const ft=(c && Array.isArray(c.floatTarget)) ? c.floatTarget : FLOAT_DEFAULT;
+    FLOAT_IDX.forEach((idx,f)=>{ const t=ft[f], gi=G_ORDER.indexOf(t), di=D_ORDER.indexOf(t);
+      pos[idx]=gi>=0 ? {d:1-(2*gi+0.5)/7, x:0.38} : (di>=0 ? {d:1-(3*di+0.5)/7, x:0.62} : {d:0.5, x:0.5}); });
+    return {n:N_SEATS, pos};
+  }
+  if(typeof _s2Est==='function' && _s2Est(lid)){
+    const g=_s2Grille(lid), RM=_s2RangMax(lid), n=S2_N[lid], pos=Array(n).fill(null);
+    Object.keys(g).forEach(i=>{ pos[+i]={d:1-g[i][0]/RM, x:g[i][1]/5}; });
+    return {n, pos};
+  }
+  const ld=c && c.layouts && c.layouts[lid]; if(!ld) return null;
+  const P=Array.isArray(ld.seats) ? ld.seats : [], ok=P.filter(p=>p && p.row>=0 && p.col>=0);
+  if(!ok.length) return {n:P.length, pos:P.map(()=>null)};
+  const r0=Math.min.apply(null, ok.map(p=>p.row)), r1=Math.max.apply(null, ok.map(p=>p.row));
+  const c0=Math.min.apply(null, ok.map(p=>p.col)), c1=Math.max.apply(null, ok.map(p=>p.col));
+  const bas=(ld.boardPosition!=='top');   // tableau en bas : vue du bureau ; en haut : vue du fond (gauche et droite inversées)
+  return {n:P.length, pos:P.map(p=>{
+    if(!p || !(p.row>=0) || !(p.col>=0)) return null;
+    const fr=(r1>r0) ? (p.row-r0)/(r1-r0) : (bas ? 1 : 0), fc=(c1>c0) ? (p.col-c0)/(c1-c0) : 0.5;   // une seule rangée = le premier rang
+    return {d:bas ? 1-fr : fr, x:bas ? fc : 1-fc};
+  })};
+}
+/** Reprise par l'implantation. src = places de la disposition de départ ; P, Q = positions départ / arrivée. Pure. */
+function _uniTransfert(src, P, Q){
+  src=Array.isArray(src) ? src : [];
+  const out=Array((Q && Q.n)||0).fill(null), vus=new Set(), eleves=[];
+  src.forEach((u,i)=>{ if(u && !vus.has(u)){ vus.add(u); eleves.push(i); } });
+  /* Rang par rang, du devant vers le fond : dans chaque rang de départ, chacun prend la place libre la plus
+     proche (répartition globale du rang) ; qui déborde va au rang suivant, et la suite se décale d'autant. */
+  const rangDe=(i)=>{ const a=P && P.pos[i]; return a ? Math.round(a.d*1000) : 2000; };
+  const rangs=[...new Set(eleves.map(rangDe))].sort((a,b)=>a-b);
+  const faits=new Set(), pris=new Set();
+  rangs.forEach(r=>{ const cand=[];
+    eleves.filter(i=>rangDe(i)===r).forEach(i=>{ const a=P && P.pos[i];
+      (Q.pos||[]).forEach((b,j)=>{ if(!b || pris.has(j)) return; const dd=a ? a.d-b.d : 1, dx=a ? a.x-b.x : 1;
+        cand.push([Math.hypot(UNI_POIDS_D*dd, dx), Math.abs(dd), i, j]); }); });
+    cand.sort((p,q)=>p[0]-q[0] || p[1]-q[1] || p[2]-q[2] || p[3]-q[3]);
+    cand.forEach(([,,i,j])=>{ if(faits.has(i) || pris.has(j)) return; out[j]=src[i]; faits.add(i); pris.add(j); }); });
+  return {out, places:faits.size, reste:eleves.length-faits.size};
+}
+/** Dispositions d'où l'on peut reprendre (au moins un élève placé), sauf l'active. */
+function _uniSources(){
+  const c=S.cl[curCls]; if(!c) return [];
+  const labels=c.layoutLabels||{}, out=[];
+  const ajouter=(lid, icon, label)=>{ if(lid===layout) return; let n=0; try{ n=_seatsForLayoutId(lid).filter(Boolean).length; }catch(e){ n=0; } if(n) out.push({lid, icon, label, n}); };
+  Object.keys(c.layouts||{}).forEach(cid=>{ const l=c.layouts[cid]; if(l) ajouter(cid, l.icon||'🧱', labels[cid]||l.label||cid); });
+  ajouter('classic', '⊞', (labels.classic||'Rangées')+' (plan historique)');
+  ajouter('ilots', '⬡', (labels.ilots||'Îlots')+' (plan historique)');
+  if(c.seatsS2 && typeof c.seatsS2==='object' && typeof S2_LAYS!=='undefined') S2_LAYS.forEach(l=>{ if(Array.isArray(c.seatsS2[l])) ajouter(l, '🏫', _s2Libelle(l)+' (salle techno)'); });
+  return out;
+}
+/** Applique la reprise dans la disposition active. */
+function _uniReprendreDe(lid){
+  const c=S.cl[curCls]; if(!c) return null;
+  const P=_uniPositions(c, lid), Q=_uniPositions(c, layout);   // géométrie : celle de la classe (demi-groupe compris)
+  if(!P || !Q || !Q.n) return null;
+  const r=_uniTransfert(_seatsForLayoutId(lid), P, Q);
+  getCls().seats=r.out; saveS(); renderApp();
+  return r;
+}
+function openUniReprendre(){
+  if(!S.reglages || !S.reglages.pdcUniversel || !curCls || !S.cl[curCls]) return;
+  if(typeof _tempBlock==='function' && _tempBlock('la reprise d’une autre disposition')) return;
+  if(typeof _pdcPeutPlacer==='function' && !_pdcPeutPlacer(()=>openUniReprendre())) return;
+  const c=S.cl[curCls], ici=(c.layoutLabels||{})[layout] || ((c.layouts||{})[layout]||{}).label || layout;
+  const L=_uniSources();
+  showModal('⇄ Reprendre les places d’une autre disposition', '', null);
+  const fermer=document.querySelector('#mbg .modal-acts .bs'); if(fermer) fermer.textContent='Fermer';
+  const okb=document.getElementById('mok'); if(okb) okb.style.display='none';
+  try{ _attachModalClickOutsideClose(); }catch(e){}
+  const mb=document.getElementById('mb'); if(mb) mb.textContent='';
+  const ex=document.getElementById('modal-extra'); ex.innerHTML='';
+  const el=(t, css, x)=>{ const e=document.createElement(t); if(css) e.style.cssText=css; if(x!=null) e.textContent=x; return e; };
+  const root=el('div','text-align:left;display:flex;flex-direction:column;gap:8px;max-width:520px'); root.id='uni-reprendre'; ex.appendChild(root);
+  root.appendChild(el('div','font-size:12.5px;color:var(--tx2);line-height:1.5','Les élèves sont replacés dans « '+ici+' » selon leur position dans la salle (devant / fond, gauche / droite), pas selon les numéros de place. S’il manque des places, les derniers restent non placés.'));
+  if(!L.length){ root.appendChild(el('div','font-size:13px;color:var(--tx3);padding:10px 0','Aucune autre disposition de cette classe n’a d’élève placé.')); return; }
+  const occ=(getCls().seats||[]).filter(Boolean).length;
+  L.forEach(s=>{
+    const b=el('button','display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border-radius:var(--r2);border:1.5px solid var(--brd);background:var(--sur);cursor:pointer;text-align:left;font-family:inherit');
+    b.type='button'; b.dataset.lid=s.lid;
+    b.appendChild(el('span','font-size:18px', s.icon));
+    const t=el('span','flex:1'); t.appendChild(el('div','font-size:13px;font-weight:700;color:var(--tx)', s.label)); t.appendChild(el('div','font-size:11.5px;color:var(--tx2)', s.n+' élève'+(s.n>1?'s':'')+' placé'+(s.n>1?'s':''))); b.appendChild(t);
+    b.appendChild(el('span','font-size:12px;font-weight:800;color:var(--acc)','Reprendre ›'));
+    b.onclick=()=>{
+      if(occ && !confirm('Les '+occ+' places occupées de « '+ici+' » seront remplacées par celles de « '+s.label+' » (qui reste intacte). Continuer ?')) return;
+      const r=_uniReprendreDe(s.lid); try{ closeModal(); }catch(e){}
+      if(r) try{ showDropToast('⇄ '+r.places+' élève'+(r.places>1?'s':'')+' repris de « '+s.label+' »'+(r.reste ? ' · '+r.reste+' sans place' : '')); }catch(e){}
+    };
+    root.appendChild(b);
+  });
 }
 
 // ============================================================================
