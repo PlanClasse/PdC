@@ -4892,7 +4892,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.6.7';
+const APP_VERSION = 'v11.6.8';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -79759,7 +79759,9 @@ function _runPeriodicCheck(){
   try{
     renderRappelsBandeau();
   } catch(e){ console.warn('Periodic check error:',e); }
+  try{ _seaBoutonMaj(); }catch(e){}   // V11.6.8 — le bouton Séance passe au ROUGE dès que le cours commence, même si le plan était ouvert avant
 }
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ try{ _seaBoutonMaj(); }catch(e){} } });   // V11.6.8 — retour sur l'appli : état à jour tout de suite
 setInterval(_runPeriodicCheck, 60*1000); // toutes les minutes (léger, pas de modale)
 
 /* ============================================================
