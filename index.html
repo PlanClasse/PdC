@@ -4892,7 +4892,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.6.8';
+const APP_VERSION = 'v11.6.9';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -76220,6 +76220,94 @@ async function exportData(){
   setTimeout(()=>{ if(st) st.textContent='Télécharger un fichier de sauvegarde'; },3000);
 }
 
+/* ══ V11.6.9 — RÉINTRODUIRE DES DONNÉES DISPARUES (fichier de réparation) ══════
+   Fichier produit par l'outil externe « Contrôle des sauvegardes » (onglet
+   « Analyser une période ») : {type:'planclasse-reparation', ops:[…]}. Il s'ouvre
+   par le même 📂 que les sauvegardes, mais ne REMPLACE rien : chaque opération
+   COMPLÈTE l'état actuel, sans écraser une saisie existante.
+   - seance : séance absente → ajoutée ; présente → seuls ses champs vides
+     (contenu, commentaire, TAF, statuts / observations d'un élève) sont remplis ;
+   - champ  : contenu / commentaire / TAF d'une séance existante, s'il est vide ;
+   - viv    : statut / observation / participation d'un élève dans un cours, posé
+     s'il manque (participations : le plus grand nombre).
+   « remplacer » (coché à la main dans l'outil pour un retour en arrière) remet la
+   valeur du fichier même si une autre est là. Les données vivantes sont datées
+   par saveS (_vivApresEcriture) : la réparation l'emporte à la synchro suivante. */
+function _repEstFichier(p){ return !!(p && p.type==='planclasse-reparation' && Array.isArray(p.ops)); }
+function _repVide(v){ return v==null || v==='' || (Array.isArray(v) && !v.length) || (typeof v==='object' && !Array.isArray(v) && !Object.keys(v).length); }
+/** Applique les opérations à `st` (modifié). Pure hors st. Renvoie [{op, r}] avec
+ *  r = 'ajouté' | 'complété' | 'rétabli' | 'déjà présent' | 'déjà une valeur' | 'séance absente' | 'ignoré'. */
+function _repAppliquer(st, ops){
+  const R=[], cp=(v)=>v===undefined ? undefined : JSON.parse(JSON.stringify(v));
+  const trouver=(b,sk)=>{ const a=st.seances && st.seances[b]; return Array.isArray(a) ? a.find(x=>x && x.slotKey===sk) : null; };
+  (Array.isArray(ops) ? ops : []).forEach(op=>{
+    let r='ignoré';
+    try{
+      if(op && op.type==='seance' && op.bucket && op.slotKey && op.seance && typeof op.seance==='object'){
+        const ex=trouver(op.bucket, op.slotKey);
+        if(!ex){
+          if(!st.seances) st.seances={};
+          if(!Array.isArray(st.seances[op.bucket])) st.seances[op.bucket]=[];
+          const se=cp(op.seance); se.slotKey=op.slotKey; st.seances[op.bucket].push(se); r='ajouté';
+        } else {
+          let n=0;
+          ['contenu','commentaire'].forEach(c=>{ if(_repVide(ex[c]) && !_repVide(op.seance[c])){ ex[c]=String(op.seance[c]); n++; } });
+          if(_repVide(ex.tafs) && _repVide(ex.taf) && !(_repVide(op.seance.tafs) && _repVide(op.seance.taf))){ ex.tafs=cp(op.seance.tafs||[]); ex.taf=op.seance.taf||''; n++; }
+          ['statuts','observations'].forEach(c=>{ const o=op.seance[c]||{}; Object.keys(o).forEach(u=>{ if(_repVide(o[u])) return; if(!ex[c] || typeof ex[c]!=='object') ex[c]={}; if(_repVide(ex[c][u])){ ex[c][u]=cp(o[u]); n++; } }); });
+          r=n ? 'complété' : 'déjà présent';
+        }
+      } else if(op && op.type==='champ' && op.bucket && op.slotKey){
+        const ex=trouver(op.bucket, op.slotKey);
+        if(!ex) r='séance absente';
+        else if(op.champ==='taf'){
+          const v=op.val||{}, tafs=Array.isArray(v.tafs) ? v.tafs : [], taf=String(v.taf||'');
+          if(JSON.stringify(ex.tafs||[])===JSON.stringify(tafs) && String(ex.taf||'')===taf) r='déjà présent';
+          else if(op.remplacer || (_repVide(ex.tafs) && _repVide(ex.taf))){ ex.tafs=cp(tafs); ex.taf=taf; r=op.remplacer ? 'rétabli' : 'ajouté'; }
+          else r='déjà une valeur';
+        } else if(op.champ==='contenu' || op.champ==='commentaire'){
+          const v=String(op.val==null ? '' : op.val);
+          if(String(ex[op.champ]||'')===v) r='déjà présent';
+          else if(op.remplacer || _repVide(ex[op.champ])){ ex[op.champ]=v; r=op.remplacer ? 'rétabli' : 'ajouté'; }
+          else r='déjà une valeur';
+        }
+      } else if(op && op.type==='viv' && VIV_MAGASINS.indexOf(op.store)>=0 && op.key && op.uid && !_repVide(op.val)){
+        if(!st[op.store]) st[op.store]={};
+        const M=st[op.store][op.key]||{}, cur=M[op.uid];
+        if(JSON.stringify(cur)===JSON.stringify(op.val)) r='déjà présent';
+        else if(op.remplacer || _repVide(cur)){ M[op.uid]=cp(op.val); r=op.remplacer && !_repVide(cur) ? 'rétabli' : 'ajouté'; }
+        else if(op.store==='participations'){ if(+op.val>+cur){ M[op.uid]=+op.val; r='ajouté'; } else r='déjà présent'; }
+        else r='déjà une valeur';
+        if(Object.keys(M).length) st[op.store][op.key]=M;
+      }
+    }catch(e){ r='ignoré'; }
+    R.push({op, r});
+  });
+  return R;
+}
+const _REP_OK=['ajouté','complété','rétabli'];
+/** Aperçu (essai sur une copie), puis application sur S après « Réintroduire ». */
+function _repOuvrir(p, nom){
+  const essai=_repAppliquer(JSON.parse(JSON.stringify(S)), p.ops);
+  const n=essai.filter(x=>_REP_OK.indexOf(x.r)>=0).length;
+  const li=essai.map(x=>'<li style="margin:2px 0">'+(_REP_OK.indexOf(x.r)>=0 ? '✅ ' : '· ')+escapeHtml(x.op && x.op.lib || (x.op && x.op.type) || '?')
+    +' <span style="color:#6B7280;font-style:italic">— '+escapeHtml(x.r)+'</span></li>').join('');
+  const corps='<div style="text-align:left;font-size:13px;line-height:1.5">'
+    +'<div>Fichier : <b>'+escapeHtml(nom||'')+'</b>'+(p.periode ? ' · '+escapeHtml(p.periode) : '')+'</div>'
+    +'<div style="margin:6px 0 4px">'+(n ? '<b>'+n+'</b> élément'+(n>1?'s':'')+' à réintroduire.' : 'Rien à réintroduire : tout est déjà là.')
+    +' Rien n’est écrasé : une donnée ressaisie depuis garde sa valeur actuelle (« déjà une valeur »). Vos autres données ne changent pas.</div>'
+    +'<ul id="rep-liste" style="max-height:48vh;overflow:auto;padding-left:18px;margin:6px 0;font-size:12.5px">'+li+'</ul></div>';
+  if(!n){ showModal('Réintroduire des données disparues', corps, null, true, true); return; }
+  showModal('Réintroduire des données disparues ?', corps, ()=>{
+    const R=_repAppliquer(S, p.ops);
+    const k=R.filter(x=>_REP_OK.indexOf(x.r)>=0).length;
+    saveS();
+    try{ renderMenu(); }catch(e){}
+    try{ _seaBoutonMaj(); }catch(e){}
+    try{ showDropToast('✓ '+k+' élément'+(k>1?'s':'')+' réintroduit'+(k>1?'s':'')+' — pensez à synchroniser'); }catch(e){}
+  }, false, true);
+  const mok=document.getElementById('mok'); if(mok) mok.textContent='Réintroduire';
+}
+
 function importData(input){
   const file=input.files[0]; if(!file) return;
   const st=document.getElementById('import-backup-status');
@@ -76228,6 +76316,8 @@ function importData(input){
   reader.onload=e=>{
     try{
       const parsed=JSON.parse(e.target.result);
+      // V11.6.9 — fichier de réparation : complète, ne remplace pas.
+      if(_repEstFichier(parsed)){ if(st) st.textContent='Restaurer depuis un fichier'; input.value=''; _repOuvrir(parsed, file.name); return; }
       // Basic validation
       if(!parsed.cl||!parsed.en) throw new Error('Fichier invalide — structure non reconnue.');
       showModal(
