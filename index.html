@@ -4892,7 +4892,7 @@ window._simHandleDisable = _simHandleDisable;
 // V020-v170 — Version applicative centralisée. À mettre à jour à chaque
 // patch livré (un seul endroit). Affichée en petit sous le titre
 // PlanClasse dans le header pour vérification rapide côté utilisateur.
-const APP_VERSION = 'v11.6.10';
+const APP_VERSION = 'v11.6.11';
 
 const LEVELS=['6e','5e','4e','3e'];
 const LBL={'6e':'6ème','5e':'5ème','4e':'4ème','3e':'3ème'};
@@ -76881,7 +76881,7 @@ function _tirageCahierRetourne(n){ return (n|0)>TIRAGE_SAISIE_MAX; }
 function _tirageLargeurFiche(f, nbCrit){
   if(!f || f.saisie!=='cahier') return 620;
   const n=Array.isArray(f.eleves)?f.eleves.length:0;
-  if(_tirageCahierRetourne(n)) return Math.min(1360, 150+(nbCrit|0)*118+86+122+180);   /* V11.5.111 : + colonne « À représenter » */
+  if(_tirageCahierRetourne(n)) return Math.min(1360, 150+(nbCrit|0)*118+98+86+122+180);   /* V11.5.111 : + colonne « À représenter » ; V11.6.11 : + « ✓ Tout OK » (98 px) */
   return n>2 ? 720 : 560;
 }
 /** « tirée le 26/09 à 10:42 ». Pure. */
@@ -77506,18 +77506,17 @@ function _tasSegNiveaux(court, onChange){
   return {el, get:()=>val, set};
 }
 
-/** V11.6.10 — « ✓ Tout OK » (vérification des cahiers) : met « Parfait » dans toutes les
- *  cases ENCORE VIDES des élèves qui n'ont pas oublié leur cahier. Une case déjà notée
- *  n'est pas touchée (on peut donc marquer d'abord les exceptions). Renvoie le nombre
- *  de cases remplies. cells = [{uid, nom, seg}] (seg facultatif : met l'affichage à jour). */
-function _tirageCahierToutOk(E, cells){
+/** V11.6.11 — « ✓ Tout OK » d'UN élève (vérification des cahiers) : met « Parfait » dans
+ *  toutes ses cases (les niveaux déjà posés pour lui sont remplacés). Sans effet si son
+ *  cahier est marqué « Oublié ». Renvoie le nombre de cases mises à Parfait.
+ *  cells = [{uid, nom, seg}] (seg facultatif : met l'affichage à jour). */
+function _tirageCahierToutOk(E, cells, uid){
+  if(!uid || E.oubli[uid]) return 0;
   let n=0;
   (cells||[]).forEach(c=>{
-    if(!c || E.oubli[c.uid]) return;
-    const cur=(E.niv[c.uid]||{})[c.nom];
-    if(cur) return;
-    if(!E.niv[c.uid]) E.niv[c.uid]={};
-    E.niv[c.uid][c.nom]='PF'; n++;
+    if(!c || c.uid!==uid) return;
+    if(!E.niv[uid]) E.niv[uid]={};
+    E.niv[uid][c.nom]='PF'; n++;
     if(c.seg && c.seg.set) c.seg.set('PF');
   });
   return n;
@@ -77566,11 +77565,6 @@ function _tirageRenderSaisie(box, fiche, hooks){
     bar.appendChild(_tasEl('span','font-size:11px;color:var(--tx3)','Tout remplir'));
     const all=_tasSegNiveaux(true, v=>{ if(v) (all._cells||[]).forEach(c=>{ if(!E.oubli[c.uid]){ c.seg.set(v); if(!E.niv[c.uid]) E.niv[c.uid]={}; E.niv[c.uid][c.nom]=v; } }); persist(); all.set(''); });
     all.el.style.width='112px'; bar.appendChild(all.el);
-    // V11.6.10 — « ✓ Tout OK » : Parfait partout où rien n'est encore noté (oublis exclus)
-    const okTout=_tasEl('button','height:28px;padding:0 12px;border:1.5px solid #15803D;border-radius:14px;background:#15803D;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap','✓ Tout OK');
-    okTout.type='button'; okTout.className='tas-toutok'; okTout.title='Mettre « Parfait » dans toutes les cases encore vides (sauf les cahiers oubliés)';
-    okTout.onclick=()=>{ _tirageCahierToutOk(E, all._cells); persist(); };
-    bar.appendChild(okTout);
     const critBtn=_tasEl('button','margin-left:auto;font-size:11px;padding:3px 9px;border:1px solid var(--brd);border-radius:6px;background:var(--sur2);color:var(--tx2);cursor:pointer;font-family:inherit','Critères…');
     critBtn.type='button'; bar.appendChild(critBtn); wrap.appendChild(bar);
     const critEd=_tasEl('div','display:none;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap');
@@ -77584,6 +77578,13 @@ function _tirageRenderSaisie(box, fiche, hooks){
     const applyCrit=(liste)=>{ S.tirageCahierCrit=liste; persist(); _tirageRenderSaisie(box, fiche, hooks); };
     critOk.onclick=()=>applyCrit(critIn.value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,8));
     critDef.onclick=()=>applyCrit([]);
+    /* V11.6.11 — « ✓ Tout OK » par élève : Parfait sur tous ses critères */
+    const okBtn=(uid, cells)=>{
+      const b=_tasEl('button','height:26px;padding:0 10px;border:1.5px solid #15803D;border-radius:13px;background:#fff;color:#15803D;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap','✓ Tout OK');
+      b.type='button'; b.className='tas-toutok'; b.title='Mettre « Parfait » à tous les critères de cet élève';
+      b.onclick=()=>{ _tirageCahierToutOk(E, cells, uid); persist(); };
+      return b;
+    };
     /* V11.5.111 — « Cahier à mettre à jour et à représenter » (remplace la mention //MAJ// en remarque) */
     const majBtn=(uid)=>{
       const b=_tasEl('button','height:26px;padding:0 10px;border:1.5px solid var(--brd);border-radius:13px;background:var(--sur);color:var(--tx2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap','↻ À représenter');
@@ -77598,10 +77599,10 @@ function _tirageRenderSaisie(box, fiche, hooks){
     // un élève par ligne, critères en colonnes (on le parcourt de haut en bas).
     if(_tirageCahierRetourne(els.length)){
       const nc=crits.length;
-      const grid=_tasEl('div','display:grid;grid-template-columns:minmax(110px,1.2fr) repeat('+nc+',112px) 80px 116px minmax(110px,1fr);column-gap:6px;align-items:stretch;min-width:'+(110+nc*118+86+122+116)+'px');
+      const grid=_tasEl('div','display:grid;grid-template-columns:minmax(110px,1.2fr) repeat('+nc+',112px) 92px 80px 116px minmax(110px,1fr);column-gap:6px;align-items:stretch;min-width:'+(110+nc*118+98+86+122+116)+'px');
       sc.appendChild(grid); wrap.appendChild(sc);
       const th=(t)=>_tasEl('div','font-size:11px;font-weight:700;color:var(--tx2);text-align:center;padding-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap',t);
-      grid.appendChild(th('')); crits.forEach(n=>grid.appendChild(th(n))); grid.appendChild(th('Oubli')); grid.appendChild(th('À représenter')); grid.appendChild(th('Remarque'));
+      grid.appendChild(th('')); crits.forEach(n=>grid.appendChild(th(n))); grid.appendChild(th('')); grid.appendChild(th('Oubli')); grid.appendChild(th('À représenter')); grid.appendChild(th('Remarque'));
       const rc='display:flex;align-items:center;min-height:36px;border-top:1px solid var(--brd)';
       const cells=[]; const cols={};
       els.forEach(s=>{ cols[s.uid]=[]; });
@@ -77611,6 +77612,7 @@ function _tirageRenderSaisie(box, fiche, hooks){
         crits.forEach(nom=>{ const c=_tasEl('div',rc+';justify-content:center'); const seg=_tasSegNiveaux(true, v=>setNiv(s.uid, nom, v));
           seg.set((E.niv[s.uid]||{})[nom]||''); c.appendChild(seg.el); grid.appendChild(c);
           cells.push({uid:s.uid, nom, seg}); cols[s.uid].push(c); });
+        { const ck=_tasEl('div',rc+';justify-content:center'); ck.appendChild(okBtn(s.uid, cells)); grid.appendChild(ck); cols[s.uid].push(ck); }
         const co=_tasEl('div',rc+';justify-content:center');
         const b=_tasEl('button','height:26px;padding:0 10px;border:1.5px solid var(--brd);border-radius:13px;background:var(--sur);color:var(--tx2);font-size:11px;cursor:pointer;font-family:inherit','Oublié');
         b.type='button';
@@ -77639,6 +77641,8 @@ function _tirageRenderSaisie(box, fiche, hooks){
         seg.set((E.niv[s.uid]||{})[nom]||''); c.appendChild(seg.el); grid.appendChild(c);
         cells.push({uid:s.uid, nom, seg}); cols[s.uid].push(c); });
     });
+    grid.appendChild(_tasEl('div',rowLbl,''));
+    els.forEach(s=>{ const c=_tasEl('div',cellCss); c.appendChild(okBtn(s.uid, cells)); grid.appendChild(c); cols[s.uid].push(c); });
     grid.appendChild(_tasEl('div',rowLbl,'Oubli'));
     els.forEach(s=>{
       const c=_tasEl('div',cellCss);
